@@ -1,0 +1,69 @@
+HELP.md
+target/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+# ==========================================
+# Documentación privada / Archivos locales
+# ==========================================
+ANOTACIONES-BD.md
+CONTEXTO-PROYECTO.md
+DiagramaAsistencia.drawio
+*.drawio.bkp
+AGENTS.md
+BITACORA.md
+APRENDAMOS.md
+EJEMPLOS-JSON.md
+frontend-dev.md
+REQUERIMIENTOS.md
+HISTORIAS-USUARIO.md
+GANTT.md
+.opencode
+CASOS-DE-USO.md
+DIAGRAMA-CLASES-UML.md
+DIAGRAMAS-SECUENCIA.md
+ARQUITECTURA-SISTEMA.md 
+
+# ==========================================
+# Variables de Entorno y Config Local
+# ==========================================
+.env
+.env.local
+.env.*.local
+docker-compose.yml
+Dockerfile
+
+# ==========================================
+# Archivos del sistema operativo
+# ==========================================
+.DS_Store
+Thumbs.db

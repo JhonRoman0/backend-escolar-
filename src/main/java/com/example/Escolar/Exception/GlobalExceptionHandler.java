@@ -85,6 +85,26 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
+    @ExceptionHandler(CuentaBloqueadaException.class)
+    public ResponseEntity<Map<String, Object>> handleCuentaBloqueada(CuentaBloqueadaException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.LOCKED.value());
+        body.put("error", "Locked");
+        body.put("message", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.LOCKED).body(body);
+    }
+
+    @ExceptionHandler(RolConUsuariosException.class)
+    public ResponseEntity<Map<String, Object>> handleRolConUsuarios(RolConUsuariosException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.CONFLICT.value());
+        body.put("error", "Conflict");
+        body.put("message", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
     @ExceptionHandler(AutorizacionRequeridaException.class)
     public ResponseEntity<Map<String, Object>> handleAutorizacionRequerida(AutorizacionRequeridaException ex) {
         Map<String, Object> body = new HashMap<>();

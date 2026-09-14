@@ -54,6 +54,12 @@ public class UsuarioController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/{id}/desbloquear")
+    public ResponseEntity<Void> desbloquear(@PathVariable Integer id) {
+        usuarioService.desbloquear(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/rol/{idRol}")
     public List<UsuarioResponse> getUsuariosPorRol(@PathVariable Integer idRol) {
         return usuarioService.getUsuariosPorRol(idRol);

@@ -35,7 +35,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/auth/login", "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/portal/**").permitAll()
+                        .requestMatchers("/auth/login", "/auth/logout", "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/portal/**").permitAll()
                         .requestMatchers("/auth/me").authenticated()
                         .anyRequest().access(rbacAuthorizationManager))
                 .exceptionHandling(handling -> handling
@@ -60,7 +60,7 @@ public class SecurityConfig {
                 "https://*.ngrok-free.dev",
                 "http://localhost:*"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "ngrok-skip-browser-warning"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "ngrok-skip-browser-warning", "X-Requested-With"));
         config.setAllowCredentials(true);
         config.setExposedHeaders(List.of("Authorization", "ngrok-skip-browser-warning"));
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

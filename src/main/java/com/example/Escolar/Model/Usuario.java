@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "Usuario")
@@ -44,5 +45,9 @@ public class Usuario {
     String pkUrlFoto;
     @Column(name = "fechaCreacion", nullable = false)
     LocalDate fechaCreacion;
+    @Column(name = "intentosFallidos", nullable = false)
+    Integer intentosFallidos = 0;
+    @Column(name = "fechaBloqueo", nullable = true)
+    LocalDateTime fechaBloqueo;
 
 }

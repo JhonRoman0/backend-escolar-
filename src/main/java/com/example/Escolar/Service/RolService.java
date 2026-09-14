@@ -3,8 +3,10 @@ package com.example.Escolar.Service;
 import com.example.Escolar.Dto.RolRequest;
 import com.example.Escolar.Dto.RolResponse;
 import com.example.Escolar.Exception.ResourceNotFoundException;
+import com.example.Escolar.Exception.RolConUsuariosException;
 import com.example.Escolar.Model.Rol;
 import com.example.Escolar.Repository.RolRepository;
+import com.example.Escolar.Repository.UsuarioRolRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +21,7 @@ public class RolService {
     public static final byte ACCESO_ELIMINADO = 2;
 
     private final RolRepository rolRepository;
+    private final UsuarioRolRepository usuarioRolRepository;
 
     public List<RolResponse> getAll() {
         return rolRepository.findByAccesoNot(ACCESO_ELIMINADO).stream().map(this::toResponse).toList();
@@ -49,6 +52,9 @@ public class RolService {
     @Transactional
     public void delete(Integer id) {
         Rol rol = findRol(id);
+        if (!usuarioRolRepository.findByRolIdRol(id).isEmpty()) {
+            throw new RolConUsuariosException("No se puede eliminar el rol '" + rol.getNombre() + "' porque tiene usuarios asociados");
+        }
         rol.setAcceso(ACCESO_ELIMINADO);
         rolRepository.save(rol);
     }

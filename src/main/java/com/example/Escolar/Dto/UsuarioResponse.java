@@ -4,6 +4,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Getter
@@ -22,4 +23,6 @@ public class UsuarioResponse {
     private String pkUrlFoto;
     private String nombreRol;
     private List<RolResponse> roles;
+    private Integer intentosFallidos;
+    private LocalDateTime fechaBloqueo;
 }

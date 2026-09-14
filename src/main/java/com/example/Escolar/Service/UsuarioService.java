@@ -79,6 +79,14 @@ public class UsuarioService {
     }
 
     @Transactional
+    public void desbloquear(Integer id) {
+        Usuario usuario = findUsuario(id);
+        usuario.setIntentosFallidos(0);
+        usuario.setFechaBloqueo(null);
+        usuarioRepository.save(usuario);
+    }
+
+    @Transactional
     public void delete(Integer id) {
         Usuario usuario = findUsuario(id);
         usuario.setAcceso(ACCESO_ELIMINADO);
@@ -244,6 +252,8 @@ public class UsuarioService {
         List<RolResponse> roles = getRolesDelUsuario(usuario.getIdUsuario());
         response.setRoles(roles);
         response.setNombreRol(roles.isEmpty() ? null : roles.get(0).getNombre());
+        response.setIntentosFallidos(usuario.getIntentosFallidos());
+        response.setFechaBloqueo(usuario.getFechaBloqueo());
         return response;
     }
 

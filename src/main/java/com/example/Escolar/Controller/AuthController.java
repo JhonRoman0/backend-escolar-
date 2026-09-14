@@ -40,28 +40,28 @@ public class AuthController {
                                                HttpServletRequest httpRequest,
                                                HttpServletResponse httpResponse) {
         LoginResponse response = authService.login(request);
-        ResponseCookie cookie = ResponseCookie.from(COOKIE_NOMBRE, response.getToken())
-                .httpOnly(true)
-                .secure(httpRequest.isSecure())
-                .sameSite("None")
-                .path("/")
-                .maxAge(jwtExpirationMs / 1000)
-                .build();
-        httpResponse.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+        httpResponse.addHeader(HttpHeaders.SET_COOKIE,
+                cookieSesion(response.getToken(), jwtExpirationMs / 1000, httpRequest));
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
-        ResponseCookie cookie = ResponseCookie.from(COOKIE_NOMBRE, "")
-                .httpOnly(true)
-                .secure(httpRequest.isSecure())
-                .sameSite("None")
-                .path("/")
-                .maxAge(0)
-                .build();
-        httpResponse.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+        httpResponse.addHeader(HttpHeaders.SET_COOKIE,
+                cookieSesion("", 0, httpRequest));
         return ResponseEntity.ok().build();
+    }
+
+    private String cookieSesion(String valor, long maxAge, HttpServletRequest httpRequest) {
+        boolean secure = httpRequest.isSecure();
+        return ResponseCookie.from(COOKIE_NOMBRE, valor)
+                .httpOnly(true)
+                .secure(secure)
+                .sameSite(secure ? "None" : "Lax")
+                .path("/")
+                .maxAge(maxAge)
+                .build()
+                .toString();
     }
 
     @GetMapping("/me")

@@ -213,6 +213,19 @@ public class ApiPermisoRegistro {
         registrarLectura("GET", "/horarios", "HORARIOS");
         registrarLectura("GET", "/horarios/**", "HORARIOS");
 
+        registrarLectura("GET", "/recreos", "RECREOS");
+        registrarLectura("GET", "/recreos/**", "RECREOS");
+        registrar("POST", "/recreos", "RECREOS", "CREAR");
+        registrar("PUT", "/recreos/**", "RECREOS", "ACTUALIZAR");
+        registrar("DELETE", "/recreos/**", "RECREOS", "ELIMINAR");
+
+        registrarLectura("GET", "/suspensiones", "SUSPENSIONES_DOCENTE");
+        registrarLectura("GET", "/suspensiones/**", "SUSPENSIONES_DOCENTE");
+        registrar("POST", "/suspensiones", "SUSPENSIONES_DOCENTE", "CREAR");
+
+        registrarLectura("GET", "/cambios-docente", "CAMBIOS_DOCENTE");
+        registrarLectura("GET", "/cambios-docente/**", "CAMBIOS_DOCENTE");
+
         registrarLectura("GET", "/plantillas-siagie", "PLANTILLAS");
         registrarLectura("GET", "/plantillas-siagie/**", "PLANTILLAS");
         registrar("POST", "/plantillas-siagie", "PLANTILLAS", "CREAR");

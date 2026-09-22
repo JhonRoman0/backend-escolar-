@@ -6,6 +6,8 @@ import jakarta.validation.constraints.Min;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.LocalDate;
+
 @Getter
 @Setter
 public class AnioEscolarRequest {
@@ -14,7 +16,8 @@ public class AnioEscolarRequest {
     @Min(value = 1, message = "El estado debe ser 1 (activo) o 2 (cerrado)")
     @Max(value = 2, message = "El estado debe ser 1 (activo) o 2 (cerrado)")
     private Byte estado;
-    @Min(value = 0, message = "El acceso debe estar entre 0 y 2")
-    @Max(value = 2, message = "El acceso debe estar entre 0 y 2")
-    private Byte acceso;
+    private LocalDate fechaInicio;
+    private LocalDate fechaFin;
+    private Boolean bloqueoHorariosPorFecha;
+    private Long accesoId;
 }

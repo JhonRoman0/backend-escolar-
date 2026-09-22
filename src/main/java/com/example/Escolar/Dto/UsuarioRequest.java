@@ -1,10 +1,10 @@
 package com.example.Escolar.Dto;
 
 import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -20,11 +20,13 @@ public class UsuarioRequest {
     private String apellidoPat;
     @NotBlank(message = "El apellido materno es obligatorio")
     private String apellidoMat;
+    @NotBlank(message = "El documento de identidad es obligatorio")
+    @Size(min = 8, max = 8, message = "El DNI debe contener exactamente 8 digitos")
+    @Pattern(regexp = "^[0-9]+$", message = "El DNI debe contener solo digitos")
     private String documentoIdentidad;
     private String contraseña;
-    @Min(value = 0, message = "El acceso debe ser 0 (inactivo), 1 (activo) o 2 (eliminado)")
-    @Max(value = 2, message = "El acceso debe ser 0 (inactivo), 1 (activo) o 2 (eliminado)")
-    private Byte acceso;
+    private Long accesoId;
+    @NotBlank(message = "El email es obligatorio")
     @Email(message = "El formato del email no es válido")
     private String gmail;
     @NotNull(message = "La fecha de nacimiento es obligatoria")

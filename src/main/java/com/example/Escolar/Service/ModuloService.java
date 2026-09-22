@@ -10,6 +10,7 @@ import com.example.Escolar.Model.Modulo;
 import com.example.Escolar.Model.Permiso;
 import com.example.Escolar.Model.PermisoAccion;
 import com.example.Escolar.Repository.AccionRepository;
+import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.ModuloRepository;
 import com.example.Escolar.Repository.PermisoAccionRepository;
 import com.example.Escolar.Repository.PermisoRepository;
@@ -24,16 +25,14 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ModuloService {
 
-    public static final byte ACCESO_ACTIVO = 1;
-    public static final byte ACCESO_ELIMINADO = 2;
-
     private final ModuloRepository moduloRepository;
+    private final AccesoRepository accesoRepository;
     private final PermisoRepository permisoRepository;
     private final AccionRepository accionRepository;
     private final PermisoAccionRepository permisoAccionRepository;
 
     public List<ModuloResponse> getAll() {
-        return moduloRepository.findByAccesoNot(ACCESO_ELIMINADO).stream().map(this::toResponse).toList();
+        return moduloRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream().map(this::toResponse).toList();
     }
 
     public ModuloResponse getById(Integer id) {
@@ -45,7 +44,7 @@ public class ModuloService {
         Modulo modulo = new Modulo();
         modulo.setModulo(request.getModulo());
         modulo.setIcono(request.getIcono());
-        modulo.setAcceso(request.getAcceso() != null ? request.getAcceso() : ACCESO_ACTIVO);
+        modulo.setAcceso(accesoRepository.findById(request.getAccesoId() != null ? request.getAccesoId() : AccesoConstants.ACTIVO).orElseThrow());
         modulo = moduloRepository.save(modulo);
         crearPermisos(modulo, request.getPermisos());
         return toResponse(modulo);
@@ -56,8 +55,8 @@ public class ModuloService {
         Modulo modulo = findModulo(id);
         modulo.setModulo(request.getModulo());
         modulo.setIcono(request.getIcono());
-        if (request.getAcceso() != null) {
-            modulo.setAcceso(request.getAcceso());
+        if (request.getAccesoId() != null) {
+            modulo.setAcceso(accesoRepository.findById(request.getAccesoId()).orElseThrow());
         }
         crearPermisos(modulo, request.getPermisos());
         return toResponse(moduloRepository.save(modulo));
@@ -66,7 +65,7 @@ public class ModuloService {
     @Transactional
     public void delete(Integer id) {
         Modulo modulo = findModulo(id);
-        modulo.setAcceso(ACCESO_ELIMINADO);
+        modulo.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
         moduloRepository.save(modulo);
     }
 
@@ -75,14 +74,14 @@ public class ModuloService {
             return;
         }
         for (PermisoNestedRequest p : permisosRequest) {
-            if (permisoRepository.findByCodigoAndAccesoNot(p.getCodigo(), ACCESO_ELIMINADO).isPresent()) {
+            if (permisoRepository.findByCodigoAndAccesoNot(p.getCodigo(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).isPresent()) {
                 throw new IllegalArgumentException("Ya existe un permiso con el código " + p.getCodigo());
             }
             Permiso permiso = new Permiso();
             permiso.setCodigo(p.getCodigo());
             permiso.setNombre(p.getNombre());
             permiso.setModulo(modulo);
-            permiso.setAcceso(ACCESO_ACTIVO);
+            permiso.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
             permiso = permisoRepository.save(permiso);
             asignarAcciones(permiso, p.getAcciones());
         }
@@ -93,20 +92,20 @@ public class ModuloService {
             return;
         }
         for (String codigo : codigosAcciones) {
-            Accion accion = accionRepository.findByCodigoAndAccesoNot(codigo, ACCESO_ELIMINADO)
+            Accion accion = accionRepository.findByCodigoAndAccesoNot(codigo, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                     .orElseThrow(() -> new IllegalArgumentException("La acción " + codigo + " no existe"));
             if (permisoAccionRepository.findByPermisoIdPermisoAndAccionIdAccion(permiso.getIdPermiso(), accion.getIdAccion()).isEmpty()) {
                 PermisoAccion permisoAccion = new PermisoAccion();
                 permisoAccion.setPermiso(permiso);
                 permisoAccion.setAccion(accion);
-                permisoAccion.setAcceso(ACCESO_ACTIVO);
+                permisoAccion.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
                 permisoAccionRepository.save(permisoAccion);
             }
         }
     }
 
     private Modulo findModulo(Integer id) {
-        return moduloRepository.findByIdModuloAndAccesoNot(id, ACCESO_ELIMINADO)
+        return moduloRepository.findByIdModuloAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("Módulo no encontrado con id " + id));
     }
 
@@ -115,9 +114,9 @@ public class ModuloService {
         response.setIdModulo(modulo.getIdModulo());
         response.setModulo(modulo.getModulo());
         response.setIcono(modulo.getIcono());
-        response.setAcceso(modulo.getAcceso());
+        response.setAccesoId(modulo.getAcceso().getIdAcceso().longValue());
         List<Permiso> permisos = permisoRepository.findByModuloIdModulo(modulo.getIdModulo()).stream()
-                .filter(p -> p.getAcceso() != ACCESO_ELIMINADO)
+                .filter(p -> !p.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
                 .toList();
         response.setPermisos(permisos.stream().map(this::toPermisoResponse).toList());
         return response;
@@ -128,14 +127,14 @@ public class ModuloService {
         response.setIdPermiso(permiso.getIdPermiso());
         response.setCodigo(permiso.getCodigo());
         response.setNombre(permiso.getNombre());
-        response.setAcceso(permiso.getAcceso());
+        response.setAccesoId(permiso.getAcceso().getIdAcceso().longValue());
         response.setAcciones(accionesDelPermiso(permiso.getIdPermiso()));
         return response;
     }
 
     List<String> accionesDelPermiso(Integer idPermiso) {
-        return permisoAccionRepository.findByPermisoIdPermisoAndAccesoNot(idPermiso, ACCESO_ELIMINADO).stream()
-                .filter(pa -> pa.getAccion().getAcceso() != ACCESO_ELIMINADO)
+        return permisoAccionRepository.findByPermisoIdPermisoAndAccesoNot(idPermiso, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
+                .filter(pa -> !pa.getAccion().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
                 .map(pa -> pa.getAccion().getCodigo())
                 .sorted()
                 .toList();

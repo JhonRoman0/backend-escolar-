@@ -9,7 +9,7 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "Evento_Escolar")
+@Table(name = "eventoEscolar")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -17,6 +17,7 @@ import java.time.LocalDateTime;
 public class EventoEscolar {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_evento_escolar")
     Integer idEvento;
     @Column(name = "titulo", length = 150, nullable = false)
     String titulo;
@@ -24,16 +25,17 @@ public class EventoEscolar {
     String descripcion;
     @Column(name = "lugar", length = 120)
     String lugar;
-    @Column(name = "fechaInicio", nullable = false)
+    @Column(name = "fecha_inicio", nullable = false)
     LocalDateTime fechaInicio;
-    @Column(name = "fechaFin")
+    @Column(name = "fecha_fin")
     LocalDateTime fechaFin;
-    @Column(name = "esPublico", nullable = false)
+    @Column(name = "es_publico", nullable = false)
     byte esPublico;
-    @Column(name = "imagenUrl", length = 255)
+    @Column(name = "imagen_url", length = 255)
     String imagenUrl;
-    @Column(name = "pkUrlFoto", length = 255)
+    @Column(name = "pk_url_foto", length = 255)
     String pkUrlFoto;
-    @Column(name = "acceso", nullable = false)
-    byte acceso = 1;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_acceso", nullable = false)
+    Acceso acceso;
 }

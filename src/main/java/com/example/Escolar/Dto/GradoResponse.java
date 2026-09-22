@@ -12,7 +12,7 @@ public class GradoResponse {
     private String nombre;
     private Integer idNivel;
     private String nivel;
-    private byte acceso;
+    private Long accesoId;
     private Integer idAnio;
     private String anio;
     private Integer idTurno;

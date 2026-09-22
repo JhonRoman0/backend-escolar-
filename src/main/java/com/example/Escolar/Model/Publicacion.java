@@ -9,7 +9,7 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "Publicacion")
+@Table(name = "publicacion")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -17,9 +17,10 @@ import java.time.LocalDateTime;
 public class Publicacion {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_publicacion")
     Integer idPublicacion;
     @ManyToOne
-    @JoinColumn(name = "idUsuario", nullable = false)
+    @JoinColumn(name = "id_usuario", nullable = false)
     Usuario usuario;
     @Column(name = "titulo", length = 150, nullable = false)
     String titulo;
@@ -27,20 +28,21 @@ public class Publicacion {
     String slug;
     @Column(name = "contenido", columnDefinition = "TEXT")
     String contenido;
-    @Column(name = "imagenPortadaUrl", length = 255)
+    @Column(name = "imagen_portada_url", length = 255)
     String imagenPortadaUrl;
-    @Column(name = "pkUrlFoto", length = 255)
+    @Column(name = "pk_url_foto", length = 255)
     String pkUrlFoto;
     @Column(name = "categoria", length = 50)
     String categoria;
-    @Column(name = "esDestacado", nullable = false)
+    @Column(name = "es_destacado", nullable = false)
     byte esDestacado;
     @Column(name = "estado", nullable = false)
     byte estado;
-    @Column(name = "fechaPublicacion", nullable = false)
+    @Column(name = "fecha_publicacion", nullable = false)
     LocalDateTime fechaPublicacion;
-    @Column(name = "fechaActualizacion")
+    @Column(name = "fecha_actualizacion")
     LocalDateTime fechaActualizacion;
-    @Column(name = "acceso", nullable = false)
-    byte acceso = 1;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_acceso", nullable = false)
+    Acceso acceso;
 }

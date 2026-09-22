@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "Apoderado")
+@Table(name = "apoderado")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -15,9 +15,10 @@ import lombok.Setter;
 public class Apoderado {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_apoderado")
     Integer idApoderado;
     @OneToOne
-    @JoinColumn(name = "idUsuario", nullable = false)
+    @JoinColumn(name = "id_usuario", nullable = false)
     Usuario usuario;
     @Column(name = "celular", length = 15)
     String celular;
@@ -25,6 +26,7 @@ public class Apoderado {
     String direccion;
     @Column(name = "parentesco", length = 30)
     String parentesco;
-    @Column(name = "acceso", nullable = false)
-    byte acceso = 1;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_acceso", nullable = false)
+    Acceso acceso;
 }

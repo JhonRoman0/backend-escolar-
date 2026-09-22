@@ -30,5 +30,5 @@ public class AlumnoRequest {
     @Size(max = 2, message = "Un alumno puede tener máximo 2 apoderados")
     private List<ApoderadoRequest> apoderados;
 
-    private Byte acceso;
+    private Long accesoId;
 }

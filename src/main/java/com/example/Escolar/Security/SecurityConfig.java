@@ -35,7 +35,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/auth/login", "/auth/logout", "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/portal/**").permitAll()
+                        .requestMatchers("/auth/login", "/auth/logout", "/auth/forgot-password", "/auth/reset-password", "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/portal/**").permitAll()
                         .requestMatchers("/auth/me").authenticated()
                         .anyRequest().access(rbacAuthorizationManager))
                 .exceptionHandling(handling -> handling

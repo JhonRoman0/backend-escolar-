@@ -1,6 +1,7 @@
 package com.example.Escolar.Config;
 
 import com.example.Escolar.Model.Accion;
+import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.Competencia;
 import com.example.Escolar.Model.Curso;
 import com.example.Escolar.Model.EstadoAsistencia;
@@ -14,6 +15,7 @@ import com.example.Escolar.Model.RolPermisoAccion;
 import com.example.Escolar.Model.Usuario;
 import com.example.Escolar.Model.UsuarioRol;
 import com.example.Escolar.Repository.AccionRepository;
+import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.CompetenciaRepository;
 import com.example.Escolar.Repository.CursoRepository;
 import com.example.Escolar.Repository.EstadoAsistenciaRepository;
@@ -26,6 +28,7 @@ import com.example.Escolar.Repository.RolPermisoRepository;
 import com.example.Escolar.Repository.RolRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
+import com.example.Escolar.Service.AccesoConstants;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
@@ -42,10 +45,8 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class DataSeeder implements CommandLineRunner {
 
-    private static final byte ACCESO_ACTIVO = 1;
-    private static final byte ACCESO_ELIMINADO = 2;
-
     private final AccionRepository accionRepository;
+    private final AccesoRepository accesoRepository;
     private final EstadoAsistenciaRepository estadoAsistenciaRepository;
     private final RolRepository rolRepository;
     private final UsuarioRepository usuarioRepository;
@@ -86,6 +87,7 @@ public class DataSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
+        seedAcceso();
         seedAcciones();
         seedEstadosAsistencia();
         seedNiveles();
@@ -98,6 +100,22 @@ public class DataSeeder implements CommandLineRunner {
         }
     }
 
+    private void seedAcceso() {
+        crearAccesoSiFalta(AccesoConstants.ACTIVO, "Activo");
+        crearAccesoSiFalta(AccesoConstants.ELIMINADO, "Eliminado");
+        crearAccesoSiFalta(AccesoConstants.INACTIVO, "Inactivo");
+    }
+
+    private void crearAccesoSiFalta(Long id, String nombre) {
+        if (accesoRepository.findById(id).isPresent()) {
+            return;
+        }
+        Acceso acceso = new Acceso();
+        acceso.setIdAcceso(id);
+        acceso.setNombre(nombre);
+        accesoRepository.save(acceso);
+    }
+
     private void seedEstadosAsistencia() {
         crearEstadoAsistenciaSiFalta("Puntual");
         crearEstadoAsistenciaSiFalta("Tardanza");
@@ -106,12 +124,12 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private void crearEstadoAsistenciaSiFalta(String nombre) {
-        if (estadoAsistenciaRepository.findByNombreIgnoreCaseAndAccesoNot(nombre, ACCESO_ELIMINADO).isPresent()) {
+        if (estadoAsistenciaRepository.findByNombreIgnoreCaseAndAccesoNot(nombre, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).isPresent()) {
             return;
         }
         EstadoAsistencia estado = new EstadoAsistencia();
         estado.setNombre(nombre);
-        estado.setAcceso(ACCESO_ACTIVO);
+        estado.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         estadoAsistenciaRepository.save(estado);
     }
 
@@ -122,12 +140,12 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private void crearNivelSiFalta(String nombre) {
-        if (nivelRepository.findByNombreAndAccesoNot(nombre, ACCESO_ELIMINADO).isPresent()) {
+        if (nivelRepository.findByNombreAndAccesoNot(nombre, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).isPresent()) {
             return;
         }
         Nivel nivel = new Nivel();
         nivel.setNombre(nombre);
-        nivel.setAcceso(ACCESO_ACTIVO);
+        nivel.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         nivelRepository.save(nivel);
     }
 
@@ -167,19 +185,19 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private void crearCompetenciaSiFalta(String nombreCurso, byte orden, String nombreCompetencia) {
-        Curso curso = cursoRepository.findByNombreAndAccesoNot(nombreCurso, ACCESO_ELIMINADO).orElse(null);
+        Curso curso = cursoRepository.findByNombreAndAccesoNot(nombreCurso, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).orElse(null);
         if (curso == null) {
             return;
         }
         if (competenciaRepository.findByCursoIdCursoAndNombreAndAccesoNot(
-                curso.getIdCurso(), nombreCompetencia, ACCESO_ELIMINADO).isPresent()) {
+                curso.getIdCurso(), nombreCompetencia, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).isPresent()) {
             return;
         }
         Competencia competencia = new Competencia();
         competencia.setCurso(curso);
         competencia.setNombre(nombreCompetencia);
         competencia.setOrden(orden);
-        competencia.setAcceso(ACCESO_ACTIVO);
+        competencia.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         competenciaRepository.save(competencia);
     }
 
@@ -192,13 +210,13 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private void crearAccionSiFalta(String codigo, String nombre) {
-        if (accionRepository.findByCodigoAndAccesoNot(codigo, ACCESO_ELIMINADO).isPresent()) {
+        if (accionRepository.findByCodigoAndAccesoNot(codigo, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).isPresent()) {
             return;
         }
         Accion accion = new Accion();
         accion.setCodigo(codigo);
         accion.setNombre(nombre);
-        accion.setAcceso(ACCESO_ACTIVO);
+        accion.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         accionRepository.save(accion);
     }
 
@@ -214,7 +232,7 @@ public class DataSeeder implements CommandLineRunner {
         return rolRepository.findByNombre(nombre).orElseGet(() -> {
             Rol rol = new Rol();
             rol.setNombre(nombre);
-            rol.setAcceso(ACCESO_ACTIVO);
+            rol.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
             return rolRepository.save(rol);
         });
     }
@@ -235,7 +253,10 @@ public class DataSeeder implements CommandLineRunner {
                 new PermisoSeed("GRADOS", "Grados", crud()),
                 new PermisoSeed("ANIOS_ESCOLARES", "Años Escolares", crud()),
                 new PermisoSeed("AULAS", "Aulas", crud()),
-                new PermisoSeed("ASIGNACIONES", "Asignaciones", crud()))));
+                new PermisoSeed("ASIGNACIONES", "Asignaciones", crud()),
+                new PermisoSeed("RECREOS", "Recreos", crud()),
+                new PermisoSeed("SUSPENSIONES_DOCENTE", "Suspensiones de Docente", List.of("CREAR")),
+                new PermisoSeed("CAMBIOS_DOCENTE", "Cambios de Docente", List.of()))));
 
         crearModuloSiFalta(new ModuloSeed("Estudiantes", "user-graduate", List.of(
                 new PermisoSeed("ALUMNOS", "Alumnos", crudWithExport()),
@@ -283,6 +304,9 @@ public class DataSeeder implements CommandLineRunner {
         asignarPermiso("Administrador", "ANIOS_ESCOLARES", crud());
         asignarPermiso("Administrador", "AULAS", crud());
         asignarPermiso("Administrador", "ASIGNACIONES", crud());
+        asignarPermiso("Administrador", "RECREOS", crud());
+        asignarPermiso("Administrador", "SUSPENSIONES_DOCENTE", List.of("CREAR"));
+        asignarPermiso("Administrador", "CAMBIOS_DOCENTE", List.of());
         asignarPermiso("Administrador", "ALUMNOS", crudWithExport());
         asignarPermiso("Administrador", "APODERADOS", crud());
         asignarPermiso("Administrador", "MATRICULAS", crudWithExport());
@@ -306,6 +330,9 @@ public class DataSeeder implements CommandLineRunner {
         asignarPermiso("Secretaria", "ANIOS_ESCOLARES", List.of("CREAR", "ACTUALIZAR"));
         asignarPermiso("Secretaria", "AULAS", List.of("CREAR", "ACTUALIZAR"));
         asignarPermiso("Secretaria", "ASIGNACIONES", List.of("CREAR", "ACTUALIZAR"));
+        asignarPermiso("Secretaria", "RECREOS", List.of("CREAR", "ACTUALIZAR"));
+        asignarPermiso("Secretaria", "SUSPENSIONES_DOCENTE", List.of("CREAR"));
+        asignarPermiso("Secretaria", "CAMBIOS_DOCENTE", List.of());
         asignarPermiso("Secretaria", "ALUMNOS", List.of("CREAR", "ACTUALIZAR"));
         asignarPermiso("Secretaria", "APODERADOS", List.of("CREAR", "ACTUALIZAR"));
         asignarPermiso("Secretaria", "MATRICULAS", List.of("CREAR", "ACTUALIZAR"));
@@ -324,6 +351,7 @@ public class DataSeeder implements CommandLineRunner {
         asignarPermiso("Apoderado", "ALUMNOS", List.of());
         asignarPermiso("Apoderado", "APODERADOS", List.of());
         asignarPermiso("Apoderado", "ASIGNACIONES", List.of());
+        asignarPermiso("Apoderado", "RECREOS", List.of());
         asignarPermiso("Apoderado", "MATRICULAS", List.of());
         asignarPermiso("Apoderado", "CONSOLIDADOS", List.of());
         asignarPermiso("Apoderado", "COMPETENCIAS", List.of());
@@ -340,6 +368,9 @@ public class DataSeeder implements CommandLineRunner {
         asignarPermiso("Docente", "ALUMNOS", List.of());
         asignarPermiso("Docente", "APODERADOS", List.of());
         asignarPermiso("Docente", "ASIGNACIONES", List.of());
+        asignarPermiso("Docente", "RECREOS", List.of());
+        asignarPermiso("Docente", "SUSPENSIONES_DOCENTE", List.of());
+        asignarPermiso("Docente", "CAMBIOS_DOCENTE", List.of());
         asignarPermiso("Docente", "MATRICULAS", List.of());
         asignarPermiso("Docente", "CONSOLIDADOS", List.of("CREAR", "ACTUALIZAR"));
         asignarPermiso("Docente", "COMPETENCIAS", List.of());
@@ -351,6 +382,8 @@ public class DataSeeder implements CommandLineRunner {
         asignarPermiso("Secretaria", "HORARIOS", List.of("CREAR", "ACTUALIZAR"));
         asignarPermiso("Docente", "HORARIOS", List.of("IMPRIMIR_EXPORTAR"));
         asignarPermiso("Apoderado", "HORARIOS", List.of("IMPRIMIR_EXPORTAR"));
+        asignarPermiso("Auxiliar", "HORARIOS", List.of());
+        asignarPermiso("Auxiliar", "RECREOS", List.of());
 
         asignarPermiso("Administrador", "PLANTILLAS", List.of("CREAR", "IMPRIMIR_EXPORTAR"));
         asignarPermiso("Secretaria", "PLANTILLAS", List.of());
@@ -367,7 +400,7 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private void crearModuloSiFalta(ModuloSeed seed) {
-        Optional<Modulo> mod = moduloRepository.findByModuloAndAccesoNot(seed.nombre(), ACCESO_ELIMINADO);
+        Optional<Modulo> mod = moduloRepository.findByModuloAndAccesoNot(seed.nombre(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
         final Modulo modulo;
         if (mod.isPresent()) {
             modulo = mod.get();
@@ -375,14 +408,14 @@ public class DataSeeder implements CommandLineRunner {
             Modulo nuevo = new Modulo();
             nuevo.setModulo(seed.nombre());
             nuevo.setIcono(seed.icono());
-            nuevo.setAcceso(ACCESO_ACTIVO);
+            nuevo.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
             modulo = moduloRepository.save(nuevo);
         }
         seed.permisos().forEach(p -> crearPermisoSiFalta(modulo, p));
     }
 
     private void crearPermisoSiFalta(Modulo modulo, PermisoSeed seed) {
-        Optional<Permiso> per = permisoRepository.findByCodigoAndAccesoNot(seed.codigo(), ACCESO_ELIMINADO);
+        Optional<Permiso> per = permisoRepository.findByCodigoAndAccesoNot(seed.codigo(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
         final Permiso permiso;
         if (per.isPresent()) {
             permiso = per.get();
@@ -391,14 +424,14 @@ public class DataSeeder implements CommandLineRunner {
             nuevo.setCodigo(seed.codigo());
             nuevo.setNombre(seed.nombre());
             nuevo.setModulo(modulo);
-            nuevo.setAcceso(ACCESO_ACTIVO);
+            nuevo.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
             permiso = permisoRepository.save(nuevo);
         }
         seed.acciones().forEach(a -> crearPermisoAccionSiFalta(permiso, a));
     }
 
     private void crearPermisoAccionSiFalta(Permiso permiso, String codigoAccion) {
-        Accion accion = accionRepository.findByCodigoAndAccesoNot(codigoAccion, ACCESO_ELIMINADO)
+        Accion accion = accionRepository.findByCodigoAndAccesoNot(codigoAccion, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new IllegalStateException("Acción no sembrada: " + codigoAccion));
         if (permisoAccionRepository.findByPermisoIdPermisoAndAccionIdAccion(permiso.getIdPermiso(), accion.getIdAccion()).isPresent()) {
             return;
@@ -406,13 +439,13 @@ public class DataSeeder implements CommandLineRunner {
         PermisoAccion pa = new PermisoAccion();
         pa.setPermiso(permiso);
         pa.setAccion(accion);
-        pa.setAcceso(ACCESO_ACTIVO);
+        pa.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         permisoAccionRepository.save(pa);
     }
 
     private void asignarPermiso(String nombreRol, String codigoPermiso, List<String> acciones) {
         Rol rol = rolRepository.findByNombre(nombreRol).orElse(null);
-        Permiso permiso = permisoRepository.findByCodigoAndAccesoNot(codigoPermiso, ACCESO_ELIMINADO).orElse(null);
+        Permiso permiso = permisoRepository.findByCodigoAndAccesoNot(codigoPermiso, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).orElse(null);
         if (rol == null || permiso == null) {
             return;
         }
@@ -422,25 +455,25 @@ public class DataSeeder implements CommandLineRunner {
                     rp.setRol(rol);
                     rp.setPermiso(permiso);
                     rp.setFechaAsignacion(LocalDateTime.now());
-                    rp.setAcceso(ACCESO_ACTIVO);
+                    rp.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
                     return rolPermisoRepository.save(rp);
                 });
         acciones.forEach(a -> asignarAccionConcedidaSiFalta(rolPermiso, a));
     }
 
     private void asignarAccionConcedidaSiFalta(RolPermiso rolPermiso, String codigoAccion) {
-        Accion accion = accionRepository.findByCodigoAndAccesoNot(codigoAccion, ACCESO_ELIMINADO).orElse(null);
+        Accion accion = accionRepository.findByCodigoAndAccesoNot(codigoAccion, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).orElse(null);
         if (accion == null) {
             return;
         }
         if (rolPermisoAccionRepository.findByRolPermisoIdRolPermisoAndAccionIdAccionAndAccesoNot(
-                rolPermiso.getIdRolPermiso(), accion.getIdAccion(), ACCESO_ELIMINADO).isPresent()) {
+                rolPermiso.getIdRolPermiso(), accion.getIdAccion(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).isPresent()) {
             return;
         }
         RolPermisoAccion rpa = new RolPermisoAccion();
         rpa.setRolPermiso(rolPermiso);
         rpa.setAccion(accion);
-        rpa.setAcceso(ACCESO_ACTIVO);
+        rpa.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         rolPermisoAccionRepository.save(rpa);
     }
 
@@ -449,16 +482,16 @@ public class DataSeeder implements CommandLineRunner {
         Rol rolAdmin = rolRepository.findByNombre(adminRol)
                 .orElseGet(this::crearRolAdmin);
 
-        Optional<Usuario> existente = usuarioRepository.findByCodigoAndAccesoNot(adminCodigo, ACCESO_ELIMINADO);
+        Optional<Usuario> existente = usuarioRepository.findByCodigoAndAccesoNot(adminCodigo, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
         if (existente.isPresent()) {
             asignarRolSiFalta(existente.get(), rolAdmin);
             return;
         }
 
         Optional<Usuario> eliminado = usuarioRepository.findByCodigo(adminCodigo);
-        if (eliminado.isPresent() && eliminado.get().getAcceso() == ACCESO_ELIMINADO) {
+        if (eliminado.isPresent() && eliminado.get().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO)) {
             Usuario usuario = eliminado.get();
-            usuario.setAcceso(ACCESO_ACTIVO);
+            usuario.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
             usuario.setContraseña(passwordEncoder.encode(adminPassword));
             if (usuario.getFechaCreacion() == null) {
                 usuario.setFechaCreacion(LocalDate.now());
@@ -474,7 +507,7 @@ public class DataSeeder implements CommandLineRunner {
         usuario.setApellidoMat(adminApellidoMat);
         usuario.setCodigo(adminCodigo);
         usuario.setContraseña(passwordEncoder.encode(adminPassword));
-        usuario.setAcceso(ACCESO_ACTIVO);
+        usuario.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         usuario.setGmail(adminGmail);
         usuario.setFechaNaci(LocalDate.of(2000, 1, 1));
         usuario.setFechaCreacion(LocalDate.now());
@@ -485,7 +518,7 @@ public class DataSeeder implements CommandLineRunner {
     private Rol crearRolAdmin() {
         Rol rol = new Rol();
         rol.setNombre(adminRol);
-        rol.setAcceso(ACCESO_ACTIVO);
+        rol.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         return rolRepository.save(rol);
     }
 

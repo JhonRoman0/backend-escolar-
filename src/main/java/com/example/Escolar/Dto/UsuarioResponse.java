@@ -16,7 +16,7 @@ public class UsuarioResponse {
     private String apellidoMat;
     private String codigo;
     private String documentoIdentidad;
-    private byte acceso;
+    private Long accesoId;
     private String gmail;
     private LocalDate fechaNaci;
     private String urlFoto;

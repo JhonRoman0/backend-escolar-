@@ -9,7 +9,7 @@ import lombok.Setter;
 import java.time.LocalDate;
 
 @Entity
-@Table(name = "DiaFeriado")
+@Table(name = "diaFeriado")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -17,14 +17,16 @@ import java.time.LocalDate;
 public class DiaFeriado {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_dia_feriado")
     Integer idDiaFeriado;
     @Column(name = "fecha", nullable = false)
     LocalDate fecha;
     @Column(name = "motivo", length = 150, nullable = false)
     String motivo;
     @ManyToOne
-    @JoinColumn(name = "idAnioEscolar")
+    @JoinColumn(name = "id_anio_escolar")
     AnioEscolar anioEscolar;
-    @Column(name = "acceso", nullable = false)
-    byte acceso = 1;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_acceso", nullable = false)
+    Acceso acceso;
 }

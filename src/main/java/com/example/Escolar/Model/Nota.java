@@ -9,7 +9,7 @@ import lombok.Setter;
 import java.time.LocalDate;
 
 @Entity
-@Table(name = "Nota")
+@Table(name = "nota")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -17,24 +17,26 @@ import java.time.LocalDate;
 public class Nota {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_nota")
     Integer idNota;
     @ManyToOne
-    @JoinColumn(name = "idMatricula", nullable = false)
+    @JoinColumn(name = "id_matricula", nullable = false)
     Matricula matricula;
     @ManyToOne
-    @JoinColumn(name = "idCompetencia", nullable = false)
+    @JoinColumn(name = "id_competencia", nullable = false)
     Competencia competencia;
     @Column(name = "bimestre", nullable = false)
     byte bimestre;
     @Column(name = "calificacion", length = 3, nullable = false)
     String calificacion;
-    @Column(name = "conclusionDescriptiva", columnDefinition = "TEXT")
+    @Column(name = "conclusion_descriptiva", columnDefinition = "TEXT")
     String conclusionDescriptiva;
-    @Column(name = "fechaRegistro", nullable = false)
+    @Column(name = "fecha_registro", nullable = false)
     LocalDate fechaRegistro;
     @ManyToOne
-    @JoinColumn(name = "idUsuarioRegistro", nullable = false)
+    @JoinColumn(name = "id_usuario_registro", nullable = false)
     Usuario usuarioRegistro;
-    @Column(name = "acceso", nullable = false)
-    byte acceso = 1;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_acceso", nullable = false)
+    Acceso acceso;
 }

@@ -19,7 +19,7 @@ public class DocenteResponse {
     private String gmail;
     private LocalDate fechaNaci;
     private String urlFoto;
-    private byte acceso;
+    private Long accesoId;
     private String tipoContrato;
     private LocalDate fechaContratacion;
     private String especialidad;

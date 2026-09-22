@@ -9,5 +9,5 @@ import lombok.Setter;
 public class CursoRequest {
     @NotBlank(message = "El nombre es obligatorio")
     private String nombre;
-    private Byte acceso;
+    private Long accesoId;
 }

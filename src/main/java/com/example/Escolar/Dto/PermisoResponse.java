@@ -12,6 +12,6 @@ public class PermisoResponse {
     private String codigo;
     private String nombre;
     private ModuloResponse modulo;
-    private byte acceso;
+    private Long accesoId;
     private List<String> acciones;
 }

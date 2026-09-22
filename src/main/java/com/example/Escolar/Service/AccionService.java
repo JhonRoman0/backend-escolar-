@@ -5,6 +5,7 @@ import com.example.Escolar.Dto.AccionResponse;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.Accion;
 import com.example.Escolar.Repository.AccionRepository;
+import com.example.Escolar.Repository.AccesoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,13 +16,11 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AccionService {
 
-    public static final byte ACCESO_ACTIVO = 1;
-    public static final byte ACCESO_ELIMINADO = 2;
-
     private final AccionRepository accionRepository;
+    private final AccesoRepository accesoRepository;
 
     public List<AccionResponse> getAll() {
-        return accionRepository.findByAccesoNot(ACCESO_ELIMINADO).stream().map(this::toResponse).toList();
+        return accionRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream().map(this::toResponse).toList();
     }
 
     public AccionResponse getById(Integer id) {
@@ -33,7 +32,7 @@ public class AccionService {
         validarCodigoUnico(request.getCodigo(), null);
         Accion accion = new Accion();
         applyRequest(accion, request);
-        accion.setAcceso(request.getAcceso() != null ? request.getAcceso() : ACCESO_ACTIVO);
+        accion.setAcceso(accesoRepository.findById(request.getAccesoId() != null ? request.getAccesoId() : AccesoConstants.ACTIVO).orElseThrow());
         return toResponse(accionRepository.save(accion));
     }
 
@@ -48,17 +47,17 @@ public class AccionService {
     @Transactional
     public void delete(Integer id) {
         Accion accion = findAccion(id);
-        accion.setAcceso(ACCESO_ELIMINADO);
+        accion.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
         accionRepository.save(accion);
     }
 
     private Accion findAccion(Integer id) {
-        return accionRepository.findByIdAccionAndAccesoNot(id, ACCESO_ELIMINADO)
+        return accionRepository.findByIdAccionAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("Acción no encontrada con id " + id));
     }
 
     private void validarCodigoUnico(String codigo, Integer idExcluido) {
-        accionRepository.findByCodigoAndAccesoNot(codigo, ACCESO_ELIMINADO)
+        accionRepository.findByCodigoAndAccesoNot(codigo, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .filter(a -> idExcluido == null || !a.getIdAccion().equals(idExcluido))
                 .ifPresent(a -> {
                     throw new IllegalArgumentException("Ya existe una acción con el código " + codigo);
@@ -68,8 +67,8 @@ public class AccionService {
     private void applyRequest(Accion accion, AccionRequest request) {
         accion.setCodigo(request.getCodigo());
         accion.setNombre(request.getNombre());
-        if (request.getAcceso() != null) {
-            accion.setAcceso(request.getAcceso());
+        if (request.getAccesoId() != null) {
+            accion.setAcceso(accesoRepository.findById(request.getAccesoId()).orElseThrow());
         }
     }
 
@@ -78,7 +77,7 @@ public class AccionService {
         response.setIdAccion(accion.getIdAccion());
         response.setCodigo(accion.getCodigo());
         response.setNombre(accion.getNombre());
-        response.setAcceso(accion.getAcceso());
+        response.setAccesoId(accion.getAcceso().getIdAcceso().longValue());
         return response;
     }
 }

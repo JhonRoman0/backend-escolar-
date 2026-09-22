@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "Grado")
+@Table(name = "grado")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -15,12 +15,14 @@ import lombok.Setter;
 public class Grado {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_grado")
     Integer idGrado;
     @Column(name = "nombre", length = 50, nullable = false)
     String nombre;
-    @Column(name = "acceso", length = 10, nullable = false)
-    byte acceso;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_acceso", nullable = false)
+    Acceso acceso;
     @ManyToOne
-    @JoinColumn(name = "idNivel", nullable = false)
+    @JoinColumn(name = "id_nivel", nullable = false)
     Nivel nivel;
 }

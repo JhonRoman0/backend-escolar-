@@ -1,6 +1,7 @@
 package com.example.Escolar.Repository;
 
 import com.example.Escolar.Model.Alumno;
+import com.example.Escolar.Model.Acceso;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -11,21 +12,21 @@ import java.util.Optional;
 
 public interface AlumnoRepository extends JpaRepository<Alumno, Integer> {
 
-    List<Alumno> findByAccesoNot(Byte acceso);
+    List<Alumno> findByAccesoNot(Acceso acceso);
 
-    Page<Alumno> findByAccesoNot(Byte acceso, Pageable pageable);
+    Page<Alumno> findByAccesoNot(Acceso acceso, Pageable pageable);
 
-    Optional<Alumno> findByIdAlumnoAndAccesoNot(Integer idAlumno, Byte acceso);
+    Optional<Alumno> findByIdAlumnoAndAccesoNot(Integer idAlumno, Acceso acceso);
 
     Optional<Alumno> findByCodigo(String codigo);
 
-    Optional<Alumno> findByCodigoAndAccesoNot(String codigo, Byte acceso);
+    Optional<Alumno> findByCodigoAndAccesoNot(String codigo, Acceso acceso);
 
-    Optional<Alumno> findByCodigoHashAndAccesoNot(String codigoHash, Byte acceso);
+    Optional<Alumno> findByCodigoHashAndAccesoNot(String codigoHash, Acceso acceso);
 
-    Optional<Alumno> findByDocumentoIdentidadAndAccesoNot(String documentoIdentidad, Byte acceso);
+    Optional<Alumno> findByDocumentoIdentidadAndAccesoNot(String documentoIdentidad, Acceso acceso);
 
     long countByCodigoStartingWith(String prefijo);
 
-    List<Alumno> findByFechaIngresoBetweenAndAccesoNot(LocalDate inicio, LocalDate fin, Byte acceso);
+    List<Alumno> findByFechaIngresoBetweenAndAccesoNot(LocalDate inicio, LocalDate fin, Acceso acceso);
 }

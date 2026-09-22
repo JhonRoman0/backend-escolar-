@@ -20,5 +20,5 @@ public class PublicacionResponse {
     private Byte estado;
     private LocalDateTime fechaPublicacion;
     private LocalDateTime fechaActualizacion;
-    private Byte acceso;
+    private Long accesoId;
 }

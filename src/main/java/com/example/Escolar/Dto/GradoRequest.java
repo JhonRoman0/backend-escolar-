@@ -19,5 +19,5 @@ public class GradoRequest {
     @NotNull(message = "El turno es obligatorio")
     private Integer idTurno;
     private List<@NotBlank(message = "El nombre de la sección es obligatorio") String> secciones;
-    private Byte acceso;
+    private Long accesoId;
 }

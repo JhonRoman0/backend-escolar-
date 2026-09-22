@@ -13,5 +13,5 @@ public class DiaFeriadoResponse {
     private String motivo;
     private Integer idAnioEscolar;
     private String anio;
-    private Byte acceso;
+    private Long accesoId;
 }

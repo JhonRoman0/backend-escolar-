@@ -13,6 +13,6 @@ public class GaleriaResponse {
     private String titulo;
     private String descripcion;
     private LocalDate fecha;
-    private Byte acceso;
+    private Long accesoId;
     private List<GaleriaDetalleResponse> detalles;
 }

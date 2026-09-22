@@ -23,7 +23,7 @@ public class ApoderadoResponse {
     private String documentoIdentidad;
     private LocalDate fechaNaci;
     private String urlFoto;
-    private byte acceso;
+    private Long accesoId;
 
     public static ApoderadoResponse fromEntity(Apoderado apoderado) {
         ApoderadoResponse response = new ApoderadoResponse();
@@ -34,7 +34,7 @@ public class ApoderadoResponse {
         response.setCelular(apoderado.getCelular());
         response.setDireccion(apoderado.getDireccion());
         response.setParentesco(apoderado.getParentesco());
-        response.setAcceso(apoderado.getAcceso());
+        response.setAccesoId(apoderado.getAcceso().getIdAcceso().longValue());
         return response;
     }
 

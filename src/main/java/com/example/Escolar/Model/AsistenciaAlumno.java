@@ -10,9 +10,8 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 
 @Entity
-@Table(name = "AsistenciaAlumno",
-        uniqueConstraints = @UniqueConstraint(name = "uk_matricula_fecha_acceso",
-                columnNames = {"idMatricula", "fecha", "acceso"}))
+@Table(name = "asistenciaAlumno")
+
 @Getter
 @Setter
 @NoArgsConstructor
@@ -20,25 +19,27 @@ import java.time.LocalTime;
 public class AsistenciaAlumno {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_asistencia_alumno")
     Integer idAsistencia;
     @ManyToOne
-    @JoinColumn(name = "idMatricula", nullable = false)
+    @JoinColumn(name = "id_matricula", nullable = false)
     Matricula matricula;
     @ManyToOne
-    @JoinColumn(name = "idEstado", nullable = false)
+    @JoinColumn(name = "id_estado", nullable = false)
     EstadoAsistencia estado;
     @ManyToOne
-    @JoinColumn(name = "idJustificacion")
+    @JoinColumn(name = "id_justificacion")
     Justificacion justificacion;
     @ManyToOne
-    @JoinColumn(name = "idUsuarioRegistro", nullable = false)
+    @JoinColumn(name = "id_usuario_registro", nullable = false)
     Usuario usuarioRegistro;
     @Column(name = "fecha", nullable = false)
     LocalDate fecha;
-    @Column(name = "horaEntrada", nullable = false)
+    @Column(name = "hora_entrada", nullable = false)
     LocalTime horaEntrada;
-    @Column(name = "horaSalida")
+    @Column(name = "hora_salida")
     LocalTime horaSalida;
-    @Column(name = "acceso", nullable = false)
-    byte acceso = 1;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_acceso", nullable = false)
+    Acceso acceso;
 }

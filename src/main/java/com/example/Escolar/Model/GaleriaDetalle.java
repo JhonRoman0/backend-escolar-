@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "Galeria_Detalle")
+@Table(name = "galeriaDetalle")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -15,16 +15,18 @@ import lombok.Setter;
 public class GaleriaDetalle {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_galeria_detalle")
     Integer idDetalle;
     @ManyToOne
-    @JoinColumn(name = "idGaleria", nullable = false)
+    @JoinColumn(name = "id_galeria", nullable = false)
     GaleriaImagen galeria;
-    @Column(name = "imagenUrl", length = 255, nullable = false)
+    @Column(name = "imagen_url", length = 255, nullable = false)
     String imagenUrl;
-    @Column(name = "pkUrlFoto", length = 255)
+    @Column(name = "pk_url_foto", length = 255)
     String pkUrlFoto;
     @Column(name = "orden")
     Integer orden;
-    @Column(name = "acceso", nullable = false)
-    byte acceso = 1;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_acceso", nullable = false)
+    Acceso acceso;
 }

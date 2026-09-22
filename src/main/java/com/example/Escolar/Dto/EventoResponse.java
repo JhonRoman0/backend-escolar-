@@ -16,5 +16,5 @@ public class EventoResponse {
     private LocalDateTime fechaFin;
     private Byte esPublico;
     private String imagenUrl;
-    private Byte acceso;
+    private Long accesoId;
 }

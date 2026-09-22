@@ -1,5 +1,6 @@
 package com.example.Escolar.Repository;
 
+import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.PermisoAccion;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -10,7 +11,7 @@ public interface PermisoAccionRepository extends JpaRepository<PermisoAccion, In
 
     List<PermisoAccion> findByPermisoIdPermiso(Integer idPermiso);
 
-    List<PermisoAccion> findByPermisoIdPermisoAndAccesoNot(Integer idPermiso, Byte acceso);
+    List<PermisoAccion> findByPermisoIdPermisoAndAccesoNot(Integer idPermiso, Acceso acceso);
 
     Optional<PermisoAccion> findByPermisoIdPermisoAndAccionIdAccion(Integer idPermiso, Integer idAccion);
 }

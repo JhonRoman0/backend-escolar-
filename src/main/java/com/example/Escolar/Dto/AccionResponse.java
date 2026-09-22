@@ -9,5 +9,5 @@ public class AccionResponse {
     private Integer idAccion;
     private String codigo;
     private String nombre;
-    private byte acceso;
+    private Long accesoId;
 }

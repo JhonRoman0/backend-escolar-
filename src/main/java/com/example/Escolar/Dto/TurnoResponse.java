@@ -14,5 +14,5 @@ public class TurnoResponse {
     private LocalTime horaEntradaLimite;
     private LocalTime horaFaltaLimite;
     private LocalTime horaSalida;
-    private byte acceso;
+    private Long accesoId;
 }

@@ -4,6 +4,7 @@ import com.example.Escolar.Dto.*;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.*;
 import com.example.Escolar.Repository.*;
+import com.example.Escolar.Repository.AccesoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,10 +25,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RolPermisoService {
 
-    public static final byte ACCESO_ACTIVO = 1;
-    public static final byte ACCESO_ELIMINADO = 2;
-
     private final RolPermisoRepository rolPermisoRepository;
+    private final AccesoRepository accesoRepository;
     private final RolPermisoAccionRepository rolPermisoAccionRepository;
     private final RolRepository rolRepository;
     private final PermisoRepository permisoRepository;
@@ -36,7 +35,7 @@ public class RolPermisoService {
     private final UsuarioRolRepository usuarioRolRepository;
 
     public List<RolPermisoResponse> getAll() {
-        return rolPermisoRepository.findByAccesoNot(ACCESO_ELIMINADO).stream().map(this::toResponse).toList();
+        return rolPermisoRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream().map(this::toResponse).toList();
     }
 
     public RolPermisoResponse getById(Integer id) {
@@ -53,10 +52,10 @@ public class RolPermisoService {
         Optional<RolPermiso> existente = rolPermisoRepository.findByRolIdRolAndPermisoIdPermiso(rol.getIdRol(), permiso.getIdPermiso());
         if (existente.isPresent()) {
             RolPermiso rolPermiso = existente.get();
-            if (rolPermiso.getAcceso() != ACCESO_ELIMINADO) {
+            if (!rolPermiso.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO)) {
                 throw new IllegalArgumentException("El permiso ya está asignado a este rol");
             }
-            rolPermiso.setAcceso(request.getAcceso() != null ? request.getAcceso() : ACCESO_ACTIVO);
+            rolPermiso.setAcceso(accesoRepository.findById(request.getAccesoId() != null ? request.getAccesoId() : AccesoConstants.ACTIVO).orElseThrow());
             rolPermiso = rolPermisoRepository.save(rolPermiso);
             if (request.getAcciones() != null) {
                 reemplazarAccionesConcedidas(rolPermiso, request.getAcciones());
@@ -67,7 +66,7 @@ public class RolPermisoService {
         rolPermiso.setRol(rol);
         rolPermiso.setPermiso(permiso);
         rolPermiso.setFechaAsignacion(LocalDateTime.now());
-        rolPermiso.setAcceso(request.getAcceso() != null ? request.getAcceso() : ACCESO_ACTIVO);
+        rolPermiso.setAcceso(accesoRepository.findById(request.getAccesoId() != null ? request.getAccesoId() : AccesoConstants.ACTIVO).orElseThrow());
         rolPermiso = rolPermisoRepository.save(rolPermiso);
         asignarAccionesConcedidas(rolPermiso, request.getAcciones());
         return toResponse(rolPermiso);
@@ -85,11 +84,11 @@ public class RolPermisoService {
                     .findByRolIdRolAndPermisoIdPermiso(rolPermiso.getRol().getIdRol(), nuevoPermiso.getIdPermiso())
                     .orElse(null);
             if (existente != null && !existente.getIdRolPermiso().equals(rolPermiso.getIdRolPermiso())) {
-                if (existente.getAcceso() == ACCESO_ELIMINADO) {
-                    existente.setAcceso(request.getAcceso() != null ? request.getAcceso() : ACCESO_ACTIVO);
+                if (existente.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO)) {
+                    existente.setAcceso(accesoRepository.findById(request.getAccesoId() != null ? request.getAccesoId() : AccesoConstants.ACTIVO).orElseThrow());
                     reemplazarAccionesConcedidas(existente, accionesConcedidasDeRolPermiso(rolPermiso.getIdRolPermiso()));
                     rolPermisoRepository.save(existente);
-                    rolPermiso.setAcceso(ACCESO_ELIMINADO);
+                    rolPermiso.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
                     rolPermisoRepository.save(rolPermiso);
                     return toResponse(existente);
                 }
@@ -98,8 +97,8 @@ public class RolPermisoService {
             rolPermiso.setPermiso(nuevoPermiso);
             revalidarAccionesContraPermiso(rolPermiso);
         }
-        if (request.getAcceso() != null) {
-            rolPermiso.setAcceso(request.getAcceso());
+        if (request.getAccesoId() != null) {
+            rolPermiso.setAcceso(accesoRepository.findById(request.getAccesoId()).orElseThrow());
         }
         rolPermiso = rolPermisoRepository.save(rolPermiso);
         if (request.getAcciones() != null) {
@@ -111,16 +110,16 @@ public class RolPermisoService {
     @Transactional
     public void delete(Integer id) {
         RolPermiso rolPermiso = findRolPermiso(id);
-        rolPermiso.setAcceso(ACCESO_ELIMINADO);
+        rolPermiso.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
         rolPermisoRepository.save(rolPermiso);
     }
 
     public PermisosRolResponse obtenerPermisosDelRol(Integer idRol) {
         Rol rol = findRol(idRol);
         List<RolPermiso> asignaciones = rolPermisoRepository.findByRolIdRol(idRol).stream()
-                .filter(rp -> rp.getAcceso() != ACCESO_ELIMINADO)
-                .filter(rp -> rp.getPermiso().getAcceso() != ACCESO_ELIMINADO)
-                .filter(rp -> rp.getPermiso().getModulo().getAcceso() != ACCESO_ELIMINADO)
+                .filter(rp -> !rp.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
+                .filter(rp -> !rp.getPermiso().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
+                .filter(rp -> !rp.getPermiso().getModulo().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
                 .toList();
 
         PermisosRolResponse response = new PermisosRolResponse();
@@ -192,8 +191,8 @@ public class RolPermisoService {
             Set<String> concedidas = concedidasPorPermiso.computeIfAbsent(permiso.getIdPermiso(), id -> new HashSet<>());
             for (RolPermisoAccion rolPermisoAccion : rolPermisoAccionRepository
                     .findByRolPermisoIdRolPermiso(rolPermiso.getIdRolPermiso())) {
-                if (rolPermisoAccion.getAcceso() == ACCESO_ACTIVO
-                        && rolPermisoAccion.getAccion().getAcceso() != ACCESO_ELIMINADO) {
+                if (rolPermisoAccion.getAcceso().getIdAcceso().equals(AccesoConstants.ACTIVO)
+                        && !rolPermisoAccion.getAccion().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO)) {
                     concedidas.add(rolPermisoAccion.getAccion().getCodigo());
                 }
             }
@@ -211,11 +210,11 @@ public class RolPermisoService {
     private List<RolPermiso> rolPermisosDelUsuario(Integer idUsuario) {
         return usuarioRolRepository.findByUsuarioIdUsuario(idUsuario).stream()
                 .map(UsuarioRol::getRol)
-                .filter(rol -> rol.getAcceso() != ACCESO_ELIMINADO)
+                .filter(rol -> !rol.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
                 .flatMap(rol -> rolPermisoRepository.findByRolIdRol(rol.getIdRol()).stream())
-                .filter(rp -> rp.getAcceso() == ACCESO_ACTIVO)
-                .filter(rp -> rp.getPermiso().getAcceso() != ACCESO_ELIMINADO)
-                .filter(rp -> rp.getPermiso().getModulo().getAcceso() != ACCESO_ELIMINADO)
+                .filter(rp -> rp.getAcceso().getIdAcceso().equals(AccesoConstants.ACTIVO))
+                .filter(rp -> !rp.getPermiso().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
+                .filter(rp -> !rp.getPermiso().getModulo().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
                 .toList();
     }
 
@@ -226,7 +225,7 @@ public class RolPermisoService {
         validarAccionesSoportadas(rolPermiso, codigosAcciones);
         for (String codigo : codigosAcciones) {
             Accion accion = findAccion(codigo);
-            if (rolPermisoAccionRepository.findByRolPermisoIdRolPermisoAndAccionIdAccionAndAccesoNot(rolPermiso.getIdRolPermiso(), accion.getIdAccion(), ACCESO_ELIMINADO).isEmpty()) {
+            if (rolPermisoAccionRepository.findByRolPermisoIdRolPermisoAndAccionIdAccionAndAccesoNot(rolPermiso.getIdRolPermiso(), accion.getIdAccion(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).isEmpty()) {
                 crearAccionConcedida(rolPermiso, accion);
             }
         }
@@ -258,8 +257,8 @@ public class RolPermisoService {
     }
 
     private Set<String> accionesSoportadas(Integer idPermiso) {
-        return permisoAccionRepository.findByPermisoIdPermisoAndAccesoNot(idPermiso, ACCESO_ELIMINADO).stream()
-                .filter(pa -> pa.getAccion().getAcceso() != ACCESO_ELIMINADO)
+        return permisoAccionRepository.findByPermisoIdPermisoAndAccesoNot(idPermiso, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
+                .filter(pa -> !pa.getAccion().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
                 .map(pa -> pa.getAccion().getCodigo())
                 .collect(Collectors.toSet());
     }
@@ -268,41 +267,41 @@ public class RolPermisoService {
         RolPermisoAccion rolPermisoAccion = new RolPermisoAccion();
         rolPermisoAccion.setRolPermiso(rolPermiso);
         rolPermisoAccion.setAccion(accion);
-        rolPermisoAccion.setAcceso(ACCESO_ACTIVO);
+        rolPermisoAccion.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         rolPermisoAccionRepository.save(rolPermisoAccion);
     }
 
     private Accion findAccion(String codigo) {
-        return accionRepository.findByCodigoAndAccesoNot(codigo, ACCESO_ELIMINADO)
+        return accionRepository.findByCodigoAndAccesoNot(codigo, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new IllegalArgumentException("La acción " + codigo + " no existe"));
     }
 
     private Rol findRol(Integer id) {
-        return rolRepository.findByIdRolAndAccesoNot(id, ACCESO_ELIMINADO)
+        return rolRepository.findByIdRolAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("Rol no encontrado con id " + id));
     }
 
     private Permiso findPermiso(Integer id) {
-        return permisoRepository.findByIdPermisoAndAccesoNot(id, ACCESO_ELIMINADO)
+        return permisoRepository.findByIdPermisoAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("Permiso no encontrado con id " + id));
     }
 
     private RolPermiso findRolPermiso(Integer id) {
-        return rolPermisoRepository.findByIdRolPermisoAndAccesoNot(id, ACCESO_ELIMINADO)
+        return rolPermisoRepository.findByIdRolPermisoAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("RolPermiso no encontrado con id " + id));
     }
 
     private List<String> accionesDisponiblesDelPermiso(Integer idPermiso) {
-        return permisoAccionRepository.findByPermisoIdPermisoAndAccesoNot(idPermiso, ACCESO_ELIMINADO).stream()
-                .filter(pa -> pa.getAccion().getAcceso() != ACCESO_ELIMINADO)
+        return permisoAccionRepository.findByPermisoIdPermisoAndAccesoNot(idPermiso, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
+                .filter(pa -> !pa.getAccion().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
                 .map(pa -> pa.getAccion().getCodigo())
                 .sorted()
                 .toList();
     }
 
     private List<String> accionesConcedidasDeRolPermiso(Integer idRolPermiso) {
-        return rolPermisoAccionRepository.findByRolPermisoIdRolPermisoAndAccesoNot(idRolPermiso, ACCESO_ELIMINADO).stream()
-                .filter(ra -> ra.getAccion().getAcceso() != ACCESO_ELIMINADO)
+        return rolPermisoAccionRepository.findByRolPermisoIdRolPermisoAndAccesoNot(idRolPermiso, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
+                .filter(ra -> !ra.getAccion().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
                 .map(ra -> ra.getAccion().getCodigo())
                 .sorted()
                 .toList();
@@ -324,7 +323,7 @@ public class RolPermisoService {
         response.setRol(toRolResponse(rolPermiso.getRol()));
         response.setPermiso(toPermisoResponse(rolPermiso.getPermiso()));
         response.setAcciones(accionesConcedidasDeRolPermiso(rolPermiso.getIdRolPermiso()));
-        response.setAcceso(rolPermiso.getAcceso());
+        response.setAccesoId(rolPermiso.getAcceso().getIdAcceso().longValue());
         return response;
     }
 
@@ -332,7 +331,7 @@ public class RolPermisoService {
         RolResponse response = new RolResponse();
         response.setIdRol(rol.getIdRol());
         response.setNombre(rol.getNombre());
-        response.setAcceso(rol.getAcceso());
+        response.setAccesoId(rol.getAcceso().getIdAcceso().longValue());
         return response;
     }
 
@@ -341,7 +340,7 @@ public class RolPermisoService {
         response.setIdPermiso(permiso.getIdPermiso());
         response.setCodigo(permiso.getCodigo());
         response.setNombre(permiso.getNombre());
-        response.setAcceso(permiso.getAcceso());
+        response.setAccesoId(permiso.getAcceso().getIdAcceso().longValue());
         response.setAcciones(accionesDisponiblesDelPermiso(permiso.getIdPermiso()));
         return response;
     }

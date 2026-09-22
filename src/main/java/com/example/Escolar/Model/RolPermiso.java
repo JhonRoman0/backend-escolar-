@@ -9,8 +9,8 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "RolPermiso",
-        uniqueConstraints = @UniqueConstraint(name = "uk_rol_permiso", columnNames = {"idRol", "idPermiso"}))
+@Table(name = "rolPermiso",
+        uniqueConstraints = @UniqueConstraint(name = "uk_rol_permiso", columnNames = {"id_rol", "id_permiso"}))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -18,15 +18,17 @@ import java.time.LocalDateTime;
 public class RolPermiso {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_rol_permiso")
     Integer idRolPermiso;
     @ManyToOne
-    @JoinColumn(name = "idRol", nullable = false)
+    @JoinColumn(name = "id_rol", nullable = false)
     Rol rol;
     @ManyToOne
-    @JoinColumn(name = "idPermiso", nullable = false)
+    @JoinColumn(name = "id_permiso", nullable = false)
     Permiso permiso;
-    @Column(name = "fechaAsignacion", nullable = false)
+    @Column(name = "fecha_asignacion", nullable = false)
     LocalDateTime fechaAsignacion;
-    @Column(name = "acceso", length = 10, nullable = false)
-    byte acceso;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_acceso", nullable = false)
+    Acceso acceso;
 }

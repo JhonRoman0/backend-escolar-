@@ -30,5 +30,5 @@ public class DocenteRequest {
     private String especialidad;
     private String gradoAcademico;
 
-    private Byte acceso;
+    private Long accesoId;
 }

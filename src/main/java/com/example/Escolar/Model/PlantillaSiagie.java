@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "PlantillaSiagie")
+@Table(name = "plantillaSiagie")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -15,6 +15,7 @@ import lombok.Setter;
 public class PlantillaSiagie {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_plantilla_siagie")
     Integer idPlantilla;
 
     @Column(name = "anio", length = 10, nullable = false)
@@ -27,9 +28,10 @@ public class PlantillaSiagie {
     @Column(name = "archivo", nullable = false)
     byte[] archivo;
 
-    @Column(name = "nombreArchivo", length = 120, nullable = false)
+    @Column(name = "nombre_archivo", length = 120, nullable = false)
     String nombreArchivo;
 
-    @Column(name = "acceso", length = 10, nullable = false)
-    byte acceso;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_acceso", nullable = false)
+    Acceso acceso;
 }

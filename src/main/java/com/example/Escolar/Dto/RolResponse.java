@@ -8,5 +8,6 @@ import lombok.Setter;
 public class RolResponse {
     private Integer idRol;
     private String nombre;
-    private byte acceso;
+    private String color;
+    private Long accesoId;
 }

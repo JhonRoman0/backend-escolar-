@@ -15,9 +15,7 @@ public class ModuloRequest {
     @NotBlank(message = "El nombre del módulo es obligatorio")
     private String modulo;
     private String icono;
-    @Min(value = 0, message = "El acceso debe ser 0 (inactivo), 1 (activo) o 2 (eliminado)")
-    @Max(value = 2, message = "El acceso debe ser 0 (inactivo), 1 (activo) o 2 (eliminado)")
-    private Byte acceso;
+    private Long accesoId;
     @Valid
     private List<PermisoNestedRequest> permisos;
 }

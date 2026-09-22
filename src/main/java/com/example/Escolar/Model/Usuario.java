@@ -11,7 +11,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "Usuario")
+@Table(name = "usuario")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -19,35 +19,41 @@ import java.time.LocalDateTime;
 public class Usuario {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_usuario")
     Integer idUsuario;
     @Column(name = "nombre",length =30,nullable = false)
     String nombre;
-    @Column(name = "apellidoPat",length = 30,nullable = false)
+    @Column(name = "apellido_pat",length = 30,nullable = false)
     String apellidoPat;
-    @Column(name = "apellidoMat", length = 30,nullable = false)
+    @Column(name = "apellido_mat", length = 30,nullable = false)
     String apellidoMat;
     @Column(name = "codigo",length = 10,nullable = false)
     String codigo;
-    @Column(name = "documentoIdentidad", length = 20, unique = true)
+    @Column(name = "documento_identidad", length = 20, unique = true)
     String documentoIdentidad;
     @Column(name = "contraseña",nullable = false)
     String contraseña;
-    @Column(name = "acceso",length = 1,nullable = false)
-    byte acceso;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_acceso", nullable = false)
+    Acceso acceso;
     @Column(name = "gmail",length = 60,nullable = true)
     @Email
     String gmail;
-    @Column(name = "fechaNaci",nullable = false)
+    @Column(name = "fecha_naci",nullable = false)
     LocalDate fechaNaci;
-    @Column(name = "urlFoto",nullable = true)
+    @Column(name = "url_foto",nullable = true)
     String urlFoto;
-    @Column(name = "pkUrlFoto",nullable = true)
+    @Column(name = "pk_url_foto",nullable = true)
     String pkUrlFoto;
-    @Column(name = "fechaCreacion", nullable = false)
+    @Column(name = "fecha_creacion", nullable = false)
     LocalDate fechaCreacion;
-    @Column(name = "intentosFallidos", nullable = false)
+    @Column(name = "intentos_fallidos", nullable = false)
     Integer intentosFallidos = 0;
-    @Column(name = "fechaBloqueo", nullable = true)
+    @Column(name = "fecha_bloqueo", nullable = true)
     LocalDateTime fechaBloqueo;
+    @Column(name = "reset_token", length = 255, nullable = true)
+    String resetToken;
+    @Column(name = "reset_token_expiracion", nullable = true)
+    LocalDateTime resetTokenExpiracion;
 
 }

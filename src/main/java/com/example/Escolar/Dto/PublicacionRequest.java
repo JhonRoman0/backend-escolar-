@@ -21,7 +21,5 @@ public class PublicacionRequest {
     @Min(value = 0, message = "estado debe ser 0 (borrador) o 1 (publicado)")
     @Max(value = 1, message = "estado debe ser 0 (borrador) o 1 (publicado)")
     private Byte estado;
-    @Min(value = 0, message = "El acceso debe ser 0 (inactivo), 1 (activo) o 2 (eliminado)")
-    @Max(value = 2, message = "El acceso debe ser 0 (inactivo), 1 (activo) o 2 (eliminado)")
-    private Byte acceso;
+    private Long accesoId;
 }

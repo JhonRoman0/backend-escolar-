@@ -7,8 +7,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "RolPermisoAccion",
-        uniqueConstraints = @UniqueConstraint(name = "uk_rolpermiso_accion", columnNames = {"idRolPermiso", "idAccion"}))
+@Table(name = "rolPermisoAccion",
+        uniqueConstraints = @UniqueConstraint(name = "uk_rolpermiso_accion", columnNames = {"id_rol_permiso", "id_accion"}))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -16,13 +16,15 @@ import lombok.Setter;
 public class RolPermisoAccion {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_rol_permiso_accion")
     Integer idRolPermisoAccion;
     @ManyToOne
-    @JoinColumn(name = "idRolPermiso", nullable = false)
+    @JoinColumn(name = "id_rol_permiso", nullable = false)
     RolPermiso rolPermiso;
     @ManyToOne
-    @JoinColumn(name = "idAccion", nullable = false)
+    @JoinColumn(name = "id_accion", nullable = false)
     Accion accion;
-    @Column(name = "acceso", length = 10, nullable = false)
-    byte acceso;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_acceso", nullable = false)
+    Acceso acceso;
 }

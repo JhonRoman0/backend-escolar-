@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "EstadoAsistencia")
+@Table(name = "estadoAsistencia")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -15,9 +15,11 @@ import lombok.Setter;
 public class EstadoAsistencia {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_estado_asistencia")
     Integer idEstado;
     @Column(name = "nombre", length = 30, nullable = false, unique = true)
     String nombre;
-    @Column(name = "acceso", nullable = false)
-    byte acceso = 1;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_acceso", nullable = false)
+    Acceso acceso;
 }

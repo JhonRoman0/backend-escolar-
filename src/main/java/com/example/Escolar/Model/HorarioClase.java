@@ -9,7 +9,7 @@ import lombok.Setter;
 import java.time.LocalTime;
 
 @Entity
-@Table(name = "HorarioClase")
+@Table(name = "horarioClase")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -17,19 +17,21 @@ import java.time.LocalTime;
 public class HorarioClase {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_horario_clase")
     Integer idHorario;
     @ManyToOne
-    @JoinColumn(name = "idAsignacion", nullable = false)
+    @JoinColumn(name = "id_asignacion", nullable = false)
     Asignacion asignacion;
     @ManyToOne
-    @JoinColumn(name = "idAula", nullable = false)
+    @JoinColumn(name = "id_aula", nullable = false)
     Aula aula;
-    @Column(name = "diaSemana", length = 10, nullable = false)
+    @Column(name = "dia_semana", length = 10, nullable = false)
     byte diaSemana;
-    @Column(name = "horaInicio", nullable = false)
+    @Column(name = "hora_inicio", nullable = false)
     LocalTime horaInicio;
-    @Column(name = "horaFin", nullable = false)
+    @Column(name = "hora_fin", nullable = false)
     LocalTime horaFin;
-    @Column(name = "acceso", length = 10, nullable = false)
-    byte acceso;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_acceso", nullable = false)
+    Acceso acceso;
 }

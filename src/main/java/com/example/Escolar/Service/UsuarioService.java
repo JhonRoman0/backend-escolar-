@@ -9,6 +9,7 @@ import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.Rol;
 import com.example.Escolar.Model.Usuario;
 import com.example.Escolar.Model.UsuarioRol;
+import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.RolRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
@@ -28,17 +29,15 @@ import java.util.List;
 @RequiredArgsConstructor
 public class UsuarioService {
 
-    public static final byte ACCESO_ACTIVO = 1;
-    public static final byte ACCESO_ELIMINADO = 2;
-
     private final UsuarioRepository usuarioRepository;
+    private final AccesoRepository accesoRepository;
     private final RolRepository rolRepository;
     private final UsuarioRolRepository usuarioRolRepository;
     private final PasswordEncoder passwordEncoder;
     private final CloudinaryService cloudinaryService;
 
     public Page<UsuarioResponse> getAll(Pageable pageable) {
-        return usuarioRepository.findByAccesoNot(ACCESO_ELIMINADO, pageable).map(this::toResponse);
+        return usuarioRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow(), pageable).map(this::toResponse);
     }
 
     public UsuarioResponse getById(Integer id) {
@@ -54,9 +53,10 @@ public class UsuarioService {
             throw new IllegalArgumentException("Debe asignar al menos un rol");
         }
         validarDocumentoUnico(request.getDocumentoIdentidad(), null);
+        validarGmailUnico(request.getGmail(), null);
         Usuario usuario = new Usuario();
-        if (request.getAcceso() == null) {
-            request.setAcceso(ACCESO_ACTIVO);
+        if (request.getAccesoId() == null) {
+            request.setAccesoId(AccesoConstants.ACTIVO.longValue());
         }
         applyRequest(usuario, request);
         usuario.setCodigo(generarCodigo(request.getRolIds()));
@@ -70,6 +70,7 @@ public class UsuarioService {
     public UsuarioResponse update(Integer id, UsuarioRequest request) {
         Usuario usuario = findUsuario(id);
         validarDocumentoUnico(request.getDocumentoIdentidad(), id);
+        validarGmailUnico(request.getGmail(), id);
         applyRequest(usuario, request);
         if (request.getRolIds() != null) {
             usuarioRolRepository.deleteByUsuarioIdUsuario(id);
@@ -89,18 +90,18 @@ public class UsuarioService {
     @Transactional
     public void delete(Integer id) {
         Usuario usuario = findUsuario(id);
-        usuario.setAcceso(ACCESO_ELIMINADO);
+        usuario.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
         usuarioRepository.save(usuario);
     }
 
     @Transactional(readOnly = true)
     public List<UsuarioReporteResponse> reporte(LocalDate inicio, LocalDate fin, Integer idRol) {
-        return usuarioRepository.findByFechaCreacionBetweenAndAccesoNot(inicio, fin, ACCESO_ELIMINADO).stream()
+        return usuarioRepository.findByFechaCreacionBetweenAndAccesoNot(inicio, fin, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
                 .filter(u -> {
                     if (idRol == null) return true;
                     return usuarioRolRepository.findByUsuarioIdUsuario(u.getIdUsuario()).stream()
                             .anyMatch(ur -> ur.getRol().getIdRol().equals(idRol)
-                                    && ur.getRol().getAcceso() != ACCESO_ELIMINADO);
+                                    && !ur.getRol().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO));
                 })
                 .map(u -> {
                     UsuarioReporteResponse r = new UsuarioReporteResponse();
@@ -112,7 +113,7 @@ public class UsuarioService {
                     r.setFechaCreacion(u.getFechaCreacion());
                     r.setRoles(usuarioRolRepository.findByUsuarioIdUsuario(u.getIdUsuario()).stream()
                             .map(UsuarioRol::getRol)
-                            .filter(rol -> rol.getAcceso() != ACCESO_ELIMINADO)
+                            .filter(rol -> !rol.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
                             .map(Rol::getNombre)
                             .toList());
                     return r;
@@ -121,11 +122,11 @@ public class UsuarioService {
     }
 
     public List<UsuarioResponse> getUsuariosPorRol(Integer idRol) {
-        rolRepository.findByIdRolAndAccesoNot(idRol, ACCESO_ELIMINADO)
+        rolRepository.findByIdRolAndAccesoNot(idRol, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("Rol no encontrado con id " + idRol));
         return usuarioRolRepository.findByRolIdRol(idRol).stream()
                 .map(UsuarioRol::getUsuario)
-                .filter(u -> u.getAcceso() != ACCESO_ELIMINADO)
+                .filter(u -> !u.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
                 .map(this::toResponse)
                 .toList();
     }
@@ -134,7 +135,7 @@ public class UsuarioService {
         findUsuario(idUsuario);
         return usuarioRolRepository.findByUsuarioIdUsuario(idUsuario).stream()
                 .map(ur -> toRolResponse(ur.getRol()))
-                .filter(r -> r.getAcceso() != ACCESO_ELIMINADO)
+                .filter(r -> !r.getAccesoId().equals(AccesoConstants.ELIMINADO.longValue()))
                 .toList();
     }
 
@@ -153,7 +154,7 @@ public class UsuarioService {
     private String obtenerCarpetaPorRol(Usuario usuario) {
         return usuarioRolRepository.findByUsuarioIdUsuario(usuario.getIdUsuario()).stream()
                 .map(UsuarioRol::getRol)
-                .filter(r -> r.getAcceso() != ACCESO_ELIMINADO)
+                .filter(r -> !r.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
                 .findFirst()
                 .map(rol -> "usuarios/" + sanitizarNombreCarpeta(rol.getNombre()))
                 .orElseThrow(() -> new IllegalArgumentException("El usuario debe tener un rol para subir su foto"));
@@ -182,7 +183,7 @@ public class UsuarioService {
             return;
         }
         for (Integer rolId : rolIds) {
-            Rol rol = rolRepository.findByIdRolAndAccesoNot(rolId, ACCESO_ELIMINADO)
+            Rol rol = rolRepository.findByIdRolAndAccesoNot(rolId, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                     .orElseThrow(() -> new ResourceNotFoundException("Rol no encontrado con id " + rolId));
             UsuarioRol usuarioRol = new UsuarioRol();
             usuarioRol.setUsuario(usuario);
@@ -193,7 +194,7 @@ public class UsuarioService {
     }
 
     private String generarCodigo(List<Integer> rolIds) {
-        Rol rol = rolRepository.findByIdRolAndAccesoNot(rolIds.get(0), ACCESO_ELIMINADO)
+        Rol rol = rolRepository.findByIdRolAndAccesoNot(rolIds.get(0), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("Rol no encontrado con id " + rolIds.get(0)));
         String inicial = String.valueOf(rol.getNombre().charAt(0)).toUpperCase();
         String prefijo = inicial + LocalDate.now().getYear();
@@ -205,15 +206,26 @@ public class UsuarioService {
         if (documentoIdentidad == null || documentoIdentidad.isBlank()) {
             return;
         }
-        usuarioRepository.findByDocumentoIdentidadAndAccesoNot(documentoIdentidad, ACCESO_ELIMINADO)
+        usuarioRepository.findByDocumentoIdentidadAndAccesoNot(documentoIdentidad, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .filter(u -> idExcluir == null || !u.getIdUsuario().equals(idExcluir))
                 .ifPresent(u -> {
                     throw new IllegalArgumentException("Ya existe un usuario con ese documento de identidad");
                 });
     }
 
+    private void validarGmailUnico(String gmail, Integer idExcluir) {
+        if (gmail == null || gmail.isBlank()) {
+            return;
+        }
+        usuarioRepository.findByGmailAndAccesoNot(gmail, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
+                .filter(u -> idExcluir == null || !u.getIdUsuario().equals(idExcluir))
+                .ifPresent(u -> {
+                    throw new IllegalArgumentException("Ya existe un usuario con ese correo electronico");
+                });
+    }
+
     private Usuario findUsuario(Integer id) {
-        return usuarioRepository.findByIdUsuarioAndAccesoNot(id, ACCESO_ELIMINADO)
+        return usuarioRepository.findByIdUsuarioAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con id " + id));
     }
 
@@ -227,8 +239,8 @@ public class UsuarioService {
         if (request.getContraseña() != null && !request.getContraseña().isBlank()) {
             usuario.setContraseña(passwordEncoder.encode(request.getContraseña()));
         }
-        if (request.getAcceso() != null) {
-            usuario.setAcceso(request.getAcceso());
+        if (request.getAccesoId() != null) {
+            usuario.setAcceso(accesoRepository.findById(request.getAccesoId()).orElseThrow());
         }
         usuario.setGmail(request.getGmail());
         usuario.setFechaNaci(request.getFechaNaci());
@@ -244,7 +256,7 @@ public class UsuarioService {
         response.setApellidoMat(usuario.getApellidoMat());
         response.setCodigo(usuario.getCodigo());
         response.setDocumentoIdentidad(usuario.getDocumentoIdentidad());
-        response.setAcceso(usuario.getAcceso());
+        response.setAccesoId(usuario.getAcceso().getIdAcceso().longValue());
         response.setGmail(usuario.getGmail());
         response.setFechaNaci(usuario.getFechaNaci());
         response.setUrlFoto(usuario.getUrlFoto());
@@ -261,7 +273,7 @@ public class UsuarioService {
         RolResponse response = new RolResponse();
         response.setIdRol(rol.getIdRol());
         response.setNombre(rol.getNombre());
-        response.setAcceso(rol.getAcceso());
+        response.setAccesoId(rol.getAcceso().getIdAcceso().longValue());
         return response;
     }
 }

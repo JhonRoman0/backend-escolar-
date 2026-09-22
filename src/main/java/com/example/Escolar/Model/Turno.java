@@ -9,7 +9,7 @@ import lombok.Setter;
 import java.time.LocalTime;
 
 @Entity
-@Table(name = "Turno")
+@Table(name = "turno")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -17,17 +17,19 @@ import java.time.LocalTime;
 public class Turno {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_turno")
     Integer idTurno;
     @Column(name = "nombre", length = 50, nullable = false, unique = true)
     String nombre;
-    @Column(name = "horaEntrada", nullable = false)
+    @Column(name = "hora_entrada", nullable = false)
     LocalTime horaEntrada;
-    @Column(name = "horaEntradaLimite", nullable = false)
+    @Column(name = "hora_entrada_limite", nullable = false)
     LocalTime horaEntradaLimite;
-    @Column(name = "horaFaltaLimite", nullable = false)
+    @Column(name = "hora_falta_limite", nullable = false)
     LocalTime horaFaltaLimite;
-    @Column(name = "horaSalida", nullable = false)
+    @Column(name = "hora_salida", nullable = false)
     LocalTime horaSalida;
-    @Column(name = "acceso", length = 10, nullable = false)
-    byte acceso;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_acceso", nullable = false)
+    Acceso acceso;
 }

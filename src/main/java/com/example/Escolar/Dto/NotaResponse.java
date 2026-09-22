@@ -22,5 +22,5 @@ public class NotaResponse {
     private String conclusionDescriptiva;
     private LocalDate fechaRegistro;
     private String docenteRegistro;
-    private Byte acceso;
+    private Long accesoId;
 }

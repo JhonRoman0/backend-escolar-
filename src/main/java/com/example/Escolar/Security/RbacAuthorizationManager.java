@@ -6,9 +6,11 @@ import com.example.Escolar.Model.Rol;
 import com.example.Escolar.Model.RolPermiso;
 import com.example.Escolar.Model.RolPermisoAccion;
 import com.example.Escolar.Model.UsuarioRol;
+import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.RolPermisoAccionRepository;
 import com.example.Escolar.Repository.RolPermisoRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
+import com.example.Escolar.Service.AccesoConstants;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.authorization.AuthorizationManager;
@@ -26,13 +28,11 @@ import java.util.function.Supplier;
 @RequiredArgsConstructor
 public class RbacAuthorizationManager implements AuthorizationManager<RequestAuthorizationContext> {
 
-    public static final byte ACCESO_ACTIVO = 1;
-    public static final byte ACCESO_ELIMINADO = 2;
-
     private final ApiPermisoRegistro apiPermisoRegistro;
     private final UsuarioRolRepository usuarioRolRepository;
     private final RolPermisoRepository rolPermisoRepository;
     private final RolPermisoAccionRepository rolPermisoAccionRepository;
+    private final AccesoRepository accesoRepository;
 
     @Override
     public AuthorizationDecision authorize(Supplier<? extends Authentication> authentication, RequestAuthorizationContext object) {
@@ -77,26 +77,26 @@ public class RbacAuthorizationManager implements AuthorizationManager<RequestAut
     private void cargarConcesiones(Integer idUsuario, Set<String> permisos, Map<String, Set<String>> accionesPorPermiso) {
         for (UsuarioRol usuarioRol : usuarioRolRepository.findByUsuarioIdUsuario(idUsuario)) {
             Rol rol = usuarioRol.getRol();
-            if (rol.getAcceso() == ACCESO_ELIMINADO) {
+            if (rol.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO)) {
                 continue;
             }
             for (RolPermiso rolPermiso : rolPermisoRepository.findByRolIdRol(rol.getIdRol())) {
-                if (rolPermiso.getAcceso() != ACCESO_ACTIVO) {
+                if (!rolPermiso.getAcceso().getIdAcceso().equals(AccesoConstants.ACTIVO)) {
                     continue;
                 }
                 Permiso permiso = rolPermiso.getPermiso();
-                if (permiso.getAcceso() == ACCESO_ELIMINADO) {
+                if (permiso.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO)) {
                     continue;
                 }
                 permisos.add(permiso.getCodigo());
                 Set<String> acciones = accionesPorPermiso.computeIfAbsent(permiso.getCodigo(), k -> new HashSet<>());
                 for (RolPermisoAccion rolPermisoAccion : rolPermisoAccionRepository
                         .findByRolPermisoIdRolPermiso(rolPermiso.getIdRolPermiso())) {
-                    if (rolPermisoAccion.getAcceso() != ACCESO_ACTIVO) {
+                    if (!rolPermisoAccion.getAcceso().getIdAcceso().equals(AccesoConstants.ACTIVO)) {
                         continue;
                     }
                     Accion accion = rolPermisoAccion.getAccion();
-                    if (accion.getAcceso() == ACCESO_ELIMINADO) {
+                    if (accion.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO)) {
                         continue;
                     }
                     acciones.add(accion.getCodigo());

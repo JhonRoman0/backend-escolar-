@@ -8,5 +8,6 @@ import lombok.Setter;
 public class AulaResponse {
     private Integer idAula;
     private String nombre;
-    private Byte acceso;
+    private Integer capacidad;
+    private Long accesoId;
 }

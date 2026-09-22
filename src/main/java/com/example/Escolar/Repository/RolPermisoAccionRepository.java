@@ -1,5 +1,6 @@
 package com.example.Escolar.Repository;
 
+import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.RolPermisoAccion;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -10,7 +11,7 @@ public interface RolPermisoAccionRepository extends JpaRepository<RolPermisoAcci
 
     List<RolPermisoAccion> findByRolPermisoIdRolPermiso(Integer idRolPermiso);
 
-    List<RolPermisoAccion> findByRolPermisoIdRolPermisoAndAccesoNot(Integer idRolPermiso, Byte acceso);
+    List<RolPermisoAccion> findByRolPermisoIdRolPermisoAndAccesoNot(Integer idRolPermiso, Acceso acceso);
 
-    Optional<RolPermisoAccion> findByRolPermisoIdRolPermisoAndAccionIdAccionAndAccesoNot(Integer idRolPermiso, Integer idAccion, Byte acceso);
+    Optional<RolPermisoAccion> findByRolPermisoIdRolPermisoAndAccionIdAccionAndAccesoNot(Integer idRolPermiso, Integer idAccion, Acceso acceso);
 }

@@ -19,6 +19,6 @@ public class AsignacionResponse {
     private String turno;
     private Integer idAnio;
     private String anio;
-    private Byte acceso;
+    private Long accesoId;
     private List<HorarioResponse> horarios;
 }

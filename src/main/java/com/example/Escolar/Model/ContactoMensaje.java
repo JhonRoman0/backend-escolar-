@@ -9,7 +9,7 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "Contacto_Mensaje")
+@Table(name = "contactoMensaje")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -17,8 +17,9 @@ import java.time.LocalDateTime;
 public class ContactoMensaje {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_contacto_mensaje")
     Integer idMensaje;
-    @Column(name = "nombreRemitente", length = 100, nullable = false)
+    @Column(name = "nombre_remitente", length = 100, nullable = false)
     String nombreRemitente;
     @Column(name = "correo", length = 100, nullable = false)
     String correo;
@@ -28,13 +29,14 @@ public class ContactoMensaje {
     String asunto;
     @Column(name = "mensaje", columnDefinition = "TEXT", nullable = false)
     String mensaje;
-    @Column(name = "fechaEnvio", nullable = false)
+    @Column(name = "fecha_envio", nullable = false)
     LocalDateTime fechaEnvio;
     @Column(name = "estado", nullable = false)
     byte estado;
     @ManyToOne
-    @JoinColumn(name = "idUsuario")
+    @JoinColumn(name = "id_usuario")
     Usuario usuario;
-    @Column(name = "acceso", nullable = false)
-    byte acceso = 1;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_acceso", nullable = false)
+    Acceso acceso;
 }

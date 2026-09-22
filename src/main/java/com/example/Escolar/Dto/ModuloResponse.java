@@ -11,6 +11,6 @@ public class ModuloResponse {
     private Integer idModulo;
     private String modulo;
     private String icono;
-    private byte acceso;
+    private Long accesoId;
     private List<PermisoResponse> permisos;
 }

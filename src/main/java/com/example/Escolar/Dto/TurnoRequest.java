@@ -20,5 +20,5 @@ public class TurnoRequest {
     private LocalTime horaFaltaLimite;
     @NotNull(message = "La hora de salida es obligatoria")
     private LocalTime horaSalida;
-    private Byte acceso;
+    private Long accesoId;
 }

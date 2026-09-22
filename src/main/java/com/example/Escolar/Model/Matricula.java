@@ -10,7 +10,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Entity
-@Table(name = "Matricula")
+@Table(name = "matricula")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -18,24 +18,28 @@ import java.time.LocalDate;
 public class Matricula {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_matricula")
     Integer idMatricula;
     @ManyToOne
-    @JoinColumn(name = "idAlumnoApoderado", nullable = false)
+    @JoinColumn(name = "id_alumno_apoderado", nullable = false)
     AlumnoApoderado alumnoApoderado;
     @ManyToOne
-    @JoinColumn(name = "idUsuario", nullable = false)
+    @JoinColumn(name = "id_usuario", nullable = false)
     Usuario usuario;
     @ManyToOne
-    @JoinColumn(name = "idGradoSeccion", nullable = false)
+    @JoinColumn(name = "id_grado_seccion", nullable = false)
     GradoSeccion gradoSeccion;
-    @Column(name = "solicitudMatricula", nullable = false)
+    @Column(name = "solicitud_matricula", nullable = false)
     byte solicitudMatricula;
-    @Column(name = "fechaPago")
+    @Column(name = "fecha_pago")
     LocalDate fechaPago;
-    @Column(name = "montoPago")
+    @Column(name = "monto_pago")
     BigDecimal montoPago;
-    @Column(name = "fechaRegistro", nullable = false)
+    @Column(name = "fecha_registro", nullable = false)
     LocalDate fechaRegistro;
-    @Column(name = "acceso", nullable = false)
-    byte acceso = 1;
+    @Column(name = "observaciones", length = 500)
+    String observaciones;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_acceso", nullable = false)
+    Acceso acceso;
 }

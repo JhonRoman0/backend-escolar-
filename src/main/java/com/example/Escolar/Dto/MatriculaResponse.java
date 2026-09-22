@@ -27,6 +27,7 @@ public class MatriculaResponse {
     private Byte solicitudMatricula;
     private LocalDate fechaPago;
     private BigDecimal montoPago;
-    private Byte acceso;
+    private String observaciones;
+    private Long accesoId;
     private List<HistorialResponse> historial;
 }

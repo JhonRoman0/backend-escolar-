@@ -1,7 +1,9 @@
 package com.example.Escolar.Controller;
 
+import com.example.Escolar.Dto.ForgotPasswordRequest;
 import com.example.Escolar.Dto.LoginRequest;
 import com.example.Escolar.Dto.LoginResponse;
+import com.example.Escolar.Dto.ResetPasswordRequest;
 import com.example.Escolar.Dto.UsuarioResponse;
 import com.example.Escolar.Security.UsuarioAutenticado;
 import com.example.Escolar.Service.AuthService;
@@ -21,6 +23,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/auth")
@@ -50,6 +54,22 @@ public class AuthController {
         httpResponse.addHeader(HttpHeaders.SET_COOKIE,
                 cookieSesion("", 0, httpRequest));
         return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<Map<String, String>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        authService.forgotPassword(request.getGmail());
+        return ResponseEntity.ok(Map.of(
+                "mensaje", "Se envio un correo con las instrucciones para restablecer tu contrasena"
+        ));
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<Map<String, String>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        authService.resetPassword(request.getGmail(), request.getCodigo(), request.getNuevaContrasena());
+        return ResponseEntity.ok(Map.of(
+                "mensaje", "Contrasena actualizada correctamente"
+        ));
     }
 
     private String cookieSesion(String valor, long maxAge, HttpServletRequest httpRequest) {

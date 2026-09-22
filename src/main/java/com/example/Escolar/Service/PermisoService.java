@@ -9,6 +9,7 @@ import com.example.Escolar.Model.Modulo;
 import com.example.Escolar.Model.Permiso;
 import com.example.Escolar.Model.PermisoAccion;
 import com.example.Escolar.Repository.AccionRepository;
+import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.ModuloRepository;
 import com.example.Escolar.Repository.PermisoAccionRepository;
 import com.example.Escolar.Repository.PermisoRepository;
@@ -22,16 +23,14 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PermisoService {
 
-    public static final byte ACCESO_ACTIVO = 1;
-    public static final byte ACCESO_ELIMINADO = 2;
-
     private final PermisoRepository permisoRepository;
+    private final AccesoRepository accesoRepository;
     private final ModuloRepository moduloRepository;
     private final AccionRepository accionRepository;
     private final PermisoAccionRepository permisoAccionRepository;
 
     public List<PermisoResponse> getAll() {
-        return permisoRepository.findByAccesoNot(ACCESO_ELIMINADO).stream().map(this::toResponse).toList();
+        return permisoRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream().map(this::toResponse).toList();
     }
 
     public PermisoResponse getById(Integer id) {
@@ -43,7 +42,7 @@ public class PermisoService {
         validarCodigoUnico(request.getCodigo(), null);
         Permiso permiso = new Permiso();
         applyRequest(permiso, request);
-        permiso.setAcceso(request.getAcceso() != null ? request.getAcceso() : ACCESO_ACTIVO);
+        permiso.setAcceso(accesoRepository.findById(request.getAccesoId() != null ? request.getAccesoId() : AccesoConstants.ACTIVO).orElseThrow());
         permiso = permisoRepository.save(permiso);
         asignarAcciones(permiso, request.getAcciones());
         return toResponse(permiso);
@@ -65,28 +64,28 @@ public class PermisoService {
     @Transactional
     public void delete(Integer id) {
         Permiso permiso = findPermiso(id);
-        permiso.setAcceso(ACCESO_ELIMINADO);
+        permiso.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
         permisoRepository.save(permiso);
     }
 
     private Permiso findPermiso(Integer id) {
-        return permisoRepository.findByIdPermisoAndAccesoNot(id, ACCESO_ELIMINADO)
+        return permisoRepository.findByIdPermisoAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("Permiso no encontrado con id " + id));
     }
 
     private void applyRequest(Permiso permiso, PermisoRequest request) {
-        Modulo modulo = moduloRepository.findByIdModuloAndAccesoNot(request.getIdModulo(), ACCESO_ELIMINADO)
+        Modulo modulo = moduloRepository.findByIdModuloAndAccesoNot(request.getIdModulo(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("Módulo no encontrado con id " + request.getIdModulo()));
         permiso.setCodigo(request.getCodigo());
         permiso.setNombre(request.getNombre());
         permiso.setModulo(modulo);
-        if (request.getAcceso() != null) {
-            permiso.setAcceso(request.getAcceso());
+        if (request.getAccesoId() != null) {
+            permiso.setAcceso(accesoRepository.findById(request.getAccesoId()).orElseThrow());
         }
     }
 
     private void validarCodigoUnico(String codigo, Integer idExcluido) {
-        permisoRepository.findByCodigoAndAccesoNot(codigo, ACCESO_ELIMINADO)
+        permisoRepository.findByCodigoAndAccesoNot(codigo, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .filter(p -> idExcluido == null || !p.getIdPermiso().equals(idExcluido))
                 .ifPresent(p -> {
                     throw new IllegalArgumentException("Ya existe un permiso con el código " + codigo);
@@ -98,13 +97,13 @@ public class PermisoService {
             return;
         }
         for (String codigo : codigosAcciones) {
-            Accion accion = accionRepository.findByCodigoAndAccesoNot(codigo, ACCESO_ELIMINADO)
+            Accion accion = accionRepository.findByCodigoAndAccesoNot(codigo, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                     .orElseThrow(() -> new IllegalArgumentException("La acción " + codigo + " no existe"));
             if (permisoAccionRepository.findByPermisoIdPermisoAndAccionIdAccion(permiso.getIdPermiso(), accion.getIdAccion()).isEmpty()) {
                 PermisoAccion permisoAccion = new PermisoAccion();
                 permisoAccion.setPermiso(permiso);
                 permisoAccion.setAccion(accion);
-                permisoAccion.setAcceso(ACCESO_ACTIVO);
+                permisoAccion.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
                 permisoAccionRepository.save(permisoAccion);
             }
         }
@@ -116,7 +115,7 @@ public class PermisoService {
         response.setCodigo(permiso.getCodigo());
         response.setNombre(permiso.getNombre());
         response.setModulo(toModuloResponse(permiso.getModulo()));
-        response.setAcceso(permiso.getAcceso());
+        response.setAccesoId(permiso.getAcceso().getIdAcceso().longValue());
         response.setAcciones(accionesDelPermiso(permiso.getIdPermiso()));
         return response;
     }
@@ -126,13 +125,13 @@ public class PermisoService {
         response.setIdModulo(modulo.getIdModulo());
         response.setModulo(modulo.getModulo());
         response.setIcono(modulo.getIcono());
-        response.setAcceso(modulo.getAcceso());
+        response.setAccesoId(modulo.getAcceso().getIdAcceso().longValue());
         return response;
     }
 
     private List<String> accionesDelPermiso(Integer idPermiso) {
-        return permisoAccionRepository.findByPermisoIdPermisoAndAccesoNot(idPermiso, ACCESO_ELIMINADO).stream()
-                .filter(pa -> pa.getAccion().getAcceso() != ACCESO_ELIMINADO)
+        return permisoAccionRepository.findByPermisoIdPermisoAndAccesoNot(idPermiso, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
+                .filter(pa -> !pa.getAccion().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
                 .map(pa -> pa.getAccion().getCodigo())
                 .sorted()
                 .toList();

@@ -12,5 +12,5 @@ public class JustificacionResponse {
     private String motivo;
     private String documentoUrl;
     private LocalDate fechaJustificacion;
-    private Byte acceso;
+    private Long accesoId;
 }

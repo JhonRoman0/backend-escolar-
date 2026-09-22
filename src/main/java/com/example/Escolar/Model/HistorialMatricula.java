@@ -9,7 +9,7 @@ import lombok.Setter;
 import java.time.LocalDate;
 
 @Entity
-@Table(name = "HistorialMatricula")
+@Table(name = "historialMatricula")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -17,19 +17,21 @@ import java.time.LocalDate;
 public class HistorialMatricula {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_historial_matricula")
     Integer idHistorial;
     @ManyToOne
-    @JoinColumn(name = "idMatricula", nullable = false)
+    @JoinColumn(name = "id_matricula", nullable = false)
     Matricula matricula;
     @ManyToOne
-    @JoinColumn(name = "idGradoSeccion", nullable = false)
+    @JoinColumn(name = "id_grado_seccion", nullable = false)
     GradoSeccion gradoSeccion;
-    @Column(name = "fechaInicio", nullable = false)
+    @Column(name = "fecha_inicio", nullable = false)
     LocalDate fechaInicio;
-    @Column(name = "fechaFinal")
+    @Column(name = "fecha_final")
     LocalDate fechaFinal;
     @Column(name = "motivo", length = 150)
     String motivo;
-    @Column(name = "acceso", nullable = false)
-    byte acceso = 1;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_acceso", nullable = false)
+    Acceso acceso;
 }

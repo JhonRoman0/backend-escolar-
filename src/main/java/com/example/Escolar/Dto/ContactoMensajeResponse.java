@@ -18,5 +18,5 @@ public class ContactoMensajeResponse {
     private Byte estado;
     private Integer idUsuario;
     private String atendidoPor;
-    private Byte acceso;
+    private Long accesoId;
 }

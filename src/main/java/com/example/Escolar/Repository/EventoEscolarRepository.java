@@ -1,5 +1,6 @@
 package com.example.Escolar.Repository;
 
+import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.EventoEscolar;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -7,9 +8,9 @@ import java.util.List;
 import java.util.Optional;
 
 public interface EventoEscolarRepository extends JpaRepository<EventoEscolar, Integer> {
-    List<EventoEscolar> findByAccesoNot(Byte acceso);
+    List<EventoEscolar> findByAccesoNot(Acceso acceso);
 
-    List<EventoEscolar> findByEsPublicoAndAccesoNot(Byte esPublico, Byte acceso);
+    List<EventoEscolar> findByEsPublicoAndAccesoNot(Byte esPublico, Acceso acceso);
 
-    Optional<EventoEscolar> findByIdEventoAndAccesoNot(Integer idEvento, Byte acceso);
+    Optional<EventoEscolar> findByIdEventoAndAccesoNot(Integer idEvento, Acceso acceso);
 }

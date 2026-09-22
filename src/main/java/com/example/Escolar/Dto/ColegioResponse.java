@@ -14,5 +14,5 @@ public class ColegioResponse {
     private String codigoColegio;
     private String urlFoto;
     private String urlPortal;
-    private Byte acceso;
+    private Long accesoId;
 }

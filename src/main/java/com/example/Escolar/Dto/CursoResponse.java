@@ -8,5 +8,5 @@ import lombok.Setter;
 public class CursoResponse {
     private Integer idCurso;
     private String nombre;
-    private byte acceso;
+    private Long accesoId;
 }

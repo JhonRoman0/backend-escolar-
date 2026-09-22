@@ -9,7 +9,7 @@ import lombok.Setter;
 import java.time.LocalDate;
 
 @Entity
-@Table(name = "Galeria_Imagen")
+@Table(name = "galeriaImagen")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -17,6 +17,7 @@ import java.time.LocalDate;
 public class GaleriaImagen {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_galeria_imagenen")
     Integer idGaleria;
     @Column(name = "titulo", length = 150, nullable = false)
     String titulo;
@@ -24,6 +25,7 @@ public class GaleriaImagen {
     String descripcion;
     @Column(name = "fecha", nullable = false)
     LocalDate fecha;
-    @Column(name = "acceso", nullable = false)
-    byte acceso = 1;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_acceso", nullable = false)
+    Acceso acceso;
 }

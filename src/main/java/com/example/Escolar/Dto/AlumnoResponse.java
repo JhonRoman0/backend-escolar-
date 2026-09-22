@@ -22,7 +22,7 @@ public class AlumnoResponse {
     private String direccion;
     private String documentoIdentidad;
     private String urlFoto;
-    private byte acceso;
+    private Long accesoId;
     private List<ApoderadoResponse> apoderados;
 
     public static AlumnoResponse fromEntity(Alumno alumno, List<AlumnoApoderado> vinculos) {
@@ -37,12 +37,12 @@ public class AlumnoResponse {
         response.setDireccion(alumno.getDireccion());
         response.setDocumentoIdentidad(alumno.getDocumentoIdentidad());
         response.setUrlFoto(alumno.getUrlFoto());
-        response.setAcceso(alumno.getAcceso());
+        response.setAccesoId(alumno.getAcceso().getIdAcceso().longValue());
         if (vinculos != null) {
             response.setApoderados(vinculos.stream()
                     .sorted(Comparator.comparing(AlumnoApoderado::getApoPrincipal).reversed())
                     .map(AlumnoApoderado::getApoderado)
-                    .filter(ap -> ap.getAcceso() != 2)
+                    .filter(ap -> ap.getAcceso().getIdAcceso() != 2)
                     .map(ApoderadoResponse::fromEntity)
                     .toList());
         }

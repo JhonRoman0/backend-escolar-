@@ -24,7 +24,6 @@ public class MatriculaRequest {
     private LocalDate fechaPago;
     @DecimalMin(value = "0.0", message = "El monto de pago no puede ser negativo")
     private BigDecimal montoPago;
-    @Min(value = 0, message = "El acceso debe ser 0 (inactivo), 1 (activo) o 2 (eliminado)")
-    @Max(value = 2, message = "El acceso debe ser 0 (inactivo), 1 (activo) o 2 (eliminado)")
-    private Byte acceso;
+    private String observaciones;
+    private Long accesoId;
 }

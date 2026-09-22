@@ -19,7 +19,5 @@ public class PermisoRequest {
     @NotNull(message = "El módulo es obligatorio")
     private Integer idModulo;
     private List<String> acciones;
-    @Min(value = 0, message = "El acceso debe ser 0 (inactivo), 1 (activo) o 2 (eliminado)")
-    @Max(value = 2, message = "El acceso debe ser 0 (inactivo), 1 (activo) o 2 (eliminado)")
-    private Byte acceso;
+    private Long accesoId;
 }

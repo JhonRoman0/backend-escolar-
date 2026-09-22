@@ -12,5 +12,5 @@ public class RolPermisoResponse {
     private RolResponse rol;
     private PermisoResponse permiso;
     private List<String> acciones;
-    private byte acceso;
+    private Long accesoId;
 }

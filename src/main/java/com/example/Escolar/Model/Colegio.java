@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "Colegio")
+@Table(name = "colegio")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -15,6 +15,7 @@ import lombok.Setter;
 public class Colegio {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_colegio")
     Integer idColegio;
     @Column(name = "nombre", length = 120, nullable = false)
     String nombre;
@@ -24,16 +25,17 @@ public class Colegio {
     String telefono;
     @Column(name = "direccion", length = 150)
     String direccion;
-    @Column(name = "codigoColegio", length = 20)
+    @Column(name = "codigo_colegio", length = 20)
     String codigoColegio;
-    @Column(name = "urlFoto", length = 255)
+    @Column(name = "url_foto", length = 255)
     String urlFoto;
-    @Column(name = "pkUrlFoto", length = 255)
+    @Column(name = "pk_url_foto", length = 255)
     String pkUrlFoto;
-    @Column(name = "urlPortal", length = 255)
+    @Column(name = "url_portal", length = 255)
     String urlPortal;
-    @Column(name = "pkUrlPortada", length = 255)
+    @Column(name = "pk_url_portada", length = 255)
     String pkUrlPortada;
-    @Column(name = "acceso", nullable = false)
-    byte acceso = 1;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_acceso", nullable = false)
+    Acceso acceso;
 }

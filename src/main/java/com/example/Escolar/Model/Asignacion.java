@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "Asignacion")
+@Table(name = "asignacion")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -15,19 +15,21 @@ import lombok.Setter;
 public class Asignacion {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_asignacion")
     Integer idAsignacion;
     @ManyToOne
-    @JoinColumn(name = "idCurso", nullable = false)
+    @JoinColumn(name = "id_curso", nullable = false)
     Curso curso;
     @ManyToOne
-    @JoinColumn(name = "idDocente", nullable = false)
+    @JoinColumn(name = "id_docente", nullable = false)
     Docente docente;
     @ManyToOne
-    @JoinColumn(name = "idGradoSeccion", nullable = false)
+    @JoinColumn(name = "id_grado_seccion", nullable = false)
     GradoSeccion gradoSeccion;
     @ManyToOne
-    @JoinColumn(name = "idAnio", nullable = false)
+    @JoinColumn(name = "id_anio", nullable = false)
     AnioEscolar anioEscolar;
-    @Column(name = "acceso", length = 10, nullable = false)
-    byte acceso;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_acceso", nullable = false)
+    Acceso acceso;
 }

@@ -9,5 +9,5 @@ public class AjusteResponse {
     private Integer idAjuste;
     private String clave;
     private String valor;
-    private Byte acceso;
+    private Long accesoId;
 }

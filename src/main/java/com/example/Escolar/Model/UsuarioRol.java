@@ -9,7 +9,7 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "UsuarioRol")
+@Table(name = "usuarioRol")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -17,13 +17,14 @@ import java.time.LocalDateTime;
 public class UsuarioRol {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_usuario_rol")
     Integer idUsuarioRol;
     @ManyToOne
-    @JoinColumn(name = "idUsuario", nullable = false)
+    @JoinColumn(name = "id_usuario", nullable = false)
     Usuario usuario;
     @ManyToOne
-    @JoinColumn(name = "idRol", nullable = false)
+    @JoinColumn(name = "id_rol", nullable = false)
     Rol rol;
-    @Column(name = "fechaAsignacion", nullable = false)
+    @Column(name = "fecha_asignacion", nullable = false)
     LocalDateTime fechaAsignacion;
 }

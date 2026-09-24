@@ -16,4 +16,14 @@ public class AsistenciaDiaResponse {
     private String estado;
     private LocalTime horaEntrada;
     private String marcadoPor;
+    // Filtros académicos como en alumnos (vigente)
+    private Integer idNivel;
+    private String nivel;
+    private Integer idGrado;
+    private Integer idSeccion;
+    private Integer idTurno;
+    private String turno;
+    private Integer idGradoSeccion;
+    private Integer idAnio;
+    private String anio;
 }

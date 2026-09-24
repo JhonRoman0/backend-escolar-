@@ -117,11 +117,25 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<Map<String, Object>> handleDataIntegrity(DataIntegrityViolationException ex) {
+        String causeMsg = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
+        log.error("DataIntegrityViolation: {}", causeMsg, ex);
+        String mensaje = "El registro ya existe o viola una restricción de integridad (por ejemplo, doble marcado de asistencia).";
+        if (causeMsg != null && causeMsg.contains("Duplicate entry")) {
+            if (causeMsg.contains("documento_identidad")) {
+                mensaje = "Ya existe un registro con ese DNI/documento de identidad (incluso eliminado). Verifique la papelera o use otro DNI.";
+            } else if (causeMsg.contains("codigo")) {
+                mensaje = "Ya existe un alumno con ese código (incluso eliminado). El DNI ya está registrado.";
+            } else if (causeMsg.contains("gmail")) {
+                mensaje = "Ya existe un usuario con ese correo electrónico.";
+            } else {
+                mensaje = "Registro duplicado: " + causeMsg;
+            }
+        }
         Map<String, Object> body = new HashMap<>();
         body.put("timestamp", LocalDateTime.now());
         body.put("status", HttpStatus.BAD_REQUEST.value());
         body.put("error", "Bad Request");
-        body.put("message", "El registro ya existe o viola una restricción de integridad (por ejemplo, doble marcado de asistencia).");
+        body.put("message", mensaje);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 

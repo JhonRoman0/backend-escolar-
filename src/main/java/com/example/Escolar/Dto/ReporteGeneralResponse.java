@@ -17,4 +17,15 @@ public class ReporteGeneralResponse {
     private String estado;
     private String justificacion;
     private String registradoPor;
+    private Integer idNivel;
+    private String nivel;
+    private Integer idGrado;
+    private String grado;
+    private Integer idSeccion;
+    private String seccion;
+    private Integer idTurno;
+    private String turno;
+    private Integer idGradoSeccion;
+    private Integer idAnio;
+    private String anio;
 }

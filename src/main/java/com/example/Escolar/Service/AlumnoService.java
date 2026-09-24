@@ -60,14 +60,86 @@ public class AlumnoService {
     private final AccesoContextoService accesoContextoService;
     private final AccesoRepository accesoRepository;
 
-    public Page<AlumnoResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles) {
+    public Page<AlumnoResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles,
+                                        Integer idNivel, Integer idGrado, Integer idSeccion,
+                                        Integer idTurno, Integer idGradoSeccion, Integer idAnio) {
+        boolean filtrando = idNivel != null || idGrado != null || idSeccion != null || idTurno != null || idGradoSeccion != null || idAnio != null;
         Set<Integer> visibles = idsAlumnosVisibles(idUsuario, roles);
-        List<Alumno> contenido = alumnoRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow(), pageable).getContent();
-        List<AlumnoResponse> respuestas = contenido.stream()
-                .filter(a -> visibles == null || visibles.contains(a.getIdAlumno()))
-                .map(this::toResponse)
-                .toList();
-        return new PageImpl<>(respuestas, pageable, respuestas.size());
+        boolean esGestion = visibles == null;
+
+        if (filtrando) {
+            // Filtrado vigente: requiere matrícula ACTIVA. Usa query paginada en BD (vigente) y corrige totalElements.
+            if (esGestion) {
+                Page<Alumno> page = alumnoRepository.findFiltrados(
+                        AccesoConstants.ACTIVO, AccesoConstants.ELIMINADO,
+                        idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio, pageable);
+                return page.map(this::toResponseEnriquecido);
+            } else {
+                // Docente/Apoderado: filtra en BD, luego por visibilidad y paginación en memoria
+                List<Alumno> filtrados = alumnoRepository.findFiltradosList(
+                        AccesoConstants.ACTIVO, AccesoConstants.ELIMINADO,
+                        idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio);
+                List<Alumno> visiblesList = filtrados.stream()
+                        .filter(a -> visibles.contains(a.getIdAlumno()))
+                        .toList();
+                return paginarEnMemoria(visiblesList, pageable);
+            }
+        }
+
+        // Sin filtros académicos: listado clásico + enriquecimiento batch, con paginación corregida
+        if (esGestion) {
+            Page<Alumno> page = alumnoRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow(), pageable);
+            // Enriquecimiento batch de la página
+            List<AlumnoResponse> respuestas = toResponseEnriquecidoBatch(page.getContent());
+            return new PageImpl<>(respuestas, pageable, page.getTotalElements());
+        } else {
+            List<Alumno> todos = alumnoRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
+            List<Alumno> visiblesList = todos.stream()
+                    .filter(a -> visibles.contains(a.getIdAlumno()))
+                    .toList();
+            return paginarEnMemoria(visiblesList, pageable);
+        }
+    }
+
+    // Compatibilidad: firma antigua sin filtros
+    public Page<AlumnoResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles) {
+        return getAll(pageable, idUsuario, roles, null, null, null, null, null, null);
+    }
+
+    private Page<AlumnoResponse> paginarEnMemoria(List<Alumno> lista, Pageable pageable) {
+        int total = lista.size();
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), total);
+        List<Alumno> slice = start >= total ? List.of() : lista.subList(start, end);
+        List<AlumnoResponse> respuestas = toResponseEnriquecidoBatch(slice);
+        return new PageImpl<>(respuestas, pageable, total);
+    }
+
+    private List<AlumnoResponse> toResponseEnriquecidoBatch(List<Alumno> alumnos) {
+        if (alumnos.isEmpty()) return List.of();
+        List<Integer> ids = alumnos.stream().map(Alumno::getIdAlumno).toList();
+        List<Matricula> matriculas = matriculaRepository.findActivasPorAlumnoIds(ids,
+                accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
+        java.util.Map<Integer, Matricula> mapa = new java.util.HashMap<>();
+        for (Matricula m : matriculas) {
+            Integer key = m.getAlumnoApoderado().getAlumno().getIdAlumno();
+            // Si hay múltiples vigentes (no debería), conserva la primera
+            mapa.putIfAbsent(key, m);
+        }
+        return alumnos.stream().map(a -> {
+            List<AlumnoApoderado> vinculos = alumnoApoderadoRepository.findByAlumno(a);
+            Matricula vigente = mapa.get(a.getIdAlumno());
+            return AlumnoResponse.fromEntity(a, vinculos, vigente);
+        }).toList();
+    }
+
+    private AlumnoResponse toResponseEnriquecido(Alumno alumno) {
+        List<AlumnoApoderado> vinculos = alumnoApoderadoRepository.findByAlumno(alumno);
+        // Batch de 1 para reutilizar FETCH JOIN
+        List<Matricula> vigente = matriculaRepository.findActivasPorAlumnoIds(
+                List.of(alumno.getIdAlumno()), accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
+        Matricula m = vigente.isEmpty() ? null : vigente.get(0);
+        return AlumnoResponse.fromEntity(alumno, vinculos, m);
     }
 
     public AlumnoResponse getById(Integer id, Integer idUsuario, List<String> roles) {
@@ -92,6 +164,22 @@ public class AlumnoService {
 
     @Transactional
     public AlumnoResponse create(AlumnoRequest request) {
+        // Si existe alumno eliminado con mismo DNI, reactivar en vez de fallar por UNIQUE
+        Optional<Alumno> eliminadoOpt = alumnoRepository.findByDocumentoIdentidad(request.getDocumentoIdentidad());
+        if (eliminadoOpt.isPresent() && eliminadoOpt.get().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO)) {
+            Alumno existente = eliminadoOpt.get();
+            existente.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
+            aplicarDatos(existente, request);
+            existente.setCodigo(generarCodigoAlumno(request.getDocumentoIdentidad()));
+            existente.setCodigoHash(generarCodigoHash(existente.getCodigo()));
+            // Limpiar vínculos previos eliminados lógicamente si los hubiera
+            List<Apoderado> apoderados = resolverApoderados(request.getApoderados());
+            Alumno saved = alumnoRepository.save(existente);
+            // Re-vincular apoderados (sincroniza)
+            sincronizarApoderadosParaReactivacion(saved, apoderados);
+            return toResponse(saved);
+        }
+
         validarDocumentoAlumnoUnico(request.getDocumentoIdentidad(), null);
         List<Apoderado> apoderados = resolverApoderados(request.getApoderados());
 
@@ -100,11 +188,37 @@ public class AlumnoService {
         alumno.setCodigo(generarCodigoAlumno(request.getDocumentoIdentidad()));
         alumno.setCodigoHash(generarCodigoHash(alumno.getCodigo()));
         alumno.setFechaIngreso(LocalDate.now());
+        alumno.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         Alumno saved = alumnoRepository.save(alumno);
 
         vincularApoderados(saved, apoderados);
 
         return toResponse(saved);
+    }
+
+    private void sincronizarApoderadosParaReactivacion(Alumno alumno, List<Apoderado> apoderados) {
+        // Al reactivar, limpiar vínculos ELIMINADOS previos sería ideal, pero mantenemos simple: vincular los nuevos
+        // Eliminar vínculos que no estén en la nueva lista (si existieran activos)
+        List<AlumnoApoderado> actuales = alumnoApoderadoRepository.findByAlumno(alumno);
+        for (AlumnoApoderado v : actuales) {
+            boolean keep = apoderados.stream().anyMatch(a -> a.getIdApoderado().equals(v.getApoderado().getIdApoderado()));
+            if (!keep) {
+                alumnoApoderadoRepository.delete(v);
+            }
+        }
+        List<Integer> actualesIds = alumnoApoderadoRepository.findByAlumno(alumno).stream()
+                .map(aa -> aa.getApoderado().getIdApoderado()).toList();
+        for (int i = 0; i < apoderados.size(); i++) {
+            Apoderado a = apoderados.get(i);
+            if (!actualesIds.contains(a.getIdApoderado())) {
+                AlumnoApoderado vinculo = new AlumnoApoderado();
+                vinculo.setAlumno(alumno);
+                vinculo.setApoderado(a);
+                vinculo.setApoPrincipal(i == 0 ? PRINCIPAL : (byte) 0);
+                alumnoApoderadoRepository.save(vinculo);
+            }
+        }
+        reasignarPrincipal(alumno);
     }
 
     @Transactional
@@ -364,6 +478,34 @@ public class AlumnoService {
                 || request.getApellidoMat() == null || request.getApellidoMat().isBlank()) {
             throw new IllegalArgumentException("Los datos del apoderado (nombre y apellidos) son obligatorios");
         }
+        // Si existe usuario eliminado con mismo DNI, reactivar
+        if (request.getDocumentoIdentidad() != null && !request.getDocumentoIdentidad().isBlank()) {
+            Optional<Usuario> eliminadoUsuario = usuarioRepository.findByDocumentoIdentidad(request.getDocumentoIdentidad());
+            if (eliminadoUsuario.isPresent() && eliminadoUsuario.get().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO)) {
+                Usuario usuario = eliminadoUsuario.get();
+                construirUsuario(usuario, request, accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
+                usuario.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
+                Usuario saved = usuarioRepository.save(usuario);
+                asignarRolApoderado(saved);
+                // Reactivar apoderado si existía eliminado ligado a ese usuario
+                Optional<Apoderado> apoEliminado = apoderadoRepository.findByUsuarioIdUsuario(saved.getIdUsuario());
+                if (apoEliminado.isPresent() && apoEliminado.get().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO)) {
+                    Apoderado ap = apoEliminado.get();
+                    ap.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
+                    ap.setCelular(request.getCelular());
+                    ap.setDireccion(request.getDireccion());
+                    ap.setParentesco(request.getParentesco());
+                    return apoderadoRepository.save(ap);
+                }
+                Apoderado apoderado = new Apoderado();
+                apoderado.setUsuario(saved);
+                apoderado.setCelular(request.getCelular());
+                apoderado.setDireccion(request.getDireccion());
+                apoderado.setParentesco(request.getParentesco());
+                apoderado.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
+                return apoderadoRepository.save(apoderado);
+            }
+        }
         validarDocumentoUsuarioUnico(request.getDocumentoIdentidad(), null);
         validarGmailUnico(request.getGmail(), null);
         Usuario usuario = new Usuario();
@@ -533,6 +675,9 @@ public class AlumnoService {
 
     private AlumnoResponse toResponse(Alumno alumno) {
         List<AlumnoApoderado> vinculos = alumnoApoderadoRepository.findByAlumno(alumno);
-        return AlumnoResponse.fromEntity(alumno, vinculos);
+        List<Matricula> vigente = matriculaRepository.findActivasPorAlumnoIds(
+                List.of(alumno.getIdAlumno()), accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
+        Matricula m = vigente.isEmpty() ? null : vigente.get(0);
+        return AlumnoResponse.fromEntity(alumno, vinculos, m);
     }
 }

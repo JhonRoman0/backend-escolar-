@@ -14,6 +14,10 @@ public class GradoSeccionController {
 
     private final GradoSeccionService gradoSeccionService;
 
+    /**
+     * Flujo documentado: /niveles -> /grados?idNivel -> /secciones?idGrado -> /turnos.
+     * Cada Grado tiene sus propias Secciones (agregado Grado). No existe catálogo /secciones independiente.
+     */
     @GetMapping
     public List<GradoSeccionResponse> getSeccionesByGrado(@RequestParam Integer idGrado) {
         return gradoSeccionService.getSeccionesByGrado(idGrado);

@@ -24,6 +24,8 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Integer> {
 
     Optional<Usuario> findByDocumentoIdentidadAndAccesoNot(String documentoIdentidad, Acceso acceso);
 
+    Optional<Usuario> findByDocumentoIdentidad(String documentoIdentidad);
+
     long countByCodigoStartingWith(String prefijo);
 
     List<Usuario> findByFechaCreacionBetweenAndAccesoNot(LocalDate inicio, LocalDate fin, Acceso acceso);

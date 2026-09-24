@@ -36,8 +36,15 @@ public class MatriculaController {
     private final AccesoContextoService accesoContextoService;
 
     @GetMapping
-    public Page<MatriculaResponse> getAll(@PageableDefault(size = 10, sort = "idMatricula") Pageable pageable) {
-        return matriculaService.getAll(pageable, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+    public Page<MatriculaResponse> getAll(@PageableDefault(size = 10, sort = "idMatricula") Pageable pageable,
+                                          @RequestParam(required = false) Integer idNivel,
+                                          @RequestParam(required = false) Integer idGrado,
+                                          @RequestParam(required = false) Integer idSeccion,
+                                          @RequestParam(required = false) Integer idTurno,
+                                          @RequestParam(required = false) Integer idGradoSeccion,
+                                          @RequestParam(required = false) Integer idAnio) {
+        return matriculaService.getAll(pageable, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados(),
+                idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio);
     }
 
     @GetMapping("/{id}")

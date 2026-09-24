@@ -13,4 +13,13 @@ public class MatrizSemanalResponse {
     private String grado;
     private String seccion;
     private List<String> estados;
+    private Integer idNivel;
+    private String nivel;
+    private Integer idGrado;
+    private Integer idSeccion;
+    private Integer idTurno;
+    private String turno;
+    private Integer idGradoSeccion;
+    private Integer idAnio;
+    private String anio;
 }

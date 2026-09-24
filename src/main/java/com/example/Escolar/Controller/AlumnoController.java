@@ -29,8 +29,15 @@ public class AlumnoController {
     private final AccesoContextoService accesoContextoService;
 
     @GetMapping
-    public Page<AlumnoResponse> getAll(@PageableDefault(size = 10, sort = "idAlumno") Pageable pageable) {
-        return alumnoService.getAll(pageable, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+    public Page<AlumnoResponse> getAll(@PageableDefault(size = 10, sort = "idAlumno") Pageable pageable,
+                                       @RequestParam(required = false) Integer idNivel,
+                                       @RequestParam(required = false) Integer idGrado,
+                                       @RequestParam(required = false) Integer idSeccion,
+                                       @RequestParam(required = false) Integer idTurno,
+                                       @RequestParam(required = false) Integer idGradoSeccion,
+                                       @RequestParam(required = false) Integer idAnio) {
+        return alumnoService.getAll(pageable, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados(),
+                idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio);
     }
 
     @GetMapping("/{id}")

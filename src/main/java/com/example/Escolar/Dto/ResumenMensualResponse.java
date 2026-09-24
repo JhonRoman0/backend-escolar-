@@ -14,4 +14,13 @@ public class ResumenMensualResponse {
     private Long diasAsistidos;
     private Long inasistencias;
     private Double porcentajeAsistencia;
+    private Integer idNivel;
+    private String nivel;
+    private Integer idGrado;
+    private Integer idSeccion;
+    private Integer idTurno;
+    private String turno;
+    private Integer idGradoSeccion;
+    private Integer idAnio;
+    private String anio;
 }

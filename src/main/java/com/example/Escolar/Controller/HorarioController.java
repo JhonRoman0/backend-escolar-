@@ -21,13 +21,23 @@ public class HorarioController {
     private final AccesoContextoService accesoContextoService;
 
     @GetMapping
-    public List<HorarioPlanoResponse> listar(
+    public org.springframework.data.domain.Page<HorarioPlanoResponse> listar(
             @RequestParam(required = false) String grado,
             @RequestParam(required = false) String seccion,
             @RequestParam(required = false) Integer docente,
-            @RequestParam(required = false) Integer anioEscolar) {
-        return horarioService.listar(grado, seccion, docente, anioEscolar,
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+            @RequestParam(required = false) Integer anioEscolar,
+            @RequestParam(required = false) Integer idNivel,
+            @RequestParam(required = false) Integer idGrado,
+            @RequestParam(required = false) Integer idSeccion,
+            @RequestParam(required = false) Integer idTurno,
+            @RequestParam(required = false) Integer idGradoSeccion,
+            @RequestParam(required = false) Integer idAnio,
+            @org.springframework.data.web.PageableDefault(size = 20, sort = "idHorario") org.springframework.data.domain.Pageable pageable) {
+        // anioEscolar (legacy) tiene prioridad sobre idAnio
+        Integer anioEfectivo = anioEscolar != null ? anioEscolar : idAnio;
+        return horarioService.listar(grado, seccion, docente, anioEfectivo,
+                idNivel, idGrado, idSeccion, idTurno, idGradoSeccion,
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados(), pageable);
     }
 
     @GetMapping("/docente/{idDocente}")

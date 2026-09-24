@@ -31,9 +31,16 @@ public class ReporteController {
     public Page<ReporteGeneralResponse> reporteGeneral(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin,
+            @RequestParam(required = false) Integer idNivel,
+            @RequestParam(required = false) Integer idGrado,
+            @RequestParam(required = false) Integer idSeccion,
+            @RequestParam(required = false) Integer idTurno,
+            @RequestParam(required = false) Integer idGradoSeccion,
+            @RequestParam(required = false) Integer idAnio,
             @PageableDefault(size = 10, sort = "fecha") Pageable pageable) {
         return asistenciaService.reporteGeneral(inicio, fin, pageable,
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados(),
+                idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio);
     }
 
     @GetMapping("/alumno/{idAlumno}")

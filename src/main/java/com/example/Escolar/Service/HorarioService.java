@@ -27,14 +27,45 @@ public class HorarioService {
     private final AccesoRepository accesoRepository;
     private final AccesoContextoService accesoContextoService;
 
+    public org.springframework.data.domain.Page<HorarioPlanoResponse> listar(
+            String grado, String seccion,
+            Integer idDocente, Integer idAnio,
+            Integer idNivel, Integer idGrado, Integer idSeccion, Integer idTurno, Integer idGradoSeccion,
+            Integer idUsuario, List<String> roles,
+            org.springframework.data.domain.Pageable pageable) {
+        Integer anio = resolverAnio(idAnio);
+        boolean esGestion = accesoContextoService.esGestion(roles);
+        if (esGestion) {
+            org.springframework.data.domain.Page<HorarioClase> page = horarioClaseRepository.findFiltrados(
+                    accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow(), anio,
+                    idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idDocente, grado, seccion, pageable);
+            return page.map(this::toPlanoResponse);
+        } else {
+            List<HorarioClase> filtrados = horarioClaseRepository.findFiltradosList(
+                    accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow(), anio,
+                    idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idDocente, grado, seccion);
+            List<HorarioClase> visibles = filtrarPorVisibilidad(filtrados, idUsuario, roles);
+            return paginarHorarios(visibles, pageable);
+        }
+    }
+
+    // Compatibilidad sin paginación (deprecated)
     public List<HorarioPlanoResponse> listar(String grado, String seccion,
                                               Integer idDocente, Integer idAnio,
                                               Integer idUsuario, List<String> roles) {
-        Integer anio = resolverAnio(idAnio);
-        List<HorarioClase> horarios = horarioClaseRepository.findPlanosPorAnio(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow(), anio);
-        horarios = filtrarPorVisibilidad(horarios, idUsuario, roles);
-        horarios = aplicarFiltros(horarios, grado, seccion, idDocente);
-        return horarios.stream().map(this::toPlanoResponse).toList();
+        return listar(grado, seccion, idDocente, idAnio, null, null, null, null, null, idUsuario, roles,
+                org.springframework.data.domain.Pageable.unpaged()).getContent();
+    }
+
+    private org.springframework.data.domain.Page<HorarioPlanoResponse> paginarHorarios(List<HorarioClase> lista, org.springframework.data.domain.Pageable pageable) {
+        if (pageable.isUnpaged()) {
+            return new org.springframework.data.domain.PageImpl<>(lista.stream().map(this::toPlanoResponse).toList());
+        }
+        int total = lista.size();
+        int start = Math.min((int) pageable.getOffset(), total);
+        int end = Math.min(start + pageable.getPageSize(), total);
+        List<HorarioPlanoResponse> content = lista.subList(start, end).stream().map(this::toPlanoResponse).toList();
+        return new org.springframework.data.domain.PageImpl<>(content, pageable, total);
     }
 
     public List<HorarioPlanoResponse> porDocente(Integer idDocente, Integer idAnio,

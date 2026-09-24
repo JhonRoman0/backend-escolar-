@@ -63,22 +63,44 @@ public class AsistenciaController {
     }
 
     @GetMapping("/hoy")
-    public List<AsistenciaDiaResponse> asistenciasHoy() {
-        return asistenciaService.asistenciasHoy(accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+    public Page<AsistenciaDiaResponse> asistenciasHoy(
+            @RequestParam(required = false) Integer idNivel,
+            @RequestParam(required = false) Integer idGrado,
+            @RequestParam(required = false) Integer idSeccion,
+            @RequestParam(required = false) Integer idTurno,
+            @RequestParam(required = false) Integer idGradoSeccion,
+            @RequestParam(required = false) Integer idAnio,
+            @PageableDefault(size = 10, sort = "idMatricula") Pageable pageable) {
+        return asistenciaService.asistenciasHoy(accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados(),
+                idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio, pageable);
     }
 
     @GetMapping("/semana")
     public Page<MatrizSemanalResponse> matrizSemanal(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
+            @RequestParam(required = false) Integer idNivel,
+            @RequestParam(required = false) Integer idGrado,
+            @RequestParam(required = false) Integer idSeccion,
+            @RequestParam(required = false) Integer idTurno,
+            @RequestParam(required = false) Integer idGradoSeccion,
+            @RequestParam(required = false) Integer idAnio,
             @PageableDefault(size = 10, sort = "idMatricula") Pageable pageable) {
-        return asistenciaService.matrizSemanal(fecha, pageable, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+        return asistenciaService.matrizSemanal(fecha, pageable, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados(),
+                idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio);
     }
 
     @GetMapping("/mes")
     public Page<ResumenMensualResponse> resumenMensual(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
+            @RequestParam(required = false) Integer idNivel,
+            @RequestParam(required = false) Integer idGrado,
+            @RequestParam(required = false) Integer idSeccion,
+            @RequestParam(required = false) Integer idTurno,
+            @RequestParam(required = false) Integer idGradoSeccion,
+            @RequestParam(required = false) Integer idAnio,
             @PageableDefault(size = 10, sort = "idMatricula") Pageable pageable) {
-        return asistenciaService.resumenMensual(fecha, pageable, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+        return asistenciaService.resumenMensual(fecha, pageable, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados(),
+                idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio);
     }
 
     @GetMapping("/estadisticas")

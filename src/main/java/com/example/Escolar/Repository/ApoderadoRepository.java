@@ -16,4 +16,6 @@ public interface ApoderadoRepository extends JpaRepository<Apoderado, Integer> {
     Optional<Apoderado> findByUsuarioDocumentoIdentidadAndAccesoNot(String documentoIdentidad, Acceso acceso);
 
     Optional<Apoderado> findByUsuarioIdUsuarioAndAccesoNot(Integer idUsuario, Acceso acceso);
+
+    Optional<Apoderado> findByUsuarioIdUsuario(Integer idUsuario);
 }

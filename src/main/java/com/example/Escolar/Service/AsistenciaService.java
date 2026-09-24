@@ -204,29 +204,51 @@ public class AsistenciaService {
     }
 
     private List<Matricula> matriculasVisibles(Integer idUsuario, List<String> roles) {
-        List<Matricula> todas = matriculaRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
+        return matriculasVisiblesFiltradas(idUsuario, roles, null, null, null, null, null, null);
+    }
+
+    private List<Matricula> matriculasVisiblesFiltradas(Integer idUsuario, List<String> roles,
+                                                        Integer idNivel, Integer idGrado, Integer idSeccion,
+                                                        Integer idTurno, Integer idGradoSeccion, Integer idAnio) {
+        List<Matricula> base = matriculaRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
+        List<Matricula> porRol;
         if (accesoContextoService.esGestion(roles)) {
-            return todas;
-        }
-        if (accesoContextoService.esPersonalDocente(roles)) {
+            porRol = base;
+        } else if (accesoContextoService.esPersonalDocente(roles)) {
             Set<Integer> gradoSeccionIds = accesoContextoService.gradoSeccionIdsDeDocente(idUsuario);
-            return todas.stream()
+            porRol = base.stream()
                     .filter(m -> gradoSeccionIds.contains(m.getGradoSeccion().getIdGradoSeccion()))
                     .toList();
-        }
-        if (accesoContextoService.esApoderado(roles)) {
+        } else if (accesoContextoService.esApoderado(roles)) {
             Apoderado apoderado = accesoContextoService.apoderadoDeUsuario(idUsuario).orElse(null);
-            if (apoderado == null) {
-                return List.of();
-            }
+            if (apoderado == null) return List.of();
             List<Matricula> visibles = new ArrayList<>();
             for (AlumnoApoderado vinculo : alumnoApoderadoRepository.findByApoderado(apoderado)) {
                 matriculaRepository.findByAlumnoApoderadoAndAccesoNot(vinculo, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                         .ifPresent(visibles::add);
             }
-            return visibles;
+            porRol = visibles;
+        } else {
+            return List.of();
         }
-        return List.of();
+        boolean filtrando = idNivel != null || idGrado != null || idSeccion != null || idTurno != null || idGradoSeccion != null || idAnio != null;
+        if (!filtrando) return porRol;
+        return porRol.stream().filter(m -> {
+            GradoSeccion gs = m.getGradoSeccion();
+            if (idGradoSeccion != null && !idGradoSeccion.equals(gs.getIdGradoSeccion())) return false;
+            if (idTurno != null && (gs.getTurno() == null || !idTurno.equals(gs.getTurno().getIdTurno()))) return false;
+            if (idAnio != null && (gs.getAnioEscolar() == null || !idAnio.equals(gs.getAnioEscolar().getIdAnio()))) return false;
+            if (idGrado != null && (gs.getGrado() == null || !idGrado.equals(gs.getGrado().getIdGrado()))) return false;
+            if (idSeccion != null) {
+                Integer sid = gs.getSeccion() != null ? gs.getSeccion().getIdSeccion() : null;
+                if (!idSeccion.equals(sid)) return false;
+            }
+            if (idNivel != null) {
+                Integer nid = gs.getGrado() != null && gs.getGrado().getNivel() != null ? gs.getGrado().getNivel().getIdNivel() : null;
+                if (!idNivel.equals(nid)) return false;
+            }
+            return true;
+        }).toList();
     }
 
     private boolean esVisibleAlumno(Integer idAlumno, Integer idUsuario, List<String> roles) {
@@ -243,8 +265,17 @@ public class AsistenciaService {
 
     @Transactional(readOnly = true)
     public List<AsistenciaDiaResponse> asistenciasHoy(Integer idUsuario, List<String> roles) {
+        return asistenciasHoy(idUsuario, roles, null, null, null, null, null, null, org.springframework.data.domain.Pageable.unpaged()).getContent();
+    }
+
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<AsistenciaDiaResponse> asistenciasHoy(Integer idUsuario, List<String> roles,
+                                                                                       Integer idNivel, Integer idGrado, Integer idSeccion,
+                                                                                       Integer idTurno, Integer idGradoSeccion, Integer idAnio,
+                                                                                       org.springframework.data.domain.Pageable pageable) {
         LocalDate hoy = LocalDate.now();
-        return matriculasVisibles(idUsuario, roles).stream().map(matricula -> {
+        List<AsistenciaDiaResponse> contenido = matriculasVisiblesFiltradas(idUsuario, roles, idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio)
+                .stream().map(matricula -> {
             Alumno alumno = alumnoDe(matricula);
             GradoSeccion gs = matricula.getGradoSeccion();
 
@@ -253,6 +284,20 @@ public class AsistenciaService {
             row.setAlumno(nombreCompleto(alumno));
             row.setGrado(gs.getGrado().getNombre());
             row.setSeccion(gs.getSeccion() != null ? gs.getSeccion().getNombre() : "Única");
+            // académicos
+            row.setIdGradoSeccion(gs.getIdGradoSeccion());
+            row.setIdTurno(gs.getTurno() != null ? gs.getTurno().getIdTurno() : null);
+            row.setTurno(gs.getTurno() != null ? gs.getTurno().getNombre() : null);
+            row.setIdAnio(gs.getAnioEscolar() != null ? gs.getAnioEscolar().getIdAnio() : null);
+            row.setAnio(gs.getAnioEscolar() != null ? gs.getAnioEscolar().getAnio() : null);
+            if (gs.getGrado() != null) {
+                row.setIdGrado(gs.getGrado().getIdGrado());
+                if (gs.getGrado().getNivel() != null) {
+                    row.setIdNivel(gs.getGrado().getNivel().getIdNivel());
+                    row.setNivel(gs.getGrado().getNivel().getNombre());
+                }
+            }
+            if (gs.getSeccion() != null) row.setIdSeccion(gs.getSeccion().getIdSeccion());
 
             asistenciaAlumnoRepository
                     .findByMatriculaIdMatriculaAndFechaAndAccesoNot(matricula.getIdMatricula(), hoy, accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow())
@@ -267,12 +312,22 @@ public class AsistenciaService {
             }
             return row;
         }).collect(Collectors.toList());
+        if (pageable.isUnpaged()) return new org.springframework.data.domain.PageImpl<>(contenido);
+        return paginarEnMemoria(contenido, pageable);
     }
 
     @Transactional(readOnly = true)
     public Page<MatrizSemanalResponse> matrizSemanal(LocalDate fecha, Pageable pageable, Integer idUsuario, List<String> roles) {
+        return matrizSemanal(fecha, pageable, idUsuario, roles, null, null, null, null, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<MatrizSemanalResponse> matrizSemanal(LocalDate fecha, Pageable pageable, Integer idUsuario, List<String> roles,
+                                                      Integer idNivel, Integer idGrado, Integer idSeccion,
+                                                      Integer idTurno, Integer idGradoSeccion, Integer idAnio) {
         LocalDate lunes = fecha.with(DayOfWeek.MONDAY);
-        List<MatrizSemanalResponse> contenido = matriculasVisibles(idUsuario, roles).stream().map(matricula -> {
+        List<MatrizSemanalResponse> contenido = matriculasVisiblesFiltradas(idUsuario, roles, idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio)
+                .stream().map(matricula -> {
             Alumno alumno = alumnoDe(matricula);
             GradoSeccion gs = matricula.getGradoSeccion();
 
@@ -281,6 +336,19 @@ public class AsistenciaService {
             row.setAlumno(nombreCompleto(alumno));
             row.setGrado(gs.getGrado().getNombre());
             row.setSeccion(gs.getSeccion() != null ? gs.getSeccion().getNombre() : "Única");
+            row.setIdGradoSeccion(gs.getIdGradoSeccion());
+            row.setIdTurno(gs.getTurno() != null ? gs.getTurno().getIdTurno() : null);
+            row.setTurno(gs.getTurno() != null ? gs.getTurno().getNombre() : null);
+            row.setIdAnio(gs.getAnioEscolar() != null ? gs.getAnioEscolar().getIdAnio() : null);
+            row.setAnio(gs.getAnioEscolar() != null ? gs.getAnioEscolar().getAnio() : null);
+            if (gs.getGrado() != null) {
+                row.setIdGrado(gs.getGrado().getIdGrado());
+                if (gs.getGrado().getNivel() != null) {
+                    row.setIdNivel(gs.getGrado().getNivel().getIdNivel());
+                    row.setNivel(gs.getGrado().getNivel().getNombre());
+                }
+            }
+            if (gs.getSeccion() != null) row.setIdSeccion(gs.getSeccion().getIdSeccion());
 
             List<String> estados = new ArrayList<>();
             for (int i = 0; i < 5; i++) {
@@ -298,10 +366,17 @@ public class AsistenciaService {
 
     @Transactional(readOnly = true)
     public Page<ResumenMensualResponse> resumenMensual(LocalDate fecha, Pageable pageable, Integer idUsuario, List<String> roles) {
+        return resumenMensual(fecha, pageable, idUsuario, roles, null, null, null, null, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ResumenMensualResponse> resumenMensual(LocalDate fecha, Pageable pageable, Integer idUsuario, List<String> roles,
+                                                        Integer idNivel, Integer idGrado, Integer idSeccion,
+                                                        Integer idTurno, Integer idGradoSeccion, Integer idAnio) {
         LocalDate inicio = fecha.withDayOfMonth(1);
         LocalDate fin = fecha.withDayOfMonth(fecha.lengthOfMonth());
 
-        List<Matricula> matriculas = matriculasVisibles(idUsuario, roles);
+        List<Matricula> matriculas = matriculasVisiblesFiltradas(idUsuario, roles, idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio);
         List<AsistenciaAlumno> asistenciasMes = asistenciaAlumnoRepository.findByFechaBetweenAndAccesoNot(inicio, fin, accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         Map<Integer, List<AsistenciaAlumno>> porMatricula = asistenciasMes.stream()
                 .collect(Collectors.groupingBy(a -> a.getMatricula().getIdMatricula()));
@@ -389,9 +464,17 @@ public class AsistenciaService {
     @Transactional(readOnly = true)
     public Page<ReporteGeneralResponse> reporteGeneral(LocalDate inicio, LocalDate fin, Pageable pageable,
                                                        Integer idUsuario, List<String> roles) {
+        return reporteGeneral(inicio, fin, pageable, idUsuario, roles, null, null, null, null, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ReporteGeneralResponse> reporteGeneral(LocalDate inicio, LocalDate fin, Pageable pageable,
+                                                       Integer idUsuario, List<String> roles,
+                                                       Integer idNivel, Integer idGrado, Integer idSeccion,
+                                                       Integer idTurno, Integer idGradoSeccion, Integer idAnio) {
         if (inicio == null) inicio = LocalDate.now();
         if (fin == null) fin = LocalDate.now();
-        List<Matricula> matriculas = matriculasVisibles(idUsuario, roles);
+        List<Matricula> matriculas = matriculasVisiblesFiltradas(idUsuario, roles, idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio);
         Set<Integer> matriculaIdsVisibles = matriculas.stream()
                 .map(Matricula::getIdMatricula)
                 .collect(Collectors.toSet());
@@ -416,15 +499,29 @@ public class AsistenciaService {
                     r.setEstado(a.getEstado().getNombre());
                     r.setJustificacion(a.getJustificacion() != null ? a.getJustificacion().getMotivo() : "-");
                     r.setRegistradoPor(marcadoPor(a));
+                    r.setIdGradoSeccion(gs.getIdGradoSeccion());
+                    r.setIdTurno(gs.getTurno() != null ? gs.getTurno().getIdTurno() : null);
+                    r.setTurno(gs.getTurno() != null ? gs.getTurno().getNombre() : null);
+                    r.setIdAnio(gs.getAnioEscolar() != null ? gs.getAnioEscolar().getIdAnio() : null);
+                    r.setAnio(gs.getAnioEscolar() != null ? gs.getAnioEscolar().getAnio() : null);
+                    if (gs.getGrado() != null) {
+                        r.setIdGrado(gs.getGrado().getIdGrado());
+                        r.setGrado(gs.getGrado().getNombre());
+                        if (gs.getGrado().getNivel() != null) {
+                            r.setIdNivel(gs.getGrado().getNivel().getIdNivel());
+                            r.setNivel(gs.getGrado().getNivel().getNombre());
+                        }
+                    }
+                    if (gs.getSeccion() != null) { r.setIdSeccion(gs.getSeccion().getIdSeccion()); r.setSeccion(gs.getSeccion().getNombre()); }
                     return r;
                 }).collect(Collectors.toList());
 
         if (!matriculas.isEmpty()) {
-            Integer idAnio = matriculas.get(0).getGradoSeccion().getAnioEscolar().getIdAnio();
+            Integer idAnioFeriado = matriculas.get(0).getGradoSeccion().getAnioEscolar().getIdAnio();
 
             Set<LocalDate> fechasFeriado = diaFeriadoRepository
                     .findByFechaBetweenAndAccesoNot(inicio, fin, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
-                    .filter(f -> f.getAnioEscolar() == null || f.getAnioEscolar().getIdAnio().equals(idAnio))
+                    .filter(f -> f.getAnioEscolar() == null || f.getAnioEscolar().getIdAnio().equals(idAnioFeriado))
                     .map(DiaFeriado::getFecha)
                     .collect(Collectors.toSet());
 
@@ -462,6 +559,20 @@ public class AsistenciaService {
                     r.setEstado(ESTADO_INASISTENCIA);
                     r.setJustificacion("-");
                     r.setRegistradoPor("-");
+                    r.setIdGradoSeccion(gs.getIdGradoSeccion());
+                    r.setIdTurno(gs.getTurno() != null ? gs.getTurno().getIdTurno() : null);
+                    r.setTurno(gs.getTurno() != null ? gs.getTurno().getNombre() : null);
+                    r.setIdAnio(gs.getAnioEscolar() != null ? gs.getAnioEscolar().getIdAnio() : null);
+                    r.setAnio(gs.getAnioEscolar() != null ? gs.getAnioEscolar().getAnio() : null);
+                    if (gs.getGrado() != null) {
+                        r.setIdGrado(gs.getGrado().getIdGrado());
+                        r.setGrado(gs.getGrado().getNombre());
+                        if (gs.getGrado().getNivel() != null) {
+                            r.setIdNivel(gs.getGrado().getNivel().getIdNivel());
+                            r.setNivel(gs.getGrado().getNivel().getNombre());
+                        }
+                    }
+                    if (gs.getSeccion() != null) { r.setIdSeccion(gs.getSeccion().getIdSeccion()); r.setSeccion(gs.getSeccion().getNombre()); }
                     contenido.add(r);
                 }
             }
@@ -560,6 +671,19 @@ public class AsistenciaService {
         r.setDiasAsistidos(asistenciasRegistradas);
         r.setInasistencias(inasistencias);
         r.setPorcentajeAsistencia(porcentaje);
+        r.setIdGradoSeccion(gs.getIdGradoSeccion());
+        r.setIdTurno(gs.getTurno() != null ? gs.getTurno().getIdTurno() : null);
+        r.setTurno(gs.getTurno() != null ? gs.getTurno().getNombre() : null);
+        r.setIdAnio(gs.getAnioEscolar() != null ? gs.getAnioEscolar().getIdAnio() : null);
+        r.setAnio(gs.getAnioEscolar() != null ? gs.getAnioEscolar().getAnio() : null);
+        if (gs.getGrado() != null) {
+            r.setIdGrado(gs.getGrado().getIdGrado());
+            if (gs.getGrado().getNivel() != null) {
+                r.setIdNivel(gs.getGrado().getNivel().getIdNivel());
+                r.setNivel(gs.getGrado().getNivel().getNombre());
+            }
+        }
+        if (gs.getSeccion() != null) r.setIdSeccion(gs.getSeccion().getIdSeccion());
         return r;
     }
 

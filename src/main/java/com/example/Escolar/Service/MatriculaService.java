@@ -49,14 +49,51 @@ public class MatriculaService {
     private final AccesoRepository accesoRepository;
     private final AccesoContextoService accesoContextoService;
 
-    public Page<MatriculaResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles) {
+    public Page<MatriculaResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles,
+                                         Integer idNivel, Integer idGrado, Integer idSeccion,
+                                         Integer idTurno, Integer idGradoSeccion, Integer idAnio) {
+        boolean filtrando = idNivel != null || idGrado != null || idSeccion != null || idTurno != null || idGradoSeccion != null || idAnio != null;
         Set<Integer> visibles = idsMatriculasVisibles(idUsuario, roles);
-        List<Matricula> contenido = matriculaRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow(), pageable).getContent();
-        List<MatriculaResponse> respuestas = contenido.stream()
-                .filter(m -> visibles == null || visibles.contains(m.getIdMatricula()))
-                .map(this::toResponse)
-                .toList();
-        return new PageImpl<>(respuestas, pageable, respuestas.size());
+        boolean esGestion = visibles == null;
+
+        if (filtrando) {
+            if (esGestion) {
+                Page<Matricula> page = matriculaRepository.findFiltradas(
+                        AccesoConstants.ELIMINADO, idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio, pageable);
+                return page.map(this::toResponse);
+            } else {
+                List<Matricula> filtradas = matriculaRepository.findFiltradasList(
+                        AccesoConstants.ELIMINADO, idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio);
+                List<Matricula> visiblesList = filtradas.stream()
+                        .filter(m -> visibles.contains(m.getIdMatricula()))
+                        .toList();
+                return paginarMatriculasEnMemoria(visiblesList, pageable);
+            }
+        }
+
+        if (esGestion) {
+            Page<Matricula> page = matriculaRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow(), pageable);
+            return page.map(this::toResponse);
+        } else {
+            List<Matricula> todas = matriculaRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
+            List<Matricula> visiblesList = todas.stream()
+                    .filter(m -> visibles.contains(m.getIdMatricula()))
+                    .toList();
+            return paginarMatriculasEnMemoria(visiblesList, pageable);
+        }
+    }
+
+    public Page<MatriculaResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles) {
+        return getAll(pageable, idUsuario, roles, null, null, null, null, null, null);
+    }
+
+    private Page<MatriculaResponse> paginarMatriculasEnMemoria(List<Matricula> lista, Pageable pageable) {
+        int total = lista.size();
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), total);
+        List<Matricula> slice = start >= total ? List.of() : lista.subList(start, end);
+        List<MatriculaResponse> respuestas = slice.stream().map(this::toResponse).toList();
+        return new PageImpl<>(respuestas, pageable, total);
     }
 
     public MatriculaResponse getById(Integer id, Integer idUsuario, List<String> roles) {

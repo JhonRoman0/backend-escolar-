@@ -54,6 +54,12 @@ DIAGRAMAS-SECUENCIA.md
 ARQUITECTURA-SISTEMA.md 
 
 # ==========================================
+# Configuración local de Spring Boot
+# ==========================================
+application-local.properties
+
+
+# ==========================================
 # Variables de Entorno y Config Local
 # ==========================================
 .env

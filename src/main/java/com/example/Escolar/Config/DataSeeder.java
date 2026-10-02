@@ -111,7 +111,7 @@ public class DataSeeder implements CommandLineRunner {
             return;
         }
         Acceso acceso = new Acceso();
-        acceso.setIdAcceso(id);
+        //acceso.setIdAcceso(id);
         acceso.setNombre(nombre);
         accesoRepository.save(acceso);
     }

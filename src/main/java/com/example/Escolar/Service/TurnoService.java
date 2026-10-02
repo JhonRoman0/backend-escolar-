@@ -10,11 +10,18 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class TurnoService {
+
+    private static final DateTimeFormatter HORA_CORTA = DateTimeFormatter.ofPattern("HH:mm");
 
     private final TurnoRepository turnoRepository;
     private final AccesoRepository accesoRepository;
@@ -32,6 +39,10 @@ public class TurnoService {
     @Transactional
     public TurnoResponse create(TurnoRequest request) {
         validarNombreUnico(request.getNombre(), null);
+        validarOrdenHoras(request);
+        // Todavía no tiene id: se ubica al final de los que empiezan a la misma
+        // hora, que es donde va a caer cuando se guarde y reciba su id.
+        validarSolapamiento(request, null, Integer.MAX_VALUE);
         Turno turno = new Turno();
         turno.setNombre(request.getNombre().trim());
         aplicarDatos(turno, request);
@@ -46,6 +57,10 @@ public class TurnoService {
             validarNombreUnico(request.getNombre(), id);
             turno.setNombre(request.getNombre().trim());
         }
+        validarOrdenHoras(request);
+        // El propio turno sale de la cadena para no compararse consigo mismo, y
+        // entra con las horas que se van a guardar, no con las que tiene ahora.
+        validarSolapamiento(request, id, id);
         aplicarDatos(turno, request);
         if (request.getAccesoId() != null) {
             turno.setAcceso(accesoRepository.findById(request.getAccesoId()).orElseThrow());
@@ -65,6 +80,70 @@ public class TurnoService {
         turno.setHoraEntradaLimite(request.getHoraEntradaLimite());
         turno.setHoraFaltaLimite(request.getHoraFaltaLimite());
         turno.setHoraSalida(request.getHoraSalida());
+    }
+
+    /**
+     * Las cuatro horas de un turno van en cadena: entrada, limite de entrada,
+     * limite de falta y salida. El turno se guarda completo o no se guarda.
+     */
+    private void validarOrdenHoras(TurnoRequest request) {
+        validarOrden(request.getHoraEntrada(), request.getHoraEntradaLimite(),
+                "El limite de puntualidad debe ser mayor a la hora de entrada");
+        validarOrden(request.getHoraEntradaLimite(), request.getHoraFaltaLimite(),
+                "El limite de tardanza debe ser mayor al limite de puntualidad");
+        validarOrden(request.getHoraFaltaLimite(), request.getHoraSalida(),
+                "La hora de salida debe ser mayor al limite de tardanza");
+    }
+
+    private void validarOrden(LocalTime anterior, LocalTime siguiente, String mensaje) {
+        // TurnoRequest ya exige las cuatro horas, asi que no hace falta cubrir
+        // el caso de que falte alguna.
+        if (!anterior.isBefore(siguiente)) {
+            throw new IllegalArgumentException(mensaje);
+        }
+    }
+
+    /**
+     * Un turno solo se cruza con el que lo precede en la jornada, nunca con los
+     * que vienen despues: esos se validan contra el, no al reves. Por eso el
+     * primero de la cadena siempre pasa, y por eso editar el turno de la manana
+     * nunca falla por un turno posterior.
+     *
+     * El empate esta permitido, representa el cambio de turno: manana sale a las
+     * 12:30 y la tarde entra a las 12:30 es una configuracion valida.
+     */
+    private void validarSolapamiento(TurnoRequest request, Integer idExcluir, Integer idPropio) {
+        List<Turno> cadena = turnoRepository
+                .findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
+                .stream()
+                .filter(t -> idExcluir == null || !t.getIdTurno().equals(idExcluir))
+                .sorted(Comparator.comparing(Turno::getHoraEntrada).thenComparing(Turno::getIdTurno))
+                .collect(Collectors.toCollection(ArrayList::new));
+
+        Turno candidato = new Turno();
+        candidato.setIdTurno(idPropio);
+        candidato.setNombre(request.getNombre() == null ? "" : request.getNombre().trim());
+        candidato.setHoraEntrada(request.getHoraEntrada());
+        candidato.setHoraSalida(request.getHoraSalida());
+
+        // El empate por hora de entrada se resuelve con el id, asi que el
+        // candidato entra en la posicion que le corresponde segun el suyo.
+        int insercion = 0;
+        while (insercion < cadena.size()
+                && (cadena.get(insercion).getHoraEntrada().isBefore(candidato.getHoraEntrada())
+                || (cadena.get(insercion).getHoraEntrada().equals(candidato.getHoraEntrada())
+                && cadena.get(insercion).getIdTurno() < candidato.getIdTurno()))) {
+            insercion++;
+        }
+        if (insercion == 0) {
+            return;
+        }
+
+        Turno anterior = cadena.get(insercion - 1);
+        if (candidato.getHoraEntrada().isBefore(anterior.getHoraSalida())) {
+            throw new IllegalArgumentException("No puede iniciar antes de que termine el turno "
+                    + anterior.getNombre() + " (" + anterior.getHoraSalida().format(HORA_CORTA) + ")");
+        }
     }
 
     private void validarNombreUnico(String nombre, Integer idExcluir) {

@@ -12,6 +12,7 @@ import com.example.Escolar.Model.PermisoAccion;
 import com.example.Escolar.Model.Rol;
 import com.example.Escolar.Model.RolPermiso;
 import com.example.Escolar.Model.RolPermisoAccion;
+import com.example.Escolar.Model.Turno;
 import com.example.Escolar.Model.Usuario;
 import com.example.Escolar.Model.UsuarioRol;
 import com.example.Escolar.Repository.AccionRepository;
@@ -26,6 +27,7 @@ import com.example.Escolar.Repository.PermisoRepository;
 import com.example.Escolar.Repository.RolPermisoAccionRepository;
 import com.example.Escolar.Repository.RolPermisoRepository;
 import com.example.Escolar.Repository.RolRepository;
+import com.example.Escolar.Repository.TurnoRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
 import com.example.Escolar.Service.AccesoConstants;
@@ -38,6 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -59,6 +62,7 @@ public class DataSeeder implements CommandLineRunner {
     private final NivelRepository nivelRepository;
     private final CompetenciaRepository competenciaRepository;
     private final CursoRepository cursoRepository;
+    private final TurnoRepository turnoRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Value("${jwt.admin.codigo}")
@@ -91,6 +95,7 @@ public class DataSeeder implements CommandLineRunner {
         seedAcciones();
         seedEstadosAsistencia();
         seedNiveles();
+        seedTurnos();
         seedCompetencias();
         seedRoles();
         seedModulosRbac();
@@ -147,6 +152,40 @@ public class DataSeeder implements CommandLineRunner {
         nivel.setNombre(nombre);
         nivel.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         nivelRepository.save(nivel);
+    }
+
+    /**
+     * El colegio trabaja solo con dos turnos, siempre. Se siembran con horarios
+     * de ejemplo para que el sistema arranque utilizable, y despues cada colegio
+     * los ajusta a su realidad desde el formulario de edicion.
+     *
+     * Solo corre si la tabla esta vacia: si el colegio ya cargo turnos a mano no
+     * se toca ninguno, y en los arranques siguientes no vuelve a crear nada.
+     */
+    private void seedTurnos() {
+        if (!turnoRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).isEmpty()) {
+            return;
+        }
+        // La tarde empieza cuando termina la manana: el empate es el cambio de
+        // turno y esta permitido. Entre los cuatro horarios de cada turno hay
+        // margen para el cambio de turno, la llegada tarde y la falta.
+        crearTurnoSiFalta("Mañana", LocalTime.of(7, 0), LocalTime.of(7, 20), LocalTime.of(7, 40), LocalTime.of(12, 30));
+        crearTurnoSiFalta("Tarde", LocalTime.of(12, 30), LocalTime.of(12, 50), LocalTime.of(13, 10), LocalTime.of(17, 30));
+    }
+
+    private void crearTurnoSiFalta(String nombre, LocalTime horaEntrada, LocalTime horaEntradaLimite,
+            LocalTime horaFaltaLimite, LocalTime horaSalida) {
+        if (turnoRepository.findByNombreAndAccesoNot(nombre, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).isPresent()) {
+            return;
+        }
+        Turno turno = new Turno();
+        turno.setNombre(nombre);
+        turno.setHoraEntrada(horaEntrada);
+        turno.setHoraEntradaLimite(horaEntradaLimite);
+        turno.setHoraFaltaLimite(horaFaltaLimite);
+        turno.setHoraSalida(horaSalida);
+        turno.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
+        turnoRepository.save(turno);
     }
 
     private void seedCompetencias() {

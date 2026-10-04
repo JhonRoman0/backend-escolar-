@@ -2,6 +2,7 @@ package com.example.Escolar.Service;
 
 import com.example.Escolar.Dto.GradoSeccionResponse;
 import com.example.Escolar.Dto.SeccionRequest;
+import com.example.Escolar.Dto.SeccionesBatchRequest;
 import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.AnioEscolar;
 import com.example.Escolar.Model.Asignacion;
@@ -40,6 +41,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -142,6 +145,14 @@ class GradoSeccionServiceTest {
         r.setIdGrado(10);
         r.setIdTurno(idTurno);
         r.setNombre(nombre);
+        return r;
+    }
+
+    private SeccionesBatchRequest lote(int idTurno, String... nombres) {
+        SeccionesBatchRequest r = new SeccionesBatchRequest();
+        r.setIdGrado(10);
+        r.setIdTurno(idTurno);
+        r.setNombres(List.of(nombres));
         return r;
     }
 
@@ -301,5 +312,74 @@ class GradoSeccionServiceTest {
         when(asignacionRepository.existsByGradoSeccionIdGradoSeccionAndAccesoNot(anyInt(), any()))
                 .thenReturn(true);
         assertTrue(service.tieneUso(seccionExistente("A", manana, 55)));
+    }
+
+    // ── Lote ───────────────────────────────────────────────────────────────
+
+    @Test
+    void creaTodasLasLetrasDelLoteEnElAnioVigente() {
+        List<GradoSeccionResponse> res = service.crearLote(lote(1, "A", "B", "C"));
+
+        assertEquals(List.of("A", "B", "C"), res.stream().map(GradoSeccionResponse::getNombre).toList());
+        // El lote no manda anio: todas las secciones caen en el vigente, que es
+        // lo que el usuario ve en pantalla.
+        assertTrue(res.stream().allMatch(r -> r.getIdAnio() == 2026));
+        assertTrue(res.stream().allMatch(r -> "Mañana".equals(r.getTurno())));
+    }
+
+    @Test
+    void normalizaLosNombresDelLoteConEspaciosAlrededor() {
+        List<GradoSeccionResponse> res = service.crearLote(lote(1, "  A  ", "B"));
+
+        assertEquals(List.of("A", "B"), res.stream().map(GradoSeccionResponse::getNombre).toList());
+    }
+
+    @Test
+    void rechazaElLoteEnteroSiUnaLetraYaExiste() {
+        when(gradoSeccionRepository.findByGradoAndAccesoNot(any(), any()))
+                .thenReturn(new ArrayList<>(List.of(seccionExistente("A", manana, 55))));
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> service.crearLote(lote(1, "B", "A")));
+
+        assertTrue(e.getMessage().contains("Ya existe la sección A"));
+        // Lo que hace atomico el lote: B tampoco se escribe. Sin esto, el usuario
+        // se quedaria con B creada y A pendiente.
+        verify(seccionRepository, never()).save(any(Seccion.class));
+        verify(gradoSeccionRepository, never()).save(any(GradoSeccion.class));
+    }
+
+    @Test
+    void rechazaLetrasRepetidasDentroDelLote() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> service.crearLote(lote(1, "A", "B", "A")));
+
+        assertTrue(e.getMessage().contains("A"));
+        verify(seccionRepository, never()).save(any(Seccion.class));
+    }
+
+    @Test
+    void noRepitePorMayusculasDentroDelLote() {
+        assertThrows(IllegalArgumentException.class, () -> service.crearLote(lote(1, "A", "a")));
+    }
+
+    @Test
+    void elLoteAceptaLaMismaLetraEnOtroTurno() {
+        when(gradoSeccionRepository.findByGradoAndAccesoNot(any(), any()))
+                .thenReturn(new ArrayList<>(List.of(seccionExistente("A", manana, 55))));
+
+        List<GradoSeccionResponse> res = service.crearLote(lote(2, "A", "B"));
+
+        assertEquals(2, res.size());
+        assertTrue(res.stream().allMatch(r -> "Tarde".equals(r.getTurno())));
+    }
+
+    @Test
+    void avisaQueNoHayAnioVigenteParaCrearElLote() {
+        when(anioEscolarRepository.findByEstadoAndAccesoNot(any(), any())).thenReturn(Optional.empty());
+
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> service.crearLote(lote(1, "A")));
+        assertTrue(e.getMessage().contains("año escolar vigente"));
     }
 }

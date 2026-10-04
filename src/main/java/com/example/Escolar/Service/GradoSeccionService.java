@@ -3,6 +3,7 @@ package com.example.Escolar.Service;
 import com.example.Escolar.Dto.GradoSeccionResponse;
 import com.example.Escolar.Dto.SeccionRequest;
 import com.example.Escolar.Dto.SeccionResponse;
+import com.example.Escolar.Dto.SeccionesBatchRequest;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.AnioEscolar;
@@ -22,7 +23,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -56,32 +60,46 @@ public class GradoSeccionService {
      * Crea una seccion nueva sobre un grado que ya existe. El anio no lo elige
      * quien escribe: si no viene se usa el vigente, y si viene se respeta, para
      * que las cargas de los años cerrados sigan siendo posibles.
+     *
+     * <p>Es el caso de una sola letra del lote de {@link #crearLote}, y comparte
+     * con el la resolucion de grado, turno y anio y el guardado, para que los dos
+     * caminos no puedan terminar validando distinto.
      */
     @Transactional
     public GradoSeccionResponse create(SeccionRequest request) {
-        Grado grado = gradoRepository.findByIdGradoAndAccesoNot(request.getIdGrado(), accesoNoEliminado())
-                .orElseThrow(() -> new ResourceNotFoundException("Grado no encontrado con id " + request.getIdGrado()));
-        Turno turno = turnoRepository.findByIdTurnoAndAccesoNot(request.getIdTurno(), accesoNoEliminado())
-                .orElseThrow(() -> new ResourceNotFoundException("Turno no encontrado con id " + request.getIdTurno()));
-        AnioEscolar anioEscolar = request.getIdAnio() != null
-                ? buscarAnio(request.getIdAnio())
-                : anioVigente();
-
+        Combo combo = combo(request.getIdGrado(), request.getIdTurno(), request.getIdAnio());
         String nombre = normalizar(request.getNombre());
-        validarNombreLibre(grado, turno, anioEscolar, nombre, null);
+        validarNombreLibre(combo, nombre, null);
+        return guardar(combo, nombre);
+    }
 
-        Seccion seccion = new Seccion();
-        seccion.setNombre(nombre);
-        seccion.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
-        seccion = seccionRepository.save(seccion);
+    /**
+     * Crea varias secciones que comparten grado, turno y anio.
+     *
+     * <p>El lote se valida entero antes de guardar la primera letra. Esa es toda
+     * la diferencia con encadenar N llamadas a {@link #create}: sin la validacion
+     * previa, una peticion de A, B, A dejaria A y B ya escritas cuando la
+     * tercera rebotara, y el usuario tendria que limpiar a mano.
+     */
+    @Transactional
+    public List<GradoSeccionResponse> crearLote(SeccionesBatchRequest request) {
+        Combo combo = combo(request.getIdGrado(), request.getIdTurno(), request.getIdAnio());
 
-        GradoSeccion gs = new GradoSeccion();
-        gs.setGrado(grado);
-        gs.setSeccion(seccion);
-        gs.setTurno(turno);
-        gs.setAnioEscolar(anioEscolar);
-        gs.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
-        return toResponse(gradoSeccionRepository.save(gs));
+        List<String> nombres = new ArrayList<>();
+        Set<String> pendientes = new HashSet<>();
+        for (String bruto : request.getNombres()) {
+            String nombre = normalizar(bruto);
+            if (!pendientes.add(nombre.toLowerCase())) {
+                throw new IllegalArgumentException("La sección " + nombre + " está repetida en el envío");
+            }
+            nombres.add(nombre);
+        }
+
+        for (String nombre : nombres) {
+            validarNombreLibre(combo, nombre, null);
+        }
+
+        return nombres.stream().map(nombre -> guardar(combo, nombre)).toList();
     }
 
     /**
@@ -138,23 +156,62 @@ public class GradoSeccionService {
         gradoSeccionRepository.save(gs);
     }
 
-    private void validarNombreLibre(Grado grado, Turno turno, AnioEscolar anioEscolar, String nombre, Integer idExcluir) {
-        for (GradoSeccion gs : gradoSeccionRepository.findByGradoAndAccesoNot(grado, accesoNoEliminado())) {
+    /**
+     * Grado, turno y anio de una alta, resueltos y validados. Los tres seSacan
+     * siempre de los mismos lugares porque el filtro de duplicados compara
+     * justamente contra esa combinacion.
+     */
+    private Combo combo(Integer idGrado, Integer idTurno, Integer idAnio) {
+        Grado grado = gradoRepository.findByIdGradoAndAccesoNot(idGrado, accesoNoEliminado())
+                .orElseThrow(() -> new ResourceNotFoundException("Grado no encontrado con id " + idGrado));
+        Turno turno = turnoRepository.findByIdTurnoAndAccesoNot(idTurno, accesoNoEliminado())
+                .orElseThrow(() -> new ResourceNotFoundException("Turno no encontrado con id " + idTurno));
+        AnioEscolar anioEscolar = idAnio != null ? buscarAnio(idAnio) : anioVigente();
+        return new Combo(grado, turno, anioEscolar);
+    }
+
+    /** Escribe una seccion y su fila de grado_seccion para la combinacion dada. */
+    private GradoSeccionResponse guardar(Combo combo, String nombre) {
+        Seccion seccion = new Seccion();
+        seccion.setNombre(nombre);
+        seccion.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
+        seccion = seccionRepository.save(seccion);
+
+        GradoSeccion gs = new GradoSeccion();
+        gs.setGrado(combo.grado());
+        gs.setSeccion(seccion);
+        gs.setTurno(combo.turno());
+        gs.setAnioEscolar(combo.anioEscolar());
+        gs.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
+        return toResponse(gradoSeccionRepository.save(gs));
+    }
+
+    /**
+     * La seccion no puede existir dos veces con el mismo grado, turno y anio. La
+     * comparacion es sin distincion de mayusculas porque "a" y "A" son la misma
+     * letra para quien la ve en un listado.
+     */
+    private void validarNombreLibre(Combo combo, String nombre, Integer idExcluir) {
+        for (GradoSeccion gs : gradoSeccionRepository.findByGradoAndAccesoNot(combo.grado(), accesoNoEliminado())) {
             if (gs.getSeccion() == null) {
                 continue;
             }
             if (idExcluir != null && gs.getIdGradoSeccion().equals(idExcluir)) {
                 continue;
             }
-            boolean mismaCombinacion = gs.getTurno().getIdTurno().equals(turno.getIdTurno())
-                    && gs.getAnioEscolar().getIdAnio().equals(anioEscolar.getIdAnio())
+            boolean mismaCombinacion = gs.getTurno().getIdTurno().equals(combo.turno().getIdTurno())
+                    && gs.getAnioEscolar().getIdAnio().equals(combo.anioEscolar().getIdAnio())
                     && normalizar(gs.getSeccion().getNombre()).equalsIgnoreCase(nombre);
             if (mismaCombinacion) {
                 throw new IllegalArgumentException(
-                        "Ya existe la sección " + nombre + " en el turno " + turno.getNombre()
-                                + " para el año " + anioEscolar.getAnio());
+                        "Ya existe la sección " + nombre + " en el turno " + combo.turno().getNombre()
+                                + " para el año " + combo.anioEscolar().getAnio());
             }
         }
+    }
+
+    /** Triple que define a que combinacion pertenece una seccion nueva. */
+    private record Combo(Grado grado, Turno turno, AnioEscolar anioEscolar) {
     }
 
     public AnioEscolar anioVigente() {

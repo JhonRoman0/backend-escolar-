@@ -89,6 +89,7 @@ public class ApiPermisoRegistro {
         registrarLectura("GET", "/secciones", "GRADOS");
         registrarLectura("GET", "/secciones/**", "GRADOS");
         registrar("POST", "/secciones", "GRADOS", "CREAR");
+        registrar("POST", "/secciones/lote", "GRADOS", "CREAR");
         registrar("PUT", "/secciones/**", "GRADOS", "ACTUALIZAR");
         registrar("DELETE", "/secciones/**", "GRADOS", "ELIMINAR");
 
@@ -226,6 +227,8 @@ public class ApiPermisoRegistro {
         registrarLectura("GET", "/suspensiones", "SUSPENSIONES_DOCENTE");
         registrarLectura("GET", "/suspensiones/**", "SUSPENSIONES_DOCENTE");
         registrar("POST", "/suspensiones", "SUSPENSIONES_DOCENTE", "CREAR");
+        registrar("PUT", "/suspensiones/**", "SUSPENSIONES_DOCENTE", "CREAR");
+        registrar("DELETE", "/suspensiones/**", "SUSPENSIONES_DOCENTE", "ELIMINAR");
 
         registrarLectura("GET", "/cambios-docente", "CAMBIOS_DOCENTE");
         registrarLectura("GET", "/cambios-docente/**", "CAMBIOS_DOCENTE");

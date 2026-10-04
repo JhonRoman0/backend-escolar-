@@ -11,4 +11,10 @@ public class GradoSeccionResponse {
     private String nombre;
     private Integer idTurno;
     private String turno;
+    private Integer idAnio;
+    private String anio;
+
+    /** Conteo de uso en vivo: la UI deshabilita la papelera cuando hay registros. */
+    private boolean tieneMatriculas;
+    private boolean tieneAsignaciones;
 }

@@ -21,4 +21,10 @@ public interface AsignacionRepository extends JpaRepository<Asignacion, Integer>
             Integer idCurso, Integer idDocente, Integer idGradoSeccion, Integer idAnio, Acceso acceso);
 
     long countByDocenteAndAcceso(Docente docente, Acceso acceso);
+
+    /**
+     * Una seccion con al menos un curso asignado no se puede modificar ni eliminar:
+     * el horario, las notas y la asistencia cuelgan de esa fila.
+     */
+    boolean existsByGradoSeccionIdGradoSeccionAndAccesoNot(Integer idGradoSeccion, Acceso acceso);
 }

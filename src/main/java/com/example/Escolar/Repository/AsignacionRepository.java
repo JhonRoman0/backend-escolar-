@@ -21,4 +21,6 @@ public interface AsignacionRepository extends JpaRepository<Asignacion, Integer>
             Integer idCurso, Integer idDocente, Integer idGradoSeccion, Integer idAnio, Acceso acceso);
 
     long countByDocenteAndAcceso(Docente docente, Acceso acceso);
+
+    long countByAnioEscolarIdAnioAndAccesoNot(Integer idAnio, Acceso acceso);
 }

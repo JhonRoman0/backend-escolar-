@@ -4,6 +4,7 @@ import com.example.Escolar.Model.AnioEscolar;
 import com.example.Escolar.Model.Acceso;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -15,4 +16,6 @@ public interface AnioEscolarRepository extends JpaRepository<AnioEscolar, Intege
     Optional<AnioEscolar> findByAnioAndAccesoNot(String anio, Acceso acceso);
 
     Optional<AnioEscolar> findByEstadoAndAccesoNot(Byte estado, Acceso acceso);
+
+    List<AnioEscolar> findByEstadoInAndFechaFinBeforeAndAccesoNot(List<Byte> estados, LocalDate fechaFin, Acceso acceso);
 }

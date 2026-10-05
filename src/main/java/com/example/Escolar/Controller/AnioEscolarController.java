@@ -1,5 +1,6 @@
 package com.example.Escolar.Controller;
 
+import com.example.Escolar.Dto.AnioEscolarEstadoRequest;
 import com.example.Escolar.Dto.AnioEscolarRequest;
 import com.example.Escolar.Dto.AnioEscolarResponse;
 import com.example.Escolar.Service.AnioEscolarService;
@@ -37,6 +38,11 @@ public class AnioEscolarController {
     @PutMapping("/{id}")
     public AnioEscolarResponse update(@PathVariable Integer id, @Valid @RequestBody AnioEscolarRequest request) {
         return anioEscolarService.update(id, request);
+    }
+
+    @PatchMapping("/{id}/estado")
+    public AnioEscolarResponse cambiarEstado(@PathVariable Integer id, @Valid @RequestBody AnioEscolarEstadoRequest request) {
+        return anioEscolarService.cambiarEstado(id, request.getEstado());
     }
 
     @DeleteMapping("/{id}")

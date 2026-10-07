@@ -15,6 +15,12 @@ public interface HorarioClaseRepository extends JpaRepository<HorarioClase, Inte
 
     List<HorarioClase> findByAulaIdAulaAndAccesoNot(Integer idAula, Acceso acceso);
 
+    long countByAulaIdAulaAndAccesoNot(Integer idAula, Acceso acceso);
+
+    // Todas las filas de horarios de un aula, incluidas las del papelera: la FK
+    // id_aula no distingue por estado, así que borrar el aula exige purgarlas.
+    List<HorarioClase> findByAulaIdAula(Integer idAula);
+
     List<HorarioClase> findByAsignacionDocenteIdDocenteAndAccesoNot(Integer idDocente, Acceso acceso);
 
     // Réplica patrón Alumnos: 6 filtros académicos + docente + grado/seccion string, vigente, paginado

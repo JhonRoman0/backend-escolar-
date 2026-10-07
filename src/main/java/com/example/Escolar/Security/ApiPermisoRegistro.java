@@ -97,6 +97,7 @@ public class ApiPermisoRegistro {
         registrarLectura("GET", "/anios-escolares/**", "ANIOS_ESCOLARES");
         registrar("POST", "/anios-escolares", "ANIOS_ESCOLARES", "CREAR");
         registrar("PUT", "/anios-escolares/**", "ANIOS_ESCOLARES", "ACTUALIZAR");
+        registrar("PATCH", "/anios-escolares/**", "ANIOS_ESCOLARES", "ACTUALIZAR");
         registrar("DELETE", "/anios-escolares/**", "ANIOS_ESCOLARES", "ELIMINAR");
 
         registrarLectura("GET", "/aulas", "AULAS");
@@ -227,7 +228,7 @@ public class ApiPermisoRegistro {
         registrarLectura("GET", "/suspensiones", "SUSPENSIONES_DOCENTE");
         registrarLectura("GET", "/suspensiones/**", "SUSPENSIONES_DOCENTE");
         registrar("POST", "/suspensiones", "SUSPENSIONES_DOCENTE", "CREAR");
-        registrar("PUT", "/suspensiones/**", "SUSPENSIONES_DOCENTE", "CREAR");
+        registrar("PUT", "/suspensiones/**", "SUSPENSIONES_DOCENTE", "ACTUALIZAR");
         registrar("DELETE", "/suspensiones/**", "SUSPENSIONES_DOCENTE", "ELIMINAR");
 
         registrarLectura("GET", "/cambios-docente", "CAMBIOS_DOCENTE");

@@ -1,6 +1,7 @@
 package com.example.Escolar.Service;
 
 import com.example.Escolar.Dto.GradoSeccionResponse;
+import com.example.Escolar.Dto.SeccionActualizarRequest;
 import com.example.Escolar.Dto.SeccionRequest;
 import com.example.Escolar.Dto.SeccionResponse;
 import com.example.Escolar.Dto.SeccionesBatchRequest;
@@ -120,19 +121,48 @@ public class GradoSeccionService {
     public void delete(Integer idGradoSeccion) {
         GradoSeccion gs = gradoSeccionRepository.findByIdGradoSeccionAndAccesoNot(idGradoSeccion, accesoNoEliminado())
                 .orElseThrow(() -> new ResourceNotFoundException("Sección no encontrada con id " + idGradoSeccion));
-
+        if (!habilitadoParaSecciones(gs.getAnioEscolar())) {
+            throw new IllegalArgumentException("El año " + gs.getAnioEscolar().getAnio() + " no está habilitado para administrar secciones");
+        }
         if (tieneUso(gs)) {
             throw new IllegalArgumentException(MENSAJE_SECCION_EN_USO);
         }
+        marcarSeccionEliminada(gs);
+    }
 
-        List<GradoSeccion> hermanas = gradoSeccionRepository.findByGradoAndAccesoNot(gs.getGrado(), accesoNoEliminado());
-        if (hermanas.size() <= 1) {
-            throw new IllegalArgumentException(
-                    "No se puede eliminar la última sección del grado " + gs.getGrado().getNombre()
-                            + ": debe quedar al menos una");
+    @Transactional
+    public GradoSeccionResponse update(Integer idGradoSeccion, SeccionActualizarRequest request) {
+        GradoSeccion gs = gradoSeccionRepository.findByIdGradoSeccionAndAccesoNot(idGradoSeccion, accesoNoEliminado())
+                .orElseThrow(() -> new ResourceNotFoundException("Sección no encontrada con id " + idGradoSeccion));
+
+        String nombre = normalizar(request.getNombre());
+        if (nombre == null || nombre.isBlank()) {
+            throw new IllegalArgumentException("El nombre de la sección es obligatorio");
+        }
+        if (nombre.length() != 1 || !nombre.matches("^[A-Z]$")) {
+            throw new IllegalArgumentException("La sección debe ser una sola letra (A-Z)");
         }
 
-        marcarSeccionEliminada(gs);
+        Combo combo = new Combo(gs.getGrado(), gs.getTurno(), gs.getAnioEscolar());
+        validarNombreLibre(combo, nombre, idGradoSeccion);
+
+        if (!habilitadoParaSecciones(gs.getAnioEscolar())) {
+            throw new IllegalArgumentException("El año " + gs.getAnioEscolar().getAnio() + " no está habilitado para administrar secciones");
+        }
+
+        Seccion s = gs.getSeccion();
+        if (s != null) {
+            s.setNombre(nombre);
+            seccionRepository.save(s);
+        } else {
+            s = new Seccion();
+            s.setNombre(nombre);
+            s.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
+            seccionRepository.save(s);
+            gs.setSeccion(s);
+        }
+        gradoSeccionRepository.save(gs);
+        return toResponse(gs);
     }
 
     /** True si la seccion tiene matriculas o asignaciones que la sostienen. */
@@ -154,6 +184,68 @@ public class GradoSeccionService {
      * borrara la primera, la letra quedaria viva para siempre y se acumularian
      * letras huerfanas en la base.
      */
+    @Transactional
+    public void deleteLote(java.util.List<Integer> ids) {
+        if (ids == null || ids.isEmpty()) {
+            throw new IllegalArgumentException("Debes seleccionar al menos una sección para eliminar");
+        }
+
+        java.util.LinkedHashSet<Integer> unicos = new java.util.LinkedHashSet<>(ids);
+        if (unicos.size() != ids.size()) {
+            throw new IllegalArgumentException("La lista de secciones contiene duplicados");
+        }
+
+        java.util.List<GradoSeccion> cargadas = new java.util.ArrayList<>();
+        java.util.List<com.example.Escolar.Dto.ItemDeleteError> errores = new java.util.ArrayList<>();
+
+        for (Integer id : unicos) {
+            java.util.Optional<GradoSeccion> opt = gradoSeccionRepository.findByIdGradoSeccionAndAccesoNot(id, accesoNoEliminado());
+            if (opt.isEmpty()) {
+                errores.add(new com.example.Escolar.Dto.ItemDeleteError(id, null, "No encontrada o ya fue eliminada"));
+                continue;
+            }
+            cargadas.add(opt.get());
+        }
+
+        for (GradoSeccion gs : cargadas) {
+            String nombre = (gs.getSeccion() != null) ? gs.getSeccion().getNombre() : null;
+            if (!habilitadoParaSecciones(gs.getAnioEscolar())) {
+                errores.add(new com.example.Escolar.Dto.ItemDeleteError(
+                        gs.getIdGradoSeccion(),
+                        nombre,
+                        "El año " + gs.getAnioEscolar().getAnio() + " no está habilitado para administrar secciones"
+                ));
+            }
+        }
+
+        for (GradoSeccion gs : cargadas) {
+            String nombre = (gs.getSeccion() != null) ? gs.getSeccion().getNombre() : null;
+            boolean yaConError = errores.stream()
+                    .anyMatch(e -> e.getIdGradoSeccion() != null && e.getIdGradoSeccion().equals(gs.getIdGradoSeccion()));
+            if (yaConError) {
+                continue;
+            }
+            if (tieneUso(gs)) {
+                errores.add(new com.example.Escolar.Dto.ItemDeleteError(
+                        gs.getIdGradoSeccion(),
+                        nombre,
+                        MENSAJE_SECCION_EN_USO
+                ));
+            }
+        }
+
+        if (!errores.isEmpty()) {
+            throw new com.example.Escolar.Exception.BatchDeleteNotAllowedException(
+                    "Algunas secciones no pueden eliminarse",
+                    errores
+            );
+        }
+
+        for (GradoSeccion gs : cargadas) {
+            marcarSeccionEliminada(gs);
+        }
+    }
+
     @Transactional
     public void marcarSeccionEliminada(GradoSeccion gs) {
         Acceso eliminado = accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow();

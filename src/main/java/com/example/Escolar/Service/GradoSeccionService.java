@@ -23,9 +23,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 @Service
@@ -34,6 +37,12 @@ public class GradoSeccionService {
 
     /** Estado 1 del anioEscolar: el que esta corriendo. */
     public static final byte ESTADO_ANIO_VIGENTE = 1;
+
+    /** Estado 2 del anioEscolar: terminal, no admite secciones nuevas. */
+    public static final byte ESTADO_ANIO_CERRADO = 2;
+
+    /** Estado 3 del anioEscolar: creado pero aun no iniciado. */
+    public static final byte ESTADO_ANIO_POR_COMENZAR = 3;
 
     public static final String MENSAJE_SECCION_EN_USO =
             "No se puede modificar o eliminar esta sección porque cuenta con alumnos matriculados o cursos asignados";
@@ -58,8 +67,9 @@ public class GradoSeccionService {
 
     /**
      * Crea una seccion nueva sobre un grado que ya existe. El anio no lo elige
-     * quien escribe: si no viene se usa el vigente, y si viene se respeta, para
-     * que las cargas de los años cerrados sigan siendo posibles.
+     * quien escribe: si no viene se resuelve con {@link #anioActivo()} (por
+     * comenzar habilitado o vigente), y si viene se respeta, siempre que el ano
+     * admita secciones nuevas (vigente o por comenzar ya iniciado).
      *
      * <p>Es el caso de una sola letra del lote de {@link #crearLote}, y comparte
      * con el la resolucion de grado, turno y anio y el guardado, para que los dos
@@ -166,7 +176,7 @@ public class GradoSeccionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Grado no encontrado con id " + idGrado));
         Turno turno = turnoRepository.findByIdTurnoAndAccesoNot(idTurno, accesoNoEliminado())
                 .orElseThrow(() -> new ResourceNotFoundException("Turno no encontrado con id " + idTurno));
-        AnioEscolar anioEscolar = idAnio != null ? buscarAnio(idAnio) : anioVigente();
+        AnioEscolar anioEscolar = idAnio != null ? anioValidoParaSecciones(idAnio) : anioActivo();
         return new Combo(grado, turno, anioEscolar);
     }
 
@@ -219,6 +229,73 @@ public class GradoSeccionService {
                 .findByEstadoAndAccesoNot(ESTADO_ANIO_VIGENTE, accesoNoEliminado())
                 .orElseThrow(() -> new IllegalStateException(
                         "No hay un año escolar vigente. Configúralo antes de crear secciones."));
+    }
+
+    /**
+     * Anio sobre el que se crea una seccion cuando la peticion no trae uno.
+     * Prefiere el por comenzar habilitado (el de anio mas alto, que es el
+     * proximo ciclo para el que se estan preparando las secciones) y, si no lo
+     * hay, el vigente. Solo un anio sin habilitar (cerrado, por comenzar futu-
+     * ro o inexistente) bloquea el alta.
+     */
+    public AnioEscolar anioActivo() {
+        Acceso noEliminado = accesoNoEliminado();
+        Optional<AnioEscolar> porComenzar = anioEscolarRepository
+                .findByEstadoInAndAccesoNot(List.of(ESTADO_ANIO_POR_COMENZAR), noEliminado).stream()
+                .filter(this::habilitadoParaSecciones)
+                .max(Comparator.comparing(AnioEscolar::getAnio));
+        return porComenzar
+                .or(() -> anioEscolarRepository.findByEstadoAndAccesoNot(ESTADO_ANIO_VIGENTE, noEliminado))
+                .orElseThrow(() -> new IllegalStateException(
+                        "No hay un año escolar habilitado (vigente o por comenzar ya iniciado). "
+                                + "Configúralo antes de crear secciones."));
+    }
+
+    /**
+     * El anio elegido a mano aplica la misma regla que el resuelto: vigente o
+     * por comenzar cuya fecha de inicio ya llego. El cerrado y el por comenzar
+     * sin fecha o todavia futuro se rechazan con un mensaje que dice cual es la
+     * fecha limite, porque el caso tipico es preparar el proximo ciclo.
+     */
+    private AnioEscolar anioValidoParaSecciones(Integer idAnio) {
+        AnioEscolar anio = buscarAnio(idAnio);
+        if (anio.getEstado() == ESTADO_ANIO_CERRADO) {
+            throw new IllegalStateException(
+                    "El año " + anio.getAnio() + " está cerrado y no admite secciones nuevas.");
+        }
+        if (anio.getEstado() == ESTADO_ANIO_POR_COMENZAR) {
+            if (anio.getFechaInicio() == null) {
+                throw new IllegalStateException(
+                        "El año " + anio.getAnio() + " está por comenzar pero no tiene fecha de inicio: "
+                                + "no admite secciones todavía.");
+            }
+            if (anio.getFechaInicio().isAfter(LocalDate.now())) {
+                throw new IllegalStateException(
+                        "El año " + anio.getAnio() + " aún no inicia: las secciones se habilitan desde el "
+                                + enTexto(anio.getFechaInicio()) + ".");
+            }
+        }
+        return anio;
+    }
+
+    /**
+     * Un por comenzar solo habilita cuando ya arranco su ventana: antes de la
+     * fecha de inicio las secciones nuevas serian del ciclo que sigue y
+     * entrarian en un anio que nadie esta usando. Sin fecha no hay ventana que
+     * esperar, asi que cuenta como todavia no habilitado.
+     */
+    private boolean habilitadoParaSecciones(AnioEscolar anio) {
+        if (anio.getEstado() == ESTADO_ANIO_VIGENTE) {
+            return true;
+        }
+        return anio.getEstado() == ESTADO_ANIO_POR_COMENZAR
+                && anio.getFechaInicio() != null
+                && !anio.getFechaInicio().isAfter(LocalDate.now());
+    }
+
+    /** 2026-10-14 -> 14/10/2026, el formato que la UI muestra al usuario. */
+    private String enTexto(LocalDate fecha) {
+        return String.format("%02d/%02d/%d", fecha.getDayOfMonth(), fecha.getMonthValue(), fecha.getYear());
     }
 
     public AnioEscolar buscarAnio(Integer idAnio) {

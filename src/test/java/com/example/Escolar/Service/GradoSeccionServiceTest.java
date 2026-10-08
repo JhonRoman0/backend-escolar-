@@ -29,6 +29,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -297,12 +298,135 @@ class GradoSeccionServiceTest {
     }
 
     @Test
-    void avisaQueNoHayAnioVigenteParaCrear() {
+    void avisaQueNoHayAnioHabilitadoParaCrear() {
+        when(anioEscolarRepository.findByEstadoInAndAccesoNot(any(), any())).thenReturn(List.of());
         when(anioEscolarRepository.findByEstadoAndAccesoNot(any(), any())).thenReturn(Optional.empty());
 
         IllegalStateException e = assertThrows(IllegalStateException.class,
                 () -> service.create(request("A", 1)));
-        assertTrue(e.getMessage().contains("año escolar vigente"));
+        assertTrue(e.getMessage().contains("habilitado"));
+    }
+
+    @Test
+    void creaEnElAnioPorComenzarCuandoNoHayVigente() {
+        AnioEscolar porComenzar = anioDe(2027, GradoSeccionService.ESTADO_ANIO_POR_COMENZAR,
+                LocalDate.now().minusDays(1));
+        when(anioEscolarRepository.findByEstadoInAndAccesoNot(any(), any()))
+                .thenReturn(List.of(porComenzar));
+        when(anioEscolarRepository.findByEstadoAndAccesoNot(
+                eq(GradoSeccionService.ESTADO_ANIO_VIGENTE), any())).thenReturn(Optional.empty());
+
+        GradoSeccionResponse res = service.create(request("A", 1));
+
+        assertEquals("A", res.getNombre());
+        assertEquals(porComenzar.getIdAnio(), res.getIdAnio());
+    }
+
+    @Test
+    void elFallbackPrefiereElPorComenzarHabilitadoSobreElVigente() {
+        // Es lo que hace la UI por defecto cuando conviven los dos: las secciones
+        // nuevas se estan preparando para el proximo ciclo.
+        AnioEscolar porComenzar = anioDe(2027, GradoSeccionService.ESTADO_ANIO_POR_COMENZAR,
+                LocalDate.now().minusDays(1));
+        when(anioEscolarRepository.findByEstadoInAndAccesoNot(any(), any()))
+                .thenReturn(List.of(porComenzar));
+
+        assertEquals(porComenzar.getIdAnio(), service.create(request("A", 1)).getIdAnio());
+    }
+
+    @Test
+    void elFallbackEligeElPorComenzarDeAñoMasAlto() {
+        AnioEscolar menor = anioDe(2027, GradoSeccionService.ESTADO_ANIO_POR_COMENZAR,
+                LocalDate.now().minusDays(10));
+        AnioEscolar mayor = anioDe(2028, GradoSeccionService.ESTADO_ANIO_POR_COMENZAR,
+                LocalDate.now().minusDays(1));
+        when(anioEscolarRepository.findByEstadoInAndAccesoNot(any(), any()))
+                .thenReturn(List.of(menor, mayor));
+
+        assertEquals(mayor.getIdAnio(), service.create(request("A", 1)).getIdAnio());
+    }
+
+    @Test
+    void elFallbackIgnoraElPorComenzarQueAunNoInicia() {
+        AnioEscolar futuro = anioDe(2027, GradoSeccionService.ESTADO_ANIO_POR_COMENZAR,
+                LocalDate.now().plusMonths(4));
+        when(anioEscolarRepository.findByEstadoInAndAccesoNot(any(), any()))
+                .thenReturn(List.of(futuro));
+        when(anioEscolarRepository.findByEstadoAndAccesoNot(
+                eq(GradoSeccionService.ESTADO_ANIO_VIGENTE), any())).thenReturn(Optional.empty());
+
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> service.create(request("A", 1)));
+        assertTrue(e.getMessage().contains("habilitado"));
+    }
+
+    @Test
+    void elFallbackUsaElVigenteCuandoElPorComenzarTodaviaNoInicia() {
+        AnioEscolar futuro = anioDe(2027, GradoSeccionService.ESTADO_ANIO_POR_COMENZAR,
+                LocalDate.now().plusMonths(4));
+        when(anioEscolarRepository.findByEstadoInAndAccesoNot(any(), any()))
+                .thenReturn(List.of(futuro));
+
+        assertEquals(2026, service.create(request("A", 1)).getIdAnio());
+    }
+
+    @Test
+    void rechazaElAnioCerradoElegidoAMano() {
+        AnioEscolar cerrado = anioDe(2027, GradoSeccionService.ESTADO_ANIO_CERRADO, null);
+        when(anioEscolarRepository.findByIdAnioAndAccesoNot(eq(cerrado.getIdAnio()), any()))
+                .thenReturn(Optional.of(cerrado));
+        SeccionRequest r = request("A", 1);
+        r.setIdAnio(cerrado.getIdAnio());
+
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> service.create(r));
+        assertTrue(e.getMessage().contains("cerrado"));
+    }
+
+    @Test
+    void rechazaElAnioPorComenzarQueAunNoInicia() {
+        AnioEscolar futuro = anioDe(2027, GradoSeccionService.ESTADO_ANIO_POR_COMENZAR,
+                LocalDate.now().plusDays(1));
+        when(anioEscolarRepository.findByIdAnioAndAccesoNot(eq(futuro.getIdAnio()), any()))
+                .thenReturn(Optional.of(futuro));
+        SeccionRequest r = request("A", 1);
+        r.setIdAnio(futuro.getIdAnio());
+
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> service.create(r));
+        assertTrue(e.getMessage().contains("aún no inicia"));
+        assertTrue(e.getMessage().contains("habilitan desde el"));
+    }
+
+    @Test
+    void rechazaElAnioPorComenzarSinFechaInicio() {
+        AnioEscolar sinFecha = anioDe(2027, GradoSeccionService.ESTADO_ANIO_POR_COMENZAR, null);
+        when(anioEscolarRepository.findByIdAnioAndAccesoNot(eq(sinFecha.getIdAnio()), any()))
+                .thenReturn(Optional.of(sinFecha));
+        SeccionRequest r = request("A", 1);
+        r.setIdAnio(sinFecha.getIdAnio());
+
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> service.create(r));
+        assertTrue(e.getMessage().contains("no tiene fecha de inicio"));
+    }
+
+    @Test
+    void aceptaElAnioPorComenzarElegidoAManoCuandoYaInicio() {
+        AnioEscolar porComenzar = anioDe(2027, GradoSeccionService.ESTADO_ANIO_POR_COMENZAR,
+                LocalDate.now());
+        when(anioEscolarRepository.findByIdAnioAndAccesoNot(eq(porComenzar.getIdAnio()), any()))
+                .thenReturn(Optional.of(porComenzar));
+        SeccionRequest r = request("A", 1);
+        r.setIdAnio(porComenzar.getIdAnio());
+
+        assertEquals(porComenzar.getIdAnio(), service.create(r).getIdAnio());
+    }
+
+    private AnioEscolar anioDe(int anio, byte estado, LocalDate fechaInicio) {
+        AnioEscolar a = new AnioEscolar();
+        a.setIdAnio(anio);
+        a.setAnio(String.valueOf(anio));
+        a.setEstado(estado);
+        a.setFechaInicio(fechaInicio);
+        return a;
     }
 
     @Test
@@ -375,11 +499,26 @@ class GradoSeccionServiceTest {
     }
 
     @Test
-    void avisaQueNoHayAnioVigenteParaCrearElLote() {
+    void avisaQueNoHayAnioHabilitadoParaCrearElLote() {
+        when(anioEscolarRepository.findByEstadoInAndAccesoNot(any(), any())).thenReturn(List.of());
         when(anioEscolarRepository.findByEstadoAndAccesoNot(any(), any())).thenReturn(Optional.empty());
 
         IllegalStateException e = assertThrows(IllegalStateException.class,
                 () -> service.crearLote(lote(1, "A")));
-        assertTrue(e.getMessage().contains("año escolar vigente"));
+        assertTrue(e.getMessage().contains("habilitado"));
+    }
+
+    @Test
+    void elLoteCaeEnElAnioPorComenzarCuandoNoHayVigente() {
+        AnioEscolar porComenzar = anioDe(2027, GradoSeccionService.ESTADO_ANIO_POR_COMENZAR,
+                LocalDate.now().minusDays(1));
+        when(anioEscolarRepository.findByEstadoInAndAccesoNot(any(), any()))
+                .thenReturn(List.of(porComenzar));
+        when(anioEscolarRepository.findByEstadoAndAccesoNot(
+                eq(GradoSeccionService.ESTADO_ANIO_VIGENTE), any())).thenReturn(Optional.empty());
+
+        List<GradoSeccionResponse> res = service.crearLote(lote(1, "A", "B"));
+
+        assertTrue(res.stream().allMatch(r -> porComenzar.getIdAnio() == r.getIdAnio()));
     }
 }

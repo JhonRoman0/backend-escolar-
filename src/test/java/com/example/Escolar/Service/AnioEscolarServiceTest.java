@@ -196,6 +196,39 @@ class AnioEscolarServiceTest {
         assertEquals(AnioEscolarService.ESTADO_CERRADO, anterior.getEstado());
     }
 
+    @Test
+    void crearConAnioPorComenzarPendienteFalla() {
+        // Mientras el año 2026 siga esperando en por comenzar no se puede
+        // registrar 2027: primero hay que promover el pendiente a vigente.
+        int actual = LocalDate.now().getYear();
+        AnioEscolar pendiente = anio(1, String.valueOf(actual), AnioEscolarService.ESTADO_POR_COMENZAR,
+                LocalDate.of(actual, 12, 15));
+        when(anioEscolarRepository.findByEstadoInAndAccesoNot(anyList(), any(Acceso.class)))
+                .thenReturn(List.of(pendiente));
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> anioEscolarService.create(request(String.valueOf(actual + 1), null,
+                        LocalDate.of(actual + 1, 12, 15))));
+
+        assertEquals("No se puede crear un nuevo año mientras el año " + actual
+                        + " siga en estado 'por comenzar'. Cámbialo a vigente para poder crear el siguiente",
+                e.getMessage());
+    }
+
+    @Test
+    void crearElPrimerAnioSinPredecesoresPermite() {
+        // Sin ningún año registrado no hay pendiente que espere: el primer año
+        // se crea aunque nadie esté vigente.
+        int actual = LocalDate.now().getYear();
+        when(anioEscolarRepository.findByEstadoInAndAccesoNot(anyList(), any(Acceso.class)))
+                .thenReturn(List.of());
+
+        AnioEscolarResponse resultado = anioEscolarService.create(
+                request(String.valueOf(actual), null, LocalDate.of(actual, 12, 15)));
+
+        assertEquals(AnioEscolarService.ESTADO_POR_COMENZAR, resultado.getEstado());
+    }
+
     // ── Barrido por fecha ──────────────────────────────────────────────────
 
     @Test
@@ -261,8 +294,15 @@ class AnioEscolarServiceTest {
 
     @Test
     void activarVigenteCierraElVigenteAnterior() {
-        AnioEscolar porComenzar = anio(2, "2027", AnioEscolarService.ESTADO_POR_COMENZAR, LocalDate.of(2027, 12, 15));
-        AnioEscolar vigenteActual = anio(1, "2026", AnioEscolarService.ESTADO_VIGENTE, LocalDate.of(2026, 12, 15));
+        // El año que se activa debe ser el calendario en curso: un por comenzar
+        // de año futuro ya no se puede promover hasta que el calendario lo
+        // alcance (validarVigenteSegunCalendario), así que el relevo se prueba
+        // con el año actual relevando al anterior.
+        int actual = LocalDate.now().getYear();
+        AnioEscolar porComenzar = anio(2, String.valueOf(actual), AnioEscolarService.ESTADO_POR_COMENZAR,
+                LocalDate.of(actual, 12, 15));
+        AnioEscolar vigenteActual = anio(1, String.valueOf(actual - 1), AnioEscolarService.ESTADO_VIGENTE,
+                LocalDate.of(actual - 1, 12, 15));
         when(anioEscolarRepository.findByIdAnioAndAccesoNot(anyInt(), any(Acceso.class)))
                 .thenReturn(Optional.of(porComenzar));
         when(anioEscolarRepository.findByAccesoNot(any(Acceso.class))).thenReturn(List.of(vigenteActual, porComenzar));
@@ -271,6 +311,38 @@ class AnioEscolarServiceTest {
 
         assertEquals(AnioEscolarService.ESTADO_VIGENTE, porComenzar.getEstado());
         assertEquals(AnioEscolarService.ESTADO_CERRADO, vigenteActual.getEstado());
+    }
+
+    @Test
+    void activarVigenteDeAnioFuturoFalla() {
+        // En diciembre de 2026 no se pone vigente el 2027: el calendario debe
+        // llegar al año del ciclo para poder abrirlo.
+        int siguiente = LocalDate.now().getYear() + 1;
+        AnioEscolar porComenzar = anio(2, String.valueOf(siguiente), AnioEscolarService.ESTADO_POR_COMENZAR,
+                LocalDate.of(siguiente, 12, 15));
+        when(anioEscolarRepository.findByIdAnioAndAccesoNot(anyInt(), any(Acceso.class)))
+                .thenReturn(Optional.of(porComenzar));
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> anioEscolarService.cambiarEstado(2, (byte) AnioEscolarService.ESTADO_VIGENTE));
+
+        assertEquals("El año " + siguiente
+                        + " solo se puede activar como vigente cuando la fecha calendario llegue al " + siguiente,
+                e.getMessage());
+    }
+
+    @Test
+    void crearVigenteDeAnioFuturoFalla() {
+        int siguiente = LocalDate.now().getYear() + 1;
+        AnioEscolarRequest r = request(String.valueOf(siguiente),
+                (byte) AnioEscolarService.ESTADO_VIGENTE, LocalDate.of(siguiente, 12, 15));
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> anioEscolarService.create(r));
+
+        assertEquals("El año " + siguiente
+                        + " solo se puede activar como vigente cuando la fecha calendario llegue al " + siguiente,
+                e.getMessage());
     }
 
     @Test
@@ -352,16 +424,103 @@ class AnioEscolarServiceTest {
 
     @Test
     void unVigenteSiSeEdita() {
-        AnioEscolar vigente = anio(1, "2026", AnioEscolarService.ESTADO_VIGENTE, LocalDate.of(2026, 12, 15));
+        // El año se deriva del reloj: editar un vigente de año anterior al
+        // calendario lo rechazaría validarVigenteSegunCalendario.
+        int actual = LocalDate.now().getYear();
+        AnioEscolar vigente = anio(1, String.valueOf(actual), AnioEscolarService.ESTADO_VIGENTE,
+                LocalDate.of(actual, 12, 15));
         when(anioEscolarRepository.findByIdAnioAndAccesoNot(anyInt(), any(Acceso.class)))
                 .thenReturn(Optional.of(vigente));
 
-        AnioEscolarRequest r = request("2026", (byte) AnioEscolarService.ESTADO_VIGENTE,
-                LocalDate.of(2026, 12, 18));
+        AnioEscolarRequest r = request(String.valueOf(actual), (byte) AnioEscolarService.ESTADO_VIGENTE,
+                LocalDate.of(actual, 12, 18));
 
         AnioEscolarResponse resultado = anioEscolarService.update(1, r);
 
-        assertEquals(LocalDate.of(2026, 12, 18), resultado.getFechaFin());
+        assertEquals(LocalDate.of(actual, 12, 18), resultado.getFechaFin());
+    }
+
+    // ── Fecha de inicio congelada en vigentes ─────────────────────────────
+
+    @Test
+    void noSeCambiaLaFechaInicioDeUnVigente() {
+        // La fecha de inicio de un vigente marca el periodo en el que ya se
+        // atendió matrícula: una vez en vigente es historia y no se reescribe.
+        int actual = LocalDate.now().getYear();
+        AnioEscolar vigente = anio(1, String.valueOf(actual), AnioEscolarService.ESTADO_VIGENTE,
+                LocalDate.of(actual, 12, 15));
+        vigente.setFechaInicio(LocalDate.of(actual, 3, 2));
+        when(anioEscolarRepository.findByIdAnioAndAccesoNot(anyInt(), any(Acceso.class)))
+                .thenReturn(Optional.of(vigente));
+
+        AnioEscolarRequest r = request(String.valueOf(actual), null, LocalDate.of(actual, 12, 20));
+        r.setFechaInicio(LocalDate.of(actual, 4, 1));
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> anioEscolarService.update(1, r));
+
+        assertEquals("El año vigente no admite cambios en su fecha de inicio", e.getMessage());
+        verify(anioEscolarRepository, never()).save(any(AnioEscolar.class));
+        assertEquals(LocalDate.of(actual, 3, 2), vigente.getFechaInicio());
+    }
+
+    @Test
+    void seReenviaLaMismaFechaInicioDeUnVigente() {
+        // El formulario siempre reenvía la fecha aunque el selector esté
+        // deshabilitado: reenviar el mismo valor no es un cambio.
+        int actual = LocalDate.now().getYear();
+        AnioEscolar vigente = anio(1, String.valueOf(actual), AnioEscolarService.ESTADO_VIGENTE,
+                LocalDate.of(actual, 12, 15));
+        vigente.setFechaInicio(LocalDate.of(actual, 3, 2));
+        when(anioEscolarRepository.findByIdAnioAndAccesoNot(anyInt(), any(Acceso.class)))
+                .thenReturn(Optional.of(vigente));
+
+        AnioEscolarRequest r = request(String.valueOf(actual), null, LocalDate.of(actual, 12, 20));
+        r.setFechaInicio(LocalDate.of(actual, 3, 2));
+
+        AnioEscolarResponse resultado = anioEscolarService.update(1, r);
+
+        assertEquals(LocalDate.of(actual, 3, 2), resultado.getFechaInicio());
+        assertEquals(LocalDate.of(actual, 12, 20), resultado.getFechaFin());
+    }
+
+    @Test
+    void seCambiaLaFechaInicioSiElAnioNoEsVigente() {
+        int actual = LocalDate.now().getYear();
+        AnioEscolar porComenzar = anio(1, String.valueOf(actual), AnioEscolarService.ESTADO_POR_COMENZAR,
+                LocalDate.of(actual, 12, 15));
+        porComenzar.setFechaInicio(LocalDate.of(actual, 3, 2));
+        when(anioEscolarRepository.findByIdAnioAndAccesoNot(anyInt(), any(Acceso.class)))
+                .thenReturn(Optional.of(porComenzar));
+
+        AnioEscolarRequest r = request(String.valueOf(actual), null, LocalDate.of(actual, 12, 20));
+        r.setFechaInicio(LocalDate.of(actual, 4, 1));
+
+        AnioEscolarResponse resultado = anioEscolarService.update(1, r);
+
+        assertEquals(LocalDate.of(actual, 4, 1), resultado.getFechaInicio());
+    }
+
+    @Test
+    void promoverAVigentePermiteFijarLaFechaEnLaMismaEdicion() {
+        // La congelación aplica al año que ya era vigente al entrar en update(),
+        // no al que la misma petición promueve: fijar la fecha y pasar a vigente
+        // en un solo guardado es el flujo normal del formulario.
+        int actual = LocalDate.now().getYear();
+        AnioEscolar porComenzar = anio(1, String.valueOf(actual), AnioEscolarService.ESTADO_POR_COMENZAR,
+                LocalDate.of(actual, 12, 20));
+        porComenzar.setFechaInicio(LocalDate.of(actual, 3, 2));
+        when(anioEscolarRepository.findByIdAnioAndAccesoNot(anyInt(), any(Acceso.class)))
+                .thenReturn(Optional.of(porComenzar));
+
+        AnioEscolarRequest r = request(String.valueOf(actual),
+                (byte) AnioEscolarService.ESTADO_VIGENTE, LocalDate.of(actual, 12, 20));
+        r.setFechaInicio(LocalDate.of(actual, 4, 1));
+
+        AnioEscolarResponse resultado = anioEscolarService.update(1, r);
+
+        assertEquals(AnioEscolarService.ESTADO_VIGENTE, resultado.getEstado());
+        assertEquals(LocalDate.of(actual, 4, 1), resultado.getFechaInicio());
     }
 
     // ── Borrado ────────────────────────────────────────────────────────────

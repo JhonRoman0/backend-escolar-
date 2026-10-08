@@ -17,5 +17,7 @@ public interface AnioEscolarRepository extends JpaRepository<AnioEscolar, Intege
 
     Optional<AnioEscolar> findByEstadoAndAccesoNot(Byte estado, Acceso acceso);
 
+    List<AnioEscolar> findByEstadoInAndAccesoNot(List<Byte> estados, Acceso acceso);
+
     List<AnioEscolar> findByEstadoInAndFechaFinBeforeAndAccesoNot(List<Byte> estados, LocalDate fechaFin, Acceso acceso);
 }

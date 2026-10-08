@@ -87,6 +87,11 @@ public class ApiPermisoRegistro {
 
         registrarLectura("GET", "/niveles", "GRADOS");
         registrarLectura("GET", "/secciones", "GRADOS");
+        registrarLectura("GET", "/secciones/**", "GRADOS");
+        registrar("POST", "/secciones", "GRADOS", "CREAR");
+        registrar("POST", "/secciones/lote", "GRADOS", "CREAR");
+        registrar("PUT", "/secciones/**", "GRADOS", "ACTUALIZAR");
+        registrar("DELETE", "/secciones/**", "GRADOS", "ELIMINAR");
 
         registrarLectura("GET", "/anios-escolares", "ANIOS_ESCOLARES");
         registrarLectura("GET", "/anios-escolares/**", "ANIOS_ESCOLARES");

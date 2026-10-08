@@ -15,5 +15,7 @@ public interface GradoRepository extends JpaRepository<Grado, Integer> {
 
     List<Grado> findByNombreAndAccesoNot(String nombre, Acceso acceso);
 
+    Optional<Grado> findByNombreAndNivelAndAccesoNot(String nombre, Nivel nivel, Acceso acceso);
+
     List<Grado> findByNivelAndAccesoNot(Nivel nivel, Acceso acceso);
 }

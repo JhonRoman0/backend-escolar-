@@ -5,6 +5,8 @@ import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.Competencia;
 import com.example.Escolar.Model.Curso;
 import com.example.Escolar.Model.EstadoAsistencia;
+import com.example.Escolar.Model.Grado;
+import com.example.Escolar.Model.GradoSeccion;
 import com.example.Escolar.Model.Modulo;
 import com.example.Escolar.Model.Nivel;
 import com.example.Escolar.Model.Permiso;
@@ -12,6 +14,7 @@ import com.example.Escolar.Model.PermisoAccion;
 import com.example.Escolar.Model.Rol;
 import com.example.Escolar.Model.RolPermiso;
 import com.example.Escolar.Model.RolPermisoAccion;
+import com.example.Escolar.Model.Seccion;
 import com.example.Escolar.Model.Turno;
 import com.example.Escolar.Model.Usuario;
 import com.example.Escolar.Model.UsuarioRol;
@@ -20,6 +23,8 @@ import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.CompetenciaRepository;
 import com.example.Escolar.Repository.CursoRepository;
 import com.example.Escolar.Repository.EstadoAsistenciaRepository;
+import com.example.Escolar.Repository.GradoRepository;
+import com.example.Escolar.Repository.GradoSeccionRepository;
 import com.example.Escolar.Repository.ModuloRepository;
 import com.example.Escolar.Repository.NivelRepository;
 import com.example.Escolar.Repository.PermisoAccionRepository;
@@ -27,11 +32,13 @@ import com.example.Escolar.Repository.PermisoRepository;
 import com.example.Escolar.Repository.RolPermisoAccionRepository;
 import com.example.Escolar.Repository.RolPermisoRepository;
 import com.example.Escolar.Repository.RolRepository;
+import com.example.Escolar.Repository.SeccionRepository;
 import com.example.Escolar.Repository.TurnoRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
 import com.example.Escolar.Service.AccesoConstants;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -46,6 +53,7 @@ import java.util.Optional;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class DataSeeder implements CommandLineRunner {
 
     private final AccionRepository accionRepository;
@@ -63,6 +71,9 @@ public class DataSeeder implements CommandLineRunner {
     private final CompetenciaRepository competenciaRepository;
     private final CursoRepository cursoRepository;
     private final TurnoRepository turnoRepository;
+    private final GradoRepository gradoRepository;
+    private final SeccionRepository seccionRepository;
+    private final GradoSeccionRepository gradoSeccionRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Value("${jwt.admin.codigo}")
@@ -96,6 +107,8 @@ public class DataSeeder implements CommandLineRunner {
         seedEstadosAsistencia();
         seedNiveles();
         seedTurnos();
+        seedGrados();
+        migrarSeccionesInicial();
         seedCompetencias();
         seedRoles();
         seedModulosRbac();
@@ -186,6 +199,93 @@ public class DataSeeder implements CommandLineRunner {
         turno.setHoraSalida(horaSalida);
         turno.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         turnoRepository.save(turno);
+    }
+
+    /**
+     * Catalogo base de grados. Los nombres van cortos a proposito ("1ro", no
+     * "1ro de Primaria") porque el nivel ya esta en la fila y en la cascada:
+     * repetirlo dentro del nombre solo estorba en tablas y selectores.
+     *
+     * La busqueda es por nombre Y nivel porque los nombres se repiten entre
+     * niveles: "1ro" existe en Primaria y en Secundaria, y sin el nivel el
+     * segundo no se crearia.
+     *
+     * Solo corre si la tabla esta vacia. Si el colegio ya cargo sus grados a
+     * mano no se toca ninguno.
+     */
+    private void seedGrados() {
+        if (!gradoRepository.findByAccesoNot(accesoNoEliminado()).isEmpty()) {
+            return;
+        }
+        for (String nombre : List.of("3 años", "4 años", "5 años")) {
+            crearGradoSiFalta(nombre, "Inicial");
+        }
+        for (String nombre : List.of("1ro", "2do", "3do", "4to", "5to", "6to")) {
+            crearGradoSiFalta(nombre, "Primaria");
+        }
+        for (String nombre : List.of("1ro", "2do", "3do", "4to", "5to")) {
+            crearGradoSiFalta(nombre, "Secundaria");
+        }
+    }
+
+    private void crearGradoSiFalta(String nombre, String nombreNivel) {
+        Nivel nivel = nivelRepository.findByNombreAndAccesoNot(nombreNivel, accesoNoEliminado()).orElse(null);
+        if (nivel == null) {
+            return;
+        }
+        if (gradoRepository.findByNombreAndNivelAndAccesoNot(nombre, nivel, accesoNoEliminado()).isPresent()) {
+            return;
+        }
+        Grado grado = new Grado();
+        grado.setNombre(nombre);
+        grado.setNivel(nivel);
+        grado.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
+        gradoRepository.save(grado);
+    }
+
+    /**
+     * Antes Inicial era el unico nivel sin secciones: cada grado guardaba una fila
+     * de grado_seccion con la seccion en nulo y toda la app la mostraba como
+     * "Unica". Ahora Inicial maneja letras como los demas niveles, asi que esa
+     * fila se le engancha la seccion "A".
+     *
+     * No se borra ni se crea ninguna fila de grado_seccion: se reusa la misma,
+     * con su id intacto, para que las matriculas y asignaciones que ya apuntan a
+     * ella sigan apuntando a la misma seccion.
+     *
+     * Es idempotente: si la fila ya tiene seccion, no hace nada.
+     */
+    @Transactional
+    public void migrarSeccionesInicial() {
+        Nivel inicial = nivelRepository.findByNombreAndAccesoNot("Inicial", accesoNoEliminado()).orElse(null);
+        if (inicial == null) {
+            return;
+        }
+        List<Grado> gradosInicial = gradoRepository.findByNivelAndAccesoNot(inicial, accesoNoEliminado());
+        for (Grado grado : gradosInicial) {
+            List<GradoSeccion> filas = gradoSeccionRepository.findByGradoAndAccesoNot(grado, accesoNoEliminado());
+            boolean yaTieneLetra = filas.stream().anyMatch(gs -> gs.getSeccion() != null);
+            for (GradoSeccion gs : filas) {
+                if (gs.getSeccion() != null) {
+                    continue;
+                }
+                Seccion seccion = new Seccion();
+                seccion.setNombre("A");
+                seccion.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
+                seccion = seccionRepository.save(seccion);
+                gs.setSeccion(seccion);
+                gradoSeccionRepository.save(gs);
+                log.info("Migracion Inicial: {} quedo con la seccion A sobre idGradoSeccion {}",
+                        grado.getNombre(), gs.getIdGradoSeccion());
+            }
+            if (!yaTieneLetra && filas.isEmpty()) {
+                log.debug("Migracion Inicial: {} todavia no tiene secciones, se crearan desde el modulo", grado.getNombre());
+            }
+        }
+    }
+
+    private Acceso accesoNoEliminado() {
+        return accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow();
     }
 
     private void seedCompetencias() {

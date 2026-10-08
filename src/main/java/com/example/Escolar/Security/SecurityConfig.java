@@ -19,6 +19,20 @@ import java.util.List;
 @EnableWebSecurity
 public class SecurityConfig {
 
+    public static final List<String> RUTAS_PUBLICAS = List.of(
+            "/auth/login",
+            "/auth/logout",
+            "/auth/forgot-password",
+            "/auth/reset-password",
+            "/portal/**",
+            "/swagger-ui.html",
+            "/swagger-ui/**",
+            "/v3/api-docs/**");
+
+    public static final List<String> RUTAS_SOLO_AUTENTICADAS = List.of(
+            "/auth/me",
+            "/consulta/dni/**");
+
     private final JwtAuthFilter jwtAuthFilter;
     private final RbacAuthorizationManager rbacAuthorizationManager;
 
@@ -35,8 +49,8 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/auth/login", "/auth/logout", "/auth/forgot-password", "/auth/reset-password", "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/portal/**").permitAll()
-                        .requestMatchers("/auth/me", "/consulta/dni/**").authenticated()
+                        .requestMatchers(RUTAS_PUBLICAS.toArray(new String[0])).permitAll()
+                        .requestMatchers(RUTAS_SOLO_AUTENTICADAS.toArray(new String[0])).authenticated()
                         .anyRequest().access(rbacAuthorizationManager))
                 .exceptionHandling(handling -> handling
                         .authenticationEntryPoint(this::responder401)

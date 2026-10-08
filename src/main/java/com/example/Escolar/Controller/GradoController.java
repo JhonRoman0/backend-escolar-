@@ -19,9 +19,10 @@ public class GradoController {
     private final GradoService gradoService;
 
     @GetMapping
-    public List<GradoResponse> getAll(@RequestParam(required = false) Integer idNivel) {
-        if (idNivel != null) {
-            return gradoService.getAllByNivel(idNivel);
+    public List<GradoResponse> getAll(@RequestParam(required = false) Integer idNivel,
+            @RequestParam(required = false) Integer idAnio) {
+        if (idNivel != null || idAnio != null) {
+            return gradoService.getAllByNivelYAnio(idNivel, idAnio);
         }
         return gradoService.getAll();
     }

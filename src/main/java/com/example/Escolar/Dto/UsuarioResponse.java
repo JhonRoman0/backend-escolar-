@@ -26,4 +26,5 @@ public class UsuarioResponse {
     private List<RolResponse> roles;
     private Integer intentosFallidos;
     private LocalDateTime fechaBloqueo;
+    private Boolean credencialesEnviadas;
 }

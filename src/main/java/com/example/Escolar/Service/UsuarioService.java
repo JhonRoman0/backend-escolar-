@@ -56,6 +56,7 @@ public class UsuarioService {
     private final NivelRepository nivelRepository;
     private final GradoAcademicoRepository gradoAcademicoRepository;
     private final TipoContratoRepository tipoContratoRepository;
+    private final EmailService emailService;
 
     public Page<UsuarioResponse> getAll(Pageable pageable) {
         return getAll(pageable, null, null, null);
@@ -95,7 +96,9 @@ public class UsuarioService {
         if (seleccionaDocente(request.getRolIds())) {
             crearDocente(saved, request);
         }
-        return toResponse(saved);
+        UsuarioResponse response = toResponse(saved);
+        response.setCredencialesEnviadas(enviarCredencialesAcceso(saved, request));
+        return response;
     }
 
     @Transactional
@@ -126,10 +129,14 @@ public class UsuarioService {
         usuario.setFechaBloqueo(null);
         usuario.setResetToken(null);
         usuario.setResetTokenExpiracion(null);
-        return actualizarRegistro(usuario, id, request);
+        return actualizarRegistro(usuario, id, request, true);
     }
 
     private UsuarioResponse actualizarRegistro(Usuario usuario, Integer id, UsuarioRequest request) {
+        return actualizarRegistro(usuario, id, request, false);
+    }
+
+    private UsuarioResponse actualizarRegistro(Usuario usuario, Integer id, UsuarioRequest request, boolean enviarCredenciales) {
         // Se excluye el id propio para permitir conservar su DNI/correo; si los
         // nuevos datos fueran de otra cuenta activa, aqui se detectaria el choque.
         validarDocumentoUnico(request.getDocumentoIdentidad(), id);
@@ -151,7 +158,20 @@ public class UsuarioService {
                 crearOReactivarDocente(usuario, docenteExistente.orElse(null), request);
             }
         }
-        return toResponse(usuarioRepository.save(usuario));
+        UsuarioResponse response = toResponse(usuarioRepository.save(usuario));
+        if (enviarCredenciales) {
+            response.setCredencialesEnviadas(enviarCredencialesAcceso(usuario, request));
+        }
+        return response;
+    }
+
+    private boolean enviarCredencialesAcceso(Usuario usuario, UsuarioRequest request) {
+        String gmail = request.getGmail();
+        if (gmail == null || gmail.isBlank()) {
+            return false;
+        }
+        String nombre = (usuario.getNombre() + " " + usuario.getApellidoPat()).trim();
+        return emailService.enviarCredencialesAcceso(gmail, nombre, usuario.getCodigo(), request.getContraseña());
     }
 
     @Transactional

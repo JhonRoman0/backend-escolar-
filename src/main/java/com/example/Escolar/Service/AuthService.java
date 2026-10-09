@@ -106,6 +106,22 @@ public class AuthService {
         usuarioRepository.save(usuario);
     }
 
+    @Transactional
+    public void cambiarContrasena(Integer idUsuario, String contrasenaActual, String nuevaContrasena) {
+        Usuario usuario = usuarioRepository.findByIdUsuarioAndAccesoNot(idUsuario,
+                        accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
+                .orElseThrow(() -> new ResourceNotFoundException("No se encontro la cuenta del usuario autenticado"));
+
+        if (!passwordEncoder.matches(contrasenaActual, usuario.getContraseña())) {
+            throw new IllegalArgumentException("La contrasena actual es incorrecta");
+        }
+
+        usuario.setContraseña(passwordEncoder.encode(nuevaContrasena));
+        usuario.setIntentosFallidos(0);
+        usuario.setFechaBloqueo(null);
+        usuarioRepository.save(usuario);
+    }
+
     private Usuario buscarUsuarioPorGmail(String gmail) {
         return usuarioRepository.findByGmailAndAccesoNot(gmail, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontro una cuenta con ese email"));

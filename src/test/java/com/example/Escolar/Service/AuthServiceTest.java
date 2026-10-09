@@ -2,6 +2,7 @@ package com.example.Escolar.Service;
 
 import com.example.Escolar.Dto.LoginRequest;
 import com.example.Escolar.Exception.CuentaBloqueadaException;
+import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.Usuario;
 import com.example.Escolar.Repository.AccesoRepository;
@@ -158,5 +159,48 @@ class AuthServiceTest {
         verify(usuarioRepository).save(captor.capture());
         assertEquals(1, captor.getValue().getIntentosFallidos());
         assertNull(captor.getValue().getFechaBloqueo());
+    }
+
+    @Test
+    void cambiarContrasenaConContrasenaActualCorrectaGuardaNueva() {
+        stubAccesoRepository();
+        Usuario usuario = usuario(0);
+        usuario.setIntentosFallidos(3);
+        usuario.setFechaBloqueo(LocalDateTime.now().minusMinutes(5));
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(any(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+        when(passwordEncoder.matches("claveActual", "$2a$10$hash")).thenReturn(true);
+        when(passwordEncoder.encode("ClaveNueva1@")).thenReturn("$2a$10$nuevo");
+
+        authService.cambiarContrasena(1, "claveActual", "ClaveNueva1@");
+
+        ArgumentCaptor<Usuario> captor = ArgumentCaptor.forClass(Usuario.class);
+        verify(usuarioRepository).save(captor.capture());
+        assertEquals("$2a$10$nuevo", captor.getValue().getContraseña());
+        assertEquals(0, captor.getValue().getIntentosFallidos());
+        assertNull(captor.getValue().getFechaBloqueo());
+    }
+
+    @Test
+    void cambiarContrasenaConContrasenaActualIncorrectaLanzaIllegalArgument() {
+        stubAccesoRepository();
+        Usuario usuario = usuario(0);
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(any(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+        when(passwordEncoder.matches("claveIncorrecta", "$2a$10$hash")).thenReturn(false);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> authService.cambiarContrasena(1, "claveIncorrecta", "ClaveNueva1@"));
+
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    void cambiarContrasenaDeUsuarioInexistenteLanzaNoEncontrado() {
+        stubAccesoRepository();
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(any(), any(Acceso.class))).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> authService.cambiarContrasena(999, "claveActual", "ClaveNueva1@"));
+
+        verify(usuarioRepository, never()).save(any());
     }
 }

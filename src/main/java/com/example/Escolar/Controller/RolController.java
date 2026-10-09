@@ -19,8 +19,8 @@ public class RolController {
     private final RolService rolService;
 
     @GetMapping
-    public List<RolResponse> getAll() {
-        return rolService.getAll();
+    public List<RolResponse> getAll(@RequestParam(required = false, defaultValue = "false") boolean soloActivos) {
+        return rolService.getAll(soloActivos);
     }
 
     @GetMapping("/{id}")

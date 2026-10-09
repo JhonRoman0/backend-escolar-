@@ -495,6 +495,7 @@ public class UsuarioService {
         RolResponse response = new RolResponse();
         response.setIdRol(rol.getIdRol());
         response.setNombre(rol.getNombre());
+        response.setColor(rol.getColor());
         response.setAccesoId(rol.getAcceso().getIdAcceso().longValue());
         return response;
     }

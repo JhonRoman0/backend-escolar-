@@ -54,6 +54,7 @@ class ApiPermisoRegistroCoberturaTest {
             "/auth/reset-password",
             "/auth/me",
             "/auth/change-password",
+            "/auth/permisos",
             "/consulta/dni/**",
             "/portal/**",
             "/swagger-ui.html",

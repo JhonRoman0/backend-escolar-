@@ -2,6 +2,7 @@ package com.example.Escolar.Service;
 
 import com.example.Escolar.Dto.LoginRequest;
 import com.example.Escolar.Dto.LoginResponse;
+import com.example.Escolar.Dto.PermisosRolResponse;
 import com.example.Escolar.Exception.CuentaBloqueadaException;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.Rol;
@@ -63,6 +64,10 @@ public class AuthService {
         response.setPermisos(rolPermisoService.obtenerPermisosDelUsuario(usuario.getIdUsuario()));
         response.setEsAdmin(roles.stream().anyMatch(nombre -> "ADMIN".equalsIgnoreCase(nombre)));
         return response;
+    }
+
+    public PermisosRolResponse permisosActuales(Integer idUsuario) {
+        return rolPermisoService.obtenerPermisosDelUsuario(idUsuario);
     }
 
     @Transactional

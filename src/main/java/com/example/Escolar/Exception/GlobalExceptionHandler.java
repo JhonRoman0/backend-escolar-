@@ -125,6 +125,17 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
     }
 
+    @ExceptionHandler(BatchDeleteNotAllowedException.class)
+    public ResponseEntity<Map<String, Object>> handleBatchDelete(BatchDeleteNotAllowedException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.BAD_REQUEST.value());
+        body.put("error", "BatchDeleteNotAllowed");
+        body.put("message", ex.getMessage());
+        body.put("items", ex.getItems());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
     @ExceptionHandler(UsuarioReactivacionException.class)
     public ResponseEntity<Map<String, Object>> handleUsuarioReactivacion(UsuarioReactivacionException ex) {
         Map<String, Object> body = new HashMap<>();

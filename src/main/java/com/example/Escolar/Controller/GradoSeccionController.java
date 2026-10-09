@@ -1,6 +1,7 @@
 package com.example.Escolar.Controller;
 
 import com.example.Escolar.Dto.GradoSeccionResponse;
+import com.example.Escolar.Dto.SeccionActualizarRequest;
 import com.example.Escolar.Dto.SeccionRequest;
 import com.example.Escolar.Dto.SeccionesBatchRequest;
 import com.example.Escolar.Service.GradoSeccionService;
@@ -56,6 +57,19 @@ public class GradoSeccionController {
     @DeleteMapping("/{idGradoSeccion}")
     public ResponseEntity<Void> delete(@PathVariable Integer idGradoSeccion) {
         gradoSeccionService.delete(idGradoSeccion);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{idGradoSeccion}")
+    public ResponseEntity<GradoSeccionResponse> update(@PathVariable Integer idGradoSeccion,
+                                                       @jakarta.validation.Valid @RequestBody SeccionActualizarRequest request) {
+        GradoSeccionResponse resp = gradoSeccionService.update(idGradoSeccion, request);
+        return ResponseEntity.ok(resp);
+    }
+
+    @DeleteMapping("/lote")
+    public ResponseEntity<Void> deleteLote(@jakarta.validation.Valid @RequestBody com.example.Escolar.Dto.DeleteSeccionesLoteRequest request) {
+        gradoSeccionService.deleteLote(request.getIds());
         return ResponseEntity.noContent().build();
     }
 }

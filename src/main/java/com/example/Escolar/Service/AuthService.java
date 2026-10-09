@@ -82,10 +82,34 @@ public class AuthService {
     }
 
     @Transactional
-    public void resetPassword(String gmail, String codigo, String nuevaContrasena) {
-        Usuario usuario = usuarioRepository.findByGmailAndAccesoNot(gmail, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
-                .orElseThrow(() -> new ResourceNotFoundException("No se encontro una cuenta con ese email"));
+    public void verificarCodigo(String gmail, String codigo) {
+        // Valida correo + codigo sin consumirlo: el token sigue vigente hasta
+        // que resetPassword lo valide de nuevo al cambiar la contrasena.
+        validarCodigoReset(buscarUsuarioPorGmail(gmail), codigo);
+    }
 
+    @Transactional
+    public void resetPassword(String gmail, String codigo, String nuevaContrasena) {
+        Usuario usuario = buscarUsuarioPorGmail(gmail);
+        validarCodigoReset(usuario, codigo);
+
+        usuario.setContraseña(passwordEncoder.encode(nuevaContrasena));
+        usuario.setResetToken(null);
+        usuario.setResetTokenExpiracion(null);
+        usuario.setIntentosFallidos(0);
+        usuario.setFechaBloqueo(null);
+        usuarioRepository.save(usuario);
+    }
+
+    private Usuario buscarUsuarioPorGmail(String gmail) {
+        return usuarioRepository.findByGmailAndAccesoNot(gmail, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
+                .orElseThrow(() -> new ResourceNotFoundException("No se encontro una cuenta con ese email"));
+    }
+
+    // Validacion comun entre verificarCodigo y resetPassword: existe codigo
+    // solicitado, coincide el hash y no expiro. En caso de expiracion limpia el
+    // token para que un reintento posterior exija solicitar uno nuevo.
+    private void validarCodigoReset(Usuario usuario, String codigo) {
         if (usuario.getResetToken() == null) {
             throw new ResourceNotFoundException("No se ha solicitado recuperación de contraseña. Solicite un código primero.");
         }
@@ -101,13 +125,6 @@ public class AuthService {
             usuarioRepository.save(usuario);
             throw new ResourceNotFoundException("El código ha expirado. Solicite uno nuevo.");
         }
-
-        usuario.setContraseña(passwordEncoder.encode(nuevaContrasena));
-        usuario.setResetToken(null);
-        usuario.setResetTokenExpiracion(null);
-        usuario.setIntentosFallidos(0);
-        usuario.setFechaBloqueo(null);
-        usuarioRepository.save(usuario);
     }
 
     private String generarCodigo6Digitos() {

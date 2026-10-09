@@ -23,6 +23,7 @@ public class SecurityConfig {
             "/auth/login",
             "/auth/logout",
             "/auth/forgot-password",
+            "/auth/verify-reset-code",
             "/auth/reset-password",
             "/portal/**",
             "/swagger-ui.html",

@@ -18,6 +18,7 @@ public class UsuarioResponse {
     private String documentoIdentidad;
     private Long accesoId;
     private String gmail;
+    private String celular;
     private LocalDate fechaNaci;
     private String urlFoto;
     private String pkUrlFoto;

@@ -6,30 +6,23 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.time.LocalDate;
-
 @Entity
-@Table(name = "docente")
+@Table(name = "docente_nivel")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class Docente {
+public class DocenteNivel {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id_docente")
-    Integer idDocente;
-    @OneToOne
-    @JoinColumn(name = "id_usuario", nullable = false)
-    Usuario usuario;
+    @Column(name = "id_docente_nivel")
+    Integer idDocenteNivel;
     @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "id_tipo_contrato")
-    TipoContrato tipoContrato;
-    @Column(name = "fecha_contratacion")
-    LocalDate fechaContratacion;
+    @JoinColumn(name = "id_docente", nullable = false)
+    Docente docente;
     @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "id_grado_academico")
-    GradoAcademico gradoAcademico;
+    @JoinColumn(name = "id_nivel", nullable = false)
+    Nivel nivel;
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "id_acceso", nullable = false)
     Acceso acceso;

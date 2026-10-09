@@ -28,8 +28,12 @@ public class UsuarioController {
     private final UsuarioService usuarioService;
 
     @GetMapping
-    public Page<UsuarioResponse> getAll(@PageableDefault(size = 10, sort = "idUsuario") Pageable pageable) {
-        return usuarioService.getAll(pageable);
+    public Page<UsuarioResponse> getAll(
+            @PageableDefault(size = 10, sort = "idUsuario") Pageable pageable,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Integer idRol,
+            @RequestParam(required = false) Long idAcceso) {
+        return usuarioService.getAll(pageable, q, idRol, idAcceso);
     }
 
     @GetMapping("/{id}")
@@ -90,7 +94,9 @@ public class UsuarioController {
     public List<UsuarioReporteResponse> reporte(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin,
-            @RequestParam(required = false) Integer idRol) {
-        return usuarioService.reporte(inicio, fin, idRol);
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Integer idRol,
+            @RequestParam(required = false) Long idAcceso) {
+        return usuarioService.reporte(inicio, fin, q, idRol, idAcceso);
     }
 }

@@ -58,7 +58,14 @@ public class UsuarioService {
     private final TipoContratoRepository tipoContratoRepository;
 
     public Page<UsuarioResponse> getAll(Pageable pageable) {
-        return usuarioRepository.findByAccesoNot(accesoEliminado(), pageable).map(this::toResponse);
+        return getAll(pageable, null, null, null);
+    }
+
+    public Page<UsuarioResponse> getAll(Pageable pageable, String q, Integer idRol, Long idAcceso) {
+        String patron = (q == null || q.isBlank()) ? null : "%" + q.trim().toLowerCase() + "%";
+        return usuarioRepository
+                .buscarFiltrados(AccesoConstants.ELIMINADO, null, null, patron, idRol, idAcceso, pageable)
+                .map(this::toResponse);
     }
 
     public UsuarioResponse getById(Integer id) {
@@ -171,14 +178,11 @@ public class UsuarioService {
     }
 
     @Transactional(readOnly = true)
-    public List<UsuarioReporteResponse> reporte(LocalDate inicio, LocalDate fin, Integer idRol) {
-        return usuarioRepository.findByFechaCreacionBetweenAndAccesoNot(inicio, fin, accesoEliminado()).stream()
-                .filter(u -> {
-                    if (idRol == null) return true;
-                    return usuarioRolRepository.findByUsuarioIdUsuario(u.getIdUsuario()).stream()
-                            .anyMatch(ur -> ur.getRol().getIdRol().equals(idRol)
-                                    && !ur.getRol().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO));
-                })
+    public List<UsuarioReporteResponse> reporte(LocalDate inicio, LocalDate fin, String q, Integer idRol, Long idAcceso) {
+        String patron = (q == null || q.isBlank()) ? null : "%" + q.trim().toLowerCase() + "%";
+        return usuarioRepository
+                .buscarFiltrados(AccesoConstants.ELIMINADO, inicio, fin, patron, idRol, idAcceso, Pageable.unpaged())
+                .getContent().stream()
                 .map(u -> {
                     UsuarioReporteResponse r = new UsuarioReporteResponse();
                     r.setIdUsuario(u.getIdUsuario());

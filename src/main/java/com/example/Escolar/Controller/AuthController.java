@@ -5,6 +5,7 @@ import com.example.Escolar.Dto.LoginRequest;
 import com.example.Escolar.Dto.LoginResponse;
 import com.example.Escolar.Dto.ResetPasswordRequest;
 import com.example.Escolar.Dto.UsuarioResponse;
+import com.example.Escolar.Dto.VerificarCodigoRequest;
 import com.example.Escolar.Security.UsuarioAutenticado;
 import com.example.Escolar.Service.AuthService;
 import com.example.Escolar.Service.UsuarioService;
@@ -61,6 +62,14 @@ public class AuthController {
         authService.forgotPassword(request.getGmail());
         return ResponseEntity.ok(Map.of(
                 "mensaje", "Se envio un correo con las instrucciones para restablecer tu contrasena"
+        ));
+    }
+
+    @PostMapping("/verify-reset-code")
+    public ResponseEntity<Map<String, String>> verificarCodigo(@Valid @RequestBody VerificarCodigoRequest request) {
+        authService.verificarCodigo(request.getGmail(), request.getCodigo());
+        return ResponseEntity.ok(Map.of(
+                "mensaje", "Codigo verificado correctamente"
         ));
     }
 

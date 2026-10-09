@@ -11,6 +11,8 @@ public interface RolRepository extends JpaRepository<Rol, Integer> {
 
     List<Rol> findByAccesoNot(Acceso acceso);
 
+    List<Rol> findByAcceso(Acceso acceso);
+
     Optional<Rol> findByIdRolAndAccesoNot(Integer idRol, Acceso acceso);
 
     Optional<Rol> findByNombre(String nombre);

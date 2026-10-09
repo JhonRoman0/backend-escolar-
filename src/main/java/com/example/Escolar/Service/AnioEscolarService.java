@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -58,11 +59,15 @@ public class AnioEscolarService {
     public AnioEscolarResponse create(AnioEscolarRequest request) {
         validarVentanaDeAnio(request.getAnio());
         validarAnioUnico(request.getAnio(), null);
+        validarSinAnioPorComenzar();
         validarFechas(request.getFechaInicio(), request.getFechaFin());
         // Por defecto nace por comenzar. Crear un año nunca debe tumbar al
         // vigente: pasarlo a vigente es una transicion posterior y consciente.
         byte estado = request.getEstado() == null ? ESTADO_POR_COMENZAR : request.getEstado();
         validarFechaFinSiVigente(estado, request.getFechaFin());
+        if (estado == ESTADO_VIGENTE) {
+            validarVigenteSegunCalendario(request.getAnio());
+        }
 
         AnioEscolar anioEscolar = new AnioEscolar();
         anioEscolar.setAnio(request.getAnio().trim());
@@ -88,6 +93,9 @@ public class AnioEscolarService {
         if (anioEscolar.getEstado() == ESTADO_CERRADO) {
             throw new IllegalArgumentException("El año está cerrado y no se puede editar");
         }
+        // Se captura antes de aplicar request.estado: la congelación aplica al
+        // año que ya era vigente al entrar, no al que la misma petición promueve.
+        boolean eraVigente = anioEscolar.getEstado() == ESTADO_VIGENTE;
         if (request.getAnio() != null && !request.getAnio().isBlank()) {
             validarAnioUnico(request.getAnio(), id);
             anioEscolar.setAnio(request.getAnio().trim());
@@ -100,6 +108,7 @@ public class AnioEscolarService {
             }
         }
         if (request.getFechaInicio() != null) {
+            validarFechaInicioCongelada(eraVigente, anioEscolar.getFechaInicio(), request.getFechaInicio());
             anioEscolar.setFechaInicio(request.getFechaInicio());
         }
         if (request.getFechaFin() != null) {
@@ -114,6 +123,9 @@ public class AnioEscolarService {
         // Validar fechas despues de aplicar cambios
         validarFechas(anioEscolar.getFechaInicio(), anioEscolar.getFechaFin());
         validarFechaFinSiVigente(anioEscolar.getEstado(), anioEscolar.getFechaFin());
+        if (anioEscolar.getEstado() == ESTADO_VIGENTE) {
+            validarVigenteSegunCalendario(anioEscolar.getAnio());
+        }
         return toResponse(anioEscolarRepository.save(anioEscolar));
     }
 
@@ -125,6 +137,9 @@ public class AnioEscolarService {
         AnioEscolar anioEscolar = findAnio(id);
         validarTransicion(anioEscolar.getEstado(), estado);
         validarFechaFinSiVigente(estado, anioEscolar.getFechaFin());
+        if (estado == ESTADO_VIGENTE) {
+            validarVigenteSegunCalendario(anioEscolar.getAnio());
+        }
 
         anioEscolar.setEstado(estado);
         if (estado == ESTADO_VIGENTE) {
@@ -209,6 +224,48 @@ public class AnioEscolarService {
                 "Un año vigente necesita fecha de fin para poder cerrarse solo"
             );
         }
+    }
+
+    // Mientras exista un año esperando en por comenzar no se admite crear otro:
+    // el siguiente se registra recien cuando el pendiente pasa a vigente. Sin
+    // esta regla se acumularian por comenzar sin uso y la ventana de dos años
+    // dejaria al sistema con dos ciclos planificados a la vez.
+    private void validarSinAnioPorComenzar() {
+        anioEscolarRepository.findByEstadoInAndAccesoNot(List.of(ESTADO_POR_COMENZAR), accesoEliminado())
+                .stream()
+                .map(AnioEscolar::getAnio)
+                .min(Comparator.naturalOrder())
+                .ifPresent(pendiente -> {
+                    throw new IllegalArgumentException(
+                        "No se puede crear un nuevo año mientras el año " + pendiente
+                            + " siga en estado 'por comenzar'. Cámbialo a vigente para poder crear el siguiente"
+                    );
+                });
+    }
+
+    // Un año solo se activa como vigente cuando su valor ya llego en el
+    // calendario: en diciembre de 2026 no se pone vigente el 2027, aunque
+    // exista y tenga sus fechas cargadas.
+    private void validarVigenteSegunCalendario(String anio) {
+        int valor = Integer.parseInt(anio.trim());
+        int actual = LocalDate.now().getYear();
+        if (valor > actual) {
+            throw new IllegalArgumentException(
+                "El año " + anio.trim() + " solo se puede activar como vigente cuando la fecha calendario llegue al "
+                    + anio.trim()
+            );
+        }
+    }
+
+    // La fecha de inicio de un vigente es historia: marca el periodo en el que
+    // ya se atendio matricula. Se congela al llegar a VIGENTE y no se vuelve a
+    // tocar. Compara valor y no presencia porque el formulario siempre reenvia
+    // la fecha, incluso con el selector deshabilitado.
+    private void validarFechaInicioCongelada(boolean eraVigente, LocalDate actual, LocalDate nueva) {
+        if (!eraVigente || nueva.equals(actual)) {
+            return;
+        }
+        throw new IllegalArgumentException("El año vigente no admite cambios en su fecha de inicio");
     }
 
     // Solo se admiten el año en curso y el siguiente: los años futuros se

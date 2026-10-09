@@ -48,6 +48,11 @@ public class UsuarioController {
         return usuarioService.update(id, request);
     }
 
+    @PutMapping("/{id}/reactivar")
+    public UsuarioResponse reactivar(@PathVariable Integer id, @Valid @RequestBody UsuarioRequest request) {
+        return usuarioService.reactivar(id, request);
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Integer id) {
         usuarioService.delete(id);

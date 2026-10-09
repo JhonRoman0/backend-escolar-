@@ -6,6 +6,7 @@ import com.example.Escolar.Model.Competencia;
 import com.example.Escolar.Model.Curso;
 import com.example.Escolar.Model.EstadoAsistencia;
 import com.example.Escolar.Model.Grado;
+import com.example.Escolar.Model.GradoAcademico;
 import com.example.Escolar.Model.GradoSeccion;
 import com.example.Escolar.Model.Modulo;
 import com.example.Escolar.Model.Nivel;
@@ -15,6 +16,7 @@ import com.example.Escolar.Model.Rol;
 import com.example.Escolar.Model.RolPermiso;
 import com.example.Escolar.Model.RolPermisoAccion;
 import com.example.Escolar.Model.Seccion;
+import com.example.Escolar.Model.TipoContrato;
 import com.example.Escolar.Model.Turno;
 import com.example.Escolar.Model.Usuario;
 import com.example.Escolar.Model.UsuarioRol;
@@ -24,6 +26,7 @@ import com.example.Escolar.Repository.CompetenciaRepository;
 import com.example.Escolar.Repository.CursoRepository;
 import com.example.Escolar.Repository.EstadoAsistenciaRepository;
 import com.example.Escolar.Repository.GradoRepository;
+import com.example.Escolar.Repository.GradoAcademicoRepository;
 import com.example.Escolar.Repository.GradoSeccionRepository;
 import com.example.Escolar.Repository.ModuloRepository;
 import com.example.Escolar.Repository.NivelRepository;
@@ -33,6 +36,7 @@ import com.example.Escolar.Repository.RolPermisoAccionRepository;
 import com.example.Escolar.Repository.RolPermisoRepository;
 import com.example.Escolar.Repository.RolRepository;
 import com.example.Escolar.Repository.SeccionRepository;
+import com.example.Escolar.Repository.TipoContratoRepository;
 import com.example.Escolar.Repository.TurnoRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
@@ -72,6 +76,8 @@ public class DataSeeder implements CommandLineRunner {
     private final CursoRepository cursoRepository;
     private final TurnoRepository turnoRepository;
     private final GradoRepository gradoRepository;
+    private final GradoAcademicoRepository gradoAcademicoRepository;
+    private final TipoContratoRepository tipoContratoRepository;
     private final SeccionRepository seccionRepository;
     private final GradoSeccionRepository gradoSeccionRepository;
     private final PasswordEncoder passwordEncoder;
@@ -108,6 +114,8 @@ public class DataSeeder implements CommandLineRunner {
         seedNiveles();
         seedTurnos();
         seedGrados();
+        seedGradosAcademicos();
+        seedTiposContrato();
         migrarSeccionesInicial();
         seedCompetencias();
         seedRoles();
@@ -165,6 +173,46 @@ public class DataSeeder implements CommandLineRunner {
         nivel.setNombre(nombre);
         nivel.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         nivelRepository.save(nivel);
+    }
+
+    /**
+     * Catalogo de grados academicos. Solo lectura: sin CRUD, se siembran como
+     * valores de referencia y el formulario lo usa para sus Selects.
+     */
+    private void seedGradosAcademicos() {
+        for (String nombre : List.of("Bachiller", "Maestro", "Doctor")) {
+            crearGradoAcademicoSiFalta(nombre);
+        }
+    }
+
+    private void crearGradoAcademicoSiFalta(String nombre) {
+        if (gradoAcademicoRepository.findByNombreAndAccesoNot(nombre, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).isPresent()) {
+            return;
+        }
+        GradoAcademico grado = new GradoAcademico();
+        grado.setNombre(nombre);
+        grado.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
+        gradoAcademicoRepository.save(grado);
+    }
+
+    /**
+     * Catalogo de tipos de contrato. Solo lectura: sin CRUD, se siembran como
+     * valores de referencia y el formulario lo usa para sus Selects.
+     */
+    private void seedTiposContrato() {
+        for (String nombre : List.of("Plazo indeterminado", "Sujeto a modalidad", "Tiempo parcial")) {
+            crearTipoContratoSiFalta(nombre);
+        }
+    }
+
+    private void crearTipoContratoSiFalta(String nombre) {
+        if (tipoContratoRepository.findByNombreAndAccesoNot(nombre, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).isPresent()) {
+            return;
+        }
+        TipoContrato tipo = new TipoContrato();
+        tipo.setNombre(nombre);
+        tipo.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
+        tipoContratoRepository.save(tipo);
     }
 
     /**

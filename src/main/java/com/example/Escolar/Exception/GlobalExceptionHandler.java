@@ -125,6 +125,20 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
     }
 
+    @ExceptionHandler(UsuarioReactivacionException.class)
+    public ResponseEntity<Map<String, Object>> handleUsuarioReactivacion(UsuarioReactivacionException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.CONFLICT.value());
+        body.put("error", "Conflict");
+        body.put("message", ex.getMessage());
+        body.put("idUsuario", ex.getIdUsuario());
+        body.put("nombre", ex.getNombre());
+        body.put("codigo", ex.getCodigo());
+        body.put("fechaCreacion", ex.getFechaCreacion());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<Map<String, Object>> handleDataIntegrity(DataIntegrityViolationException ex) {
         String causeMsg = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();

@@ -20,9 +20,11 @@ public class DocenteResponse {
     private LocalDate fechaNaci;
     private String urlFoto;
     private Long accesoId;
-    private String tipoContrato;
+    private Integer tipoContratoId;
+    private String tipoContratoNombre;
     private LocalDate fechaContratacion;
-    private String especialidad;
-    private String gradoAcademico;
+    private Integer gradoAcademicoId;
+    private String gradoAcademicoNombre;
+    private List<NivelResponse> niveles;
     private List<RolResponse> roles;
 }

@@ -39,6 +39,8 @@ public class Usuario {
     @Column(name = "gmail",length = 60,nullable = true)
     @Email
     String gmail;
+    @Column(name = "celular", length = 15, nullable = true)
+    String celular;
     @Column(name = "fecha_naci",nullable = false)
     LocalDate fechaNaci;
     @Column(name = "url_foto",nullable = true)

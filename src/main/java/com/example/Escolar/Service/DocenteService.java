@@ -3,17 +3,25 @@ package com.example.Escolar.Service;
 import com.example.Escolar.Dto.DocenteReporteResponse;
 import com.example.Escolar.Dto.DocenteRequest;
 import com.example.Escolar.Dto.DocenteResponse;
+import com.example.Escolar.Dto.NivelResponse;
 import com.example.Escolar.Dto.RolResponse;
 import com.example.Escolar.Exception.DocenteConAsignacionesException;
 import com.example.Escolar.Exception.ResourceNotFoundException;
+import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.Docente;
+import com.example.Escolar.Model.DocenteNivel;
+import com.example.Escolar.Model.Nivel;
 import com.example.Escolar.Model.Rol;
 import com.example.Escolar.Model.Usuario;
 import com.example.Escolar.Model.UsuarioRol;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.AsignacionRepository;
+import com.example.Escolar.Repository.DocenteNivelRepository;
 import com.example.Escolar.Repository.DocenteRepository;
+import com.example.Escolar.Repository.GradoAcademicoRepository;
+import com.example.Escolar.Repository.NivelRepository;
 import com.example.Escolar.Repository.RolRepository;
+import com.example.Escolar.Repository.TipoContratoRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
 import lombok.RequiredArgsConstructor;
@@ -22,9 +30,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -39,31 +46,19 @@ public class DocenteService {
     private final PasswordEncoder passwordEncoder;
     private final AccesoRepository accesoRepository;
     private final AsignacionRepository asignacionRepository;
+    private final GradoAcademicoRepository gradoAcademicoRepository;
+    private final TipoContratoRepository tipoContratoRepository;
+    private final NivelRepository nivelRepository;
+    private final DocenteNivelRepository docenteNivelRepository;
 
     public List<DocenteResponse> getAll() {
-        return docenteRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
+        return docenteRepository.findByAccesoNot(accesoNoEliminado()).stream()
                 .map(this::toResponse)
                 .toList();
     }
 
     public DocenteResponse getById(Integer id) {
         return toResponse(findDocente(id));
-    }
-
-    @Transactional
-    public DocenteResponse create(DocenteRequest request) {
-        validarDocumentoUnico(request.getDocumentoIdentidad(), null);
-        validarGmailUnico(request.getGmail(), null);
-        Usuario usuario = crearUsuario(request);
-        Docente docente = new Docente();
-        docente.setUsuario(usuario);
-        aplicarDatosAcademicos(docente, request);
-        if (request.getAccesoId() == null) {
-            docente.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
-        } else {
-            docente.setAcceso(accesoRepository.findById(request.getAccesoId()).orElseThrow());
-        }
-        return toResponse(docenteRepository.save(docente));
     }
 
     @Transactional
@@ -76,12 +71,13 @@ public class DocenteService {
         usuarioRepository.save(usuario);
         if (request.getAccesoId() != null) {
             docente.setAcceso(accesoRepository.findById(request.getAccesoId()).orElseThrow());
-            if (request.getAccesoId() != null && request.getAccesoId() == AccesoConstants.ACTIVO.longValue()) {
+            if (request.getAccesoId() == AccesoConstants.ACTIVO.longValue()) {
                 usuario.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
                 usuarioRepository.save(usuario);
             }
         }
         aplicarDatosAcademicos(docente, request);
+        sincronizarNiveles(docente, request.getNiveles());
         return toResponse(docenteRepository.save(docente));
     }
 
@@ -106,29 +102,27 @@ public class DocenteService {
             );
         }
 
-        docente.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
+        docente.setAcceso(accesoNoEliminado());
         docenteRepository.save(docente);
         Usuario usuario = docente.getUsuario();
         removerRolDocente(usuario.getIdUsuario());
         boolean tieneOtrosRoles = usuarioRolRepository.findByUsuarioIdUsuario(usuario.getIdUsuario()).stream()
                 .anyMatch(ur -> !ur.getRol().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO));
         if (!tieneOtrosRoles) {
-            usuario.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
+            usuario.setAcceso(accesoNoEliminado());
             usuarioRepository.save(usuario);
         }
     }
 
     @Transactional(readOnly = true)
-    public List<DocenteReporteResponse> reporte(LocalDate inicio, LocalDate fin, String especialidad, String tipoContrato) {
-        return docenteRepository.findByFechaContratacionBetweenAndAccesoNot(inicio, fin, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
+    public List<DocenteReporteResponse> reporte(LocalDate inicio, LocalDate fin, Integer tipoContratoId) {
+        return docenteRepository.findByFechaContratacionBetweenAndAccesoNot(inicio, fin, accesoNoEliminado()).stream()
                 .filter(d -> {
-                    if (especialidad != null && !especialidad.isBlank()) {
-                        if (!especialidad.equalsIgnoreCase(d.getEspecialidad())) return false;
+                    if (tipoContratoId == null) {
+                        return true;
                     }
-                    if (tipoContrato != null && !tipoContrato.isBlank()) {
-                        if (!tipoContrato.equalsIgnoreCase(d.getTipoContrato())) return false;
-                    }
-                    return true;
+                    return d.getTipoContrato() != null
+                            && tipoContratoId.equals(d.getTipoContrato().getIdTipoContrato());
                 })
                 .map(d -> {
                     DocenteReporteResponse r = new DocenteReporteResponse();
@@ -136,9 +130,9 @@ public class DocenteService {
                     r.setNombre(d.getUsuario().getNombre() + " " + d.getUsuario().getApellidoPat()
                             + " " + d.getUsuario().getApellidoMat());
                     r.setCodigo(d.getUsuario().getCodigo());
-                    r.setEspecialidad(d.getEspecialidad());
-                    r.setGradoAcademico(d.getGradoAcademico());
-                    r.setTipoContrato(d.getTipoContrato());
+                    r.setGradoAcademico(d.getGradoAcademico() != null ? d.getGradoAcademico().getNombre() : null);
+                    r.setTipoContrato(d.getTipoContrato() != null ? d.getTipoContrato().getNombre() : null);
+                    r.setNiveles(nivelesDe(d).stream().map(NivelResponse::getNombre).toList());
                     r.setFechaContratacion(d.getFechaContratacion());
                     r.setDocumentoIdentidad(d.getUsuario().getDocumentoIdentidad());
                     return r;
@@ -156,19 +150,6 @@ public class DocenteService {
                 .filter(ur -> ur.getRol().getIdRol().equals(rolDocente.getIdRol()))
                 .findFirst()
                 .ifPresent(usuarioRolRepository::delete);
-    }
-
-    private Usuario crearUsuario(DocenteRequest request) {
-        if (request.getContraseña() == null || request.getContraseña().isBlank()) {
-            throw new IllegalArgumentException("La contraseña es obligatoria");
-        }
-        Usuario usuario = new Usuario();
-        construirUsuario(usuario, request, true);
-        usuario.setCodigo(generarCodigo());
-        usuario.setFechaCreacion(LocalDate.now());
-        Usuario saved = usuarioRepository.save(usuario);
-        asignarRolDocente(saved);
-        return saved;
     }
 
     private void construirUsuario(Usuario usuario, DocenteRequest request, boolean esCreacion) {
@@ -190,38 +171,57 @@ public class DocenteService {
         }
     }
 
-    private void asignarRolDocente(Usuario usuario) {
-        Rol rolDocente = rolRepository.findByNombre(ROL_DOCENTE)
-                .orElseGet(() -> {
-                    Rol rol = new Rol();
-                    rol.setNombre(ROL_DOCENTE);
-                    rol.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
-                    return rolRepository.save(rol);
-                });
-        boolean yaTiene = usuarioRolRepository.findByUsuarioIdUsuario(usuario.getIdUsuario()).stream()
-                .anyMatch(ur -> ur.getRol().getIdRol().equals(rolDocente.getIdRol()));
-        if (yaTiene) {
-            return;
+    private void aplicarDatosAcademicos(Docente docente, DocenteRequest request) {
+        if (request.getTipoContratoId() != null) {
+            docente.setTipoContrato(tipoContratoRepository
+                    .findByIdTipoContratoAndAccesoNot(request.getTipoContratoId(), accesoNoEliminado())
+                    .orElseThrow(() -> new ResourceNotFoundException("Tipo de contrato no encontrado con id " + request.getTipoContratoId())));
+        } else {
+            docente.setTipoContrato(null);
         }
-        UsuarioRol usuarioRol = new UsuarioRol();
-        usuarioRol.setUsuario(usuario);
-        usuarioRol.setRol(rolDocente);
-        usuarioRol.setFechaAsignacion(LocalDateTime.now());
-        usuarioRolRepository.save(usuarioRol);
+        docente.setFechaContratacion(request.getFechaContratacion());
+        if (request.getGradoAcademicoId() != null) {
+            docente.setGradoAcademico(gradoAcademicoRepository
+                    .findByIdGradoAcademicoAndAccesoNot(request.getGradoAcademicoId(), accesoNoEliminado())
+                    .orElseThrow(() -> new ResourceNotFoundException("Grado academico no encontrado con id " + request.getGradoAcademicoId())));
+        } else {
+            docente.setGradoAcademico(null);
+        }
     }
 
-    private void aplicarDatosAcademicos(Docente docente, DocenteRequest request) {
-        docente.setTipoContrato(request.getTipoContrato());
-        docente.setFechaContratacion(request.getFechaContratacion());
-        docente.setEspecialidad(request.getEspecialidad());
-        docente.setGradoAcademico(request.getGradoAcademico());
+    private void sincronizarNiveles(Docente docente, List<Integer> niveles) {
+        docenteNivelRepository.deleteByDocente(docente);
+        if (niveles == null || niveles.isEmpty()) {
+            return;
+        }
+        for (Integer idNivel : new LinkedHashSet<>(niveles)) {
+            Nivel nivel = nivelRepository.findByIdNivelAndAccesoNot(idNivel, accesoNoEliminado())
+                    .orElseThrow(() -> new ResourceNotFoundException("Nivel no encontrado con id " + idNivel));
+            DocenteNivel vinculo = new DocenteNivel();
+            vinculo.setDocente(docente);
+            vinculo.setNivel(nivel);
+            vinculo.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
+            docenteNivelRepository.save(vinculo);
+        }
+    }
+
+    private List<NivelResponse> nivelesDe(Docente docente) {
+        return docenteNivelRepository.findByDocenteAndAccesoNot(docente, accesoNoEliminado()).stream()
+                .map(DocenteNivel::getNivel)
+                .map(nivel -> {
+                    NivelResponse response = new NivelResponse();
+                    response.setIdNivel(nivel.getIdNivel());
+                    response.setNombre(nivel.getNombre());
+                    return response;
+                })
+                .toList();
     }
 
     private void validarDocumentoUnico(String documentoIdentidad, Integer idExcluir) {
         if (documentoIdentidad == null || documentoIdentidad.isBlank()) {
             return;
         }
-        usuarioRepository.findByDocumentoIdentidadAndAccesoNot(documentoIdentidad, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
+        usuarioRepository.findByDocumentoIdentidadAndAccesoNot(documentoIdentidad, accesoNoEliminado())
                 .filter(u -> idExcluir == null || !u.getIdUsuario().equals(idExcluir))
                 .ifPresent(u -> {
                     throw new IllegalArgumentException("Ya existe un usuario con ese documento de identidad");
@@ -232,22 +232,20 @@ public class DocenteService {
         if (gmail == null || gmail.isBlank()) {
             return;
         }
-        usuarioRepository.findByGmailAndAccesoNot(gmail, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
+        usuarioRepository.findByGmailAndAccesoNot(gmail, accesoNoEliminado())
                 .filter(u -> idExcluir == null || !u.getIdUsuario().equals(idExcluir))
                 .ifPresent(u -> {
                     throw new IllegalArgumentException("Ya existe un usuario con ese correo electronico");
                 });
     }
 
-    private String generarCodigo() {
-        String prefijo = "D" + LocalDate.now().getYear();
-        long correlativo = usuarioRepository.countByCodigoStartingWith(prefijo) + 1;
-        return String.format("%s%04d", prefijo, correlativo);
+    private Docente findDocente(Integer id) {
+        return docenteRepository.findByIdDocenteAndAccesoNot(id, accesoNoEliminado())
+                .orElseThrow(() -> new ResourceNotFoundException("Docente no encontrado con id " + id));
     }
 
-    private Docente findDocente(Integer id) {
-        return docenteRepository.findByIdDocenteAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
-                .orElseThrow(() -> new ResourceNotFoundException("Docente no encontrado con id " + id));
+    private Acceso accesoNoEliminado() {
+        return accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow();
     }
 
     private DocenteResponse toResponse(Docente docente) {
@@ -264,10 +262,12 @@ public class DocenteService {
         response.setFechaNaci(usuario.getFechaNaci());
         response.setUrlFoto(usuario.getUrlFoto());
         response.setAccesoId(docente.getAcceso().getIdAcceso().longValue());
-        response.setTipoContrato(docente.getTipoContrato());
+        response.setTipoContratoId(docente.getTipoContrato() != null ? docente.getTipoContrato().getIdTipoContrato() : null);
+        response.setTipoContratoNombre(docente.getTipoContrato() != null ? docente.getTipoContrato().getNombre() : null);
         response.setFechaContratacion(docente.getFechaContratacion());
-        response.setEspecialidad(docente.getEspecialidad());
-        response.setGradoAcademico(docente.getGradoAcademico());
+        response.setGradoAcademicoId(docente.getGradoAcademico() != null ? docente.getGradoAcademico().getIdGradoAcademico() : null);
+        response.setGradoAcademicoNombre(docente.getGradoAcademico() != null ? docente.getGradoAcademico().getNombre() : null);
+        response.setNiveles(nivelesDe(docente));
         response.setRoles(getRolesDelUsuario(usuario.getIdUsuario()));
         return response;
     }

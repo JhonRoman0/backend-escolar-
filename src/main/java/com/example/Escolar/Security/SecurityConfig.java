@@ -32,6 +32,7 @@ public class SecurityConfig {
 
     public static final List<String> RUTAS_SOLO_AUTENTICADAS = List.of(
             "/auth/me",
+            "/auth/permisos",
             "/consulta/dni/**");
 
     private final JwtAuthFilter jwtAuthFilter;

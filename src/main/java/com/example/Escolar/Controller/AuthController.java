@@ -3,6 +3,7 @@ package com.example.Escolar.Controller;
 import com.example.Escolar.Dto.ForgotPasswordRequest;
 import com.example.Escolar.Dto.LoginRequest;
 import com.example.Escolar.Dto.LoginResponse;
+import com.example.Escolar.Dto.PermisosRolResponse;
 import com.example.Escolar.Dto.ResetPasswordRequest;
 import com.example.Escolar.Dto.UsuarioResponse;
 import com.example.Escolar.Dto.VerificarCodigoRequest;
@@ -98,5 +99,12 @@ public class AuthController {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         UsuarioAutenticado principal = (UsuarioAutenticado) authentication.getPrincipal();
         return usuarioService.getById(principal.idUsuario());
+    }
+
+    @GetMapping("/permisos")
+    public PermisosRolResponse permisos() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        UsuarioAutenticado principal = (UsuarioAutenticado) authentication.getPrincipal();
+        return authService.permisosActuales(principal.idUsuario());
     }
 }

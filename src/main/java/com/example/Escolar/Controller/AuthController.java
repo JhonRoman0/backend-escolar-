@@ -1,5 +1,6 @@
 package com.example.Escolar.Controller;
 
+import com.example.Escolar.Dto.CambiarContrasenaRequest;
 import com.example.Escolar.Dto.ForgotPasswordRequest;
 import com.example.Escolar.Dto.LoginRequest;
 import com.example.Escolar.Dto.LoginResponse;
@@ -98,5 +99,17 @@ public class AuthController {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         UsuarioAutenticado principal = (UsuarioAutenticado) authentication.getPrincipal();
         return usuarioService.getById(principal.idUsuario());
+    }
+
+    @PostMapping("/change-password")
+    public ResponseEntity<Map<String, String>> cambiarContrasena(
+            @Valid @RequestBody CambiarContrasenaRequest request) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        UsuarioAutenticado principal = (UsuarioAutenticado) authentication.getPrincipal();
+        authService.cambiarContrasena(principal.idUsuario(),
+                request.getContrasenaActual(), request.getNuevaContrasena());
+        return ResponseEntity.ok(Map.of(
+                "mensaje", "Contrasena actualizada correctamente"
+        ));
     }
 }

@@ -40,6 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -71,6 +72,8 @@ class UsuarioServiceTest {
     private GradoAcademicoRepository gradoAcademicoRepository;
     @Mock
     private TipoContratoRepository tipoContratoRepository;
+    @Mock
+    private EmailService emailService;
 
     @InjectMocks
     private UsuarioService service;
@@ -321,5 +324,82 @@ class UsuarioServiceTest {
         verify(usuarioRepository).save(captor.capture());
         assertEquals("http://cloud/usuarios/foto.jpg", captor.getValue().getUrlFoto());
         assertEquals("pk123", captor.getValue().getPkUrlFoto());
+    }
+
+    private void stubCreacionBasica() {
+        stubAccesoRepository();
+        stubValidacionesUnicas();
+        when(passwordEncoder.encode(anyString())).thenReturn("hashNueva");
+        when(rolRepository.findByIdRolAndAccesoNot(any(Integer.class), any(Acceso.class)))
+                .thenReturn(Optional.of(rol(1, "Administrador")));
+        when(usuarioRepository.save(any(Usuario.class))).thenAnswer(inv -> {
+            Usuario saved = inv.getArgument(0);
+            saved.setIdUsuario(99);
+            return saved;
+        });
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(any(Integer.class), any(Acceso.class)))
+                .thenReturn(Optional.of(usuario(99, AccesoConstants.ACTIVO)));
+        when(usuarioRolRepository.findByUsuarioIdUsuario(99))
+                .thenReturn(List.of(usuarioRol(usuario(99, AccesoConstants.ACTIVO), rol(1, "Administrador"))));
+    }
+
+    @Test
+    void crearConGmailEnviaCredencialesYStampaTrue() {
+        stubCreacionBasica();
+        when(emailService.enviarCredencialesAcceso(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(true);
+
+        UsuarioResponse response = service.create(requestSinDocente());
+
+        assertEquals("A20260001", response.getCodigo());
+        assertEquals(Boolean.TRUE, response.getCredencialesEnviadas());
+        verify(emailService).enviarCredencialesAcceso(
+                eq("jhoanatanguevaravasquez@gmail.com"), eq("JHONATAN GUEVARA"), eq("A20260001"), eq("NuevaClave1"));
+    }
+
+    @Test
+    void crearConCorreoFallidoNoRompeLaCreacion() {
+        stubCreacionBasica();
+        when(emailService.enviarCredencialesAcceso(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(false);
+
+        UsuarioResponse response = service.create(requestSinDocente());
+
+        assertEquals(99, response.getIdUsuario());
+        assertEquals(Boolean.FALSE, response.getCredencialesEnviadas());
+    }
+
+    @Test
+    void crearSinGmailNoEnviaCredenciales() {
+        stubCreacionBasica();
+        UsuarioRequest request = requestSinDocente();
+        request.setGmail("   ");
+
+        UsuarioResponse response = service.create(request);
+
+        assertEquals(Boolean.FALSE, response.getCredencialesEnviadas());
+        verify(emailService, never())
+                .enviarCredencialesAcceso(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void reactivarEnviaCredencialesYStampaTrue() {
+        stubAccesoRepository();
+        stubValidacionesUnicas();
+        Usuario eliminado = usuario(2, AccesoConstants.ELIMINADO);
+        when(usuarioRepository.findById(2)).thenReturn(Optional.of(eliminado));
+        when(passwordEncoder.encode(anyString())).thenReturn("hashNueva");
+        when(rolRepository.findByIdRolAndAccesoNot(any(Integer.class), any(Acceso.class)))
+                .thenReturn(Optional.of(rol(1, "Administrador")));
+        when(docenteRepository.findByUsuarioIdUsuario(2)).thenReturn(Optional.empty());
+        stubSaveYRolesActivos(eliminado, rol(1, "Administrador"));
+        when(emailService.enviarCredencialesAcceso(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(true);
+
+        UsuarioResponse response = service.reactivar(2, requestSinDocente());
+
+        assertEquals(Boolean.TRUE, response.getCredencialesEnviadas());
+        verify(emailService).enviarCredencialesAcceso(
+                eq("jhoanatanguevaravasquez@gmail.com"), eq("JHONATAN GUEVARA"), eq("A20260001"), eq("NuevaClave1"));
     }
 }

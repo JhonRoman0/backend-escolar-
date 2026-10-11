@@ -95,6 +95,38 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.LOCKED).body(body);
     }
 
+    @ExceptionHandler(CuentaInactivaException.class)
+    public ResponseEntity<Map<String, Object>> handleCuentaInactiva(CuentaInactivaException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.FORBIDDEN.value());
+        body.put("error", "Forbidden");
+        body.put("message", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
+    }
+
+    @ExceptionHandler(CodigoRecuperacionAgotadoException.class)
+    public ResponseEntity<Map<String, Object>> handleCodigoAgotado(CodigoRecuperacionAgotadoException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.BAD_REQUEST.value());
+        body.put("error", "Bad Request");
+        body.put("codigo", CodigoRecuperacionAgotadoException.CODIGO);
+        body.put("message", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    @ExceptionHandler(EsperaReenvioCodigoException.class)
+    public ResponseEntity<Map<String, Object>> handleEsperaReenvio(EsperaReenvioCodigoException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.TOO_MANY_REQUESTS.value());
+        body.put("error", "Too Many Requests");
+        body.put("segundosRestantes", ex.getSegundosRestantes());
+        body.put("message", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(body);
+    }
+
     @ExceptionHandler(RolConUsuariosException.class)
     public ResponseEntity<Map<String, Object>> handleRolConUsuarios(RolConUsuariosException ex) {
         Map<String, Object> body = new HashMap<>();

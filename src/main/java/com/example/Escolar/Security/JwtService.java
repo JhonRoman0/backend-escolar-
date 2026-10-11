@@ -13,6 +13,8 @@ import java.util.List;
 @Component
 public class JwtService {
 
+    private static final String CLAIM_CAMBIO_PENDIENTE = "cambioContrasenaPendiente";
+
     private final SecretKey secretKey;
     private final long expiration;
 
@@ -23,11 +25,16 @@ public class JwtService {
     }
 
     public String generarToken(Integer idUsuario, String codigo, List<String> roles) {
+        return generarToken(idUsuario, codigo, roles, false);
+    }
+
+    public String generarToken(Integer idUsuario, String codigo, List<String> roles, boolean cambioContrasenaPendiente) {
         Date ahora = new Date();
         return Jwts.builder()
                 .subject(String.valueOf(idUsuario))
                 .claim("codigo", codigo)
                 .claim("roles", roles)
+                .claim(CLAIM_CAMBIO_PENDIENTE, cambioContrasenaPendiente)
                 .issuedAt(ahora)
                 .expiration(new Date(ahora.getTime() + expiration))
                 .signWith(secretKey)
@@ -53,6 +60,10 @@ public class JwtService {
 
     public List<String> getRoles(String token) {
         return extraerClaims(token).get("roles", List.class);
+    }
+
+    public boolean isCambioContrasenaPendiente(String token) {
+        return Boolean.TRUE.equals(extraerClaims(token).get(CLAIM_CAMBIO_PENDIENTE, Boolean.class));
     }
 
     private io.jsonwebtoken.Claims extraerClaims(String token) {

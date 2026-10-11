@@ -1,6 +1,7 @@
 package com.example.Escolar.Service;
 
 import com.example.Escolar.Dto.LoginRequest;
+import com.example.Escolar.Dto.LoginResponse;
 import com.example.Escolar.Exception.CuentaBloqueadaException;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.Acceso;
@@ -191,6 +192,82 @@ class AuthServiceTest {
                 () -> authService.cambiarContrasena(1, "claveIncorrecta", "ClaveNueva1@"));
 
         verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    void loginConCambioPendienteGeneraTokenConMarca() {
+        stubAccesoRepository();
+        Usuario usuario = usuario(0);
+        usuario.setDebeCambiarContrasena(true);
+        when(usuarioRepository.findByCodigoAndAccesoNot(anyString(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+        when(passwordEncoder.matches("clave", "$2a$10$hash")).thenReturn(true);
+        when(usuarioRolRepository.findByUsuarioIdUsuario(1)).thenReturn(List.of());
+        when(jwtService.generarToken(1, "ADM20240001", List.of(), true)).thenReturn("tokenPendiente");
+
+        LoginResponse response = authService.login(request());
+
+        assertEquals("tokenPendiente", response.getToken());
+    }
+
+    @Test
+    void cambiarContrasenaQuitaMarcaYDevuelveTokenNuevo() {
+        stubAccesoRepository();
+        Usuario usuario = usuario(0);
+        usuario.setDebeCambiarContrasena(true);
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(any(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+        when(passwordEncoder.matches("claveTemporal", "$2a$10$hash")).thenReturn(true);
+        when(passwordEncoder.encode("ClaveNueva1@")).thenReturn("$2a$10$nuevo");
+        when(usuarioRolRepository.findByUsuarioIdUsuario(1)).thenReturn(List.of());
+        when(jwtService.generarToken(1, "ADM20240001", List.of())).thenReturn("tokenLimpio");
+
+        String token = authService.cambiarContrasena(1, "claveTemporal", "ClaveNueva1@");
+
+        assertEquals("tokenLimpio", token);
+        assertEquals(Boolean.FALSE, usuario.getDebeCambiarContrasena());
+    }
+
+    @Test
+    void cambiarContrasenaIgualALaActualLanzaIllegalArgument() {
+        stubAccesoRepository();
+        Usuario usuario = usuario(0);
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(any(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+        when(passwordEncoder.matches("Clave1@x", "$2a$10$hash")).thenReturn(true);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> authService.cambiarContrasena(1, "Clave1@x", "Clave1@x"));
+
+        assertEquals("La nueva contrasena debe ser diferente a la actual", ex.getMessage());
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    void resetPasswordQuitaMarcaDeCambioPendiente() {
+        stubAccesoRepository();
+        Usuario usuario = usuario(0);
+        usuario.setDebeCambiarContrasena(true);
+        usuario.setResetToken(sha256("123456"));
+        usuario.setResetTokenExpiracion(LocalDateTime.now().plusMinutes(10));
+        when(usuarioRepository.findByGmailAndAccesoNot(anyString(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+        when(passwordEncoder.encode("ClaveNueva1@")).thenReturn("$2a$10$nuevo");
+
+        authService.resetPassword("correo@gmail.com", "123456", "ClaveNueva1@");
+
+        assertEquals(Boolean.FALSE, usuario.getDebeCambiarContrasena());
+        assertEquals("$2a$10$nuevo", usuario.getContraseña());
+    }
+
+    private String sha256(String valor) {
+        try {
+            byte[] hash = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(valor.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte b : hash) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     @Test

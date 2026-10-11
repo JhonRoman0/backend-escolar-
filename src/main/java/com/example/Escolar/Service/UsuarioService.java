@@ -450,6 +450,8 @@ public class UsuarioService {
         }
         if (request.getContraseña() != null && !request.getContraseña().isBlank()) {
             usuario.setContraseña(passwordEncoder.encode(request.getContraseña()));
+            // Aplica a crear, reactivar y editar: toda contraseña puesta por el admin es temporal.
+            usuario.setDebeCambiarContrasena(true);
         }
         if (request.getAccesoId() != null) {
             usuario.setAcceso(accesoRepository.findById(request.getAccesoId()).orElseThrow());
@@ -488,6 +490,7 @@ public class UsuarioService {
         response.setNombreRol(roles.isEmpty() ? null : roles.get(0).getNombre());
         response.setIntentosFallidos(usuario.getIntentosFallidos());
         response.setFechaBloqueo(usuario.getFechaBloqueo());
+        response.setDebeCambiarContrasena(Boolean.TRUE.equals(usuario.getDebeCambiarContrasena()));
         return response;
     }
 

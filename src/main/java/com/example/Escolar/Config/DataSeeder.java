@@ -227,11 +227,11 @@ public class DataSeeder implements CommandLineRunner {
         if (!turnoRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).isEmpty()) {
             return;
         }
-        // La tarde empieza cuando termina la manana: el empate es el cambio de
-        // turno y esta permitido. Entre los cuatro horarios de cada turno hay
-        // margen para el cambio de turno, la llegada tarde y la falta.
+        // La tarde empieza un minuto despues de que termina la manana: los turnos
+        // no pueden compartir ni un minuto. Entre los cuatro horarios de cada
+        // turno hay margen para la llegada tarde y la falta.
         crearTurnoSiFalta("Mañana", LocalTime.of(7, 0), LocalTime.of(7, 20), LocalTime.of(7, 40), LocalTime.of(12, 30));
-        crearTurnoSiFalta("Tarde", LocalTime.of(12, 30), LocalTime.of(12, 50), LocalTime.of(13, 10), LocalTime.of(17, 30));
+        crearTurnoSiFalta("Tarde", LocalTime.of(12, 31), LocalTime.of(12, 50), LocalTime.of(13, 10), LocalTime.of(17, 30));
     }
 
     private void crearTurnoSiFalta(String nombre, LocalTime horaEntrada, LocalTime horaEntradaLimite,

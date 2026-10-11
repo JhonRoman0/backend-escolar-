@@ -104,13 +104,9 @@ public class TurnoService {
     }
 
     /**
-     * Un turno solo se cruza con el que lo precede en la jornada, nunca con los
-     * que vienen despues: esos se validan contra el, no al reves. Por eso el
-     * primero de la cadena siempre pasa, y por eso editar el turno de la manana
-     * nunca falla por un turno posterior.
-     *
-     * El empate esta permitido, representa el cambio de turno: manana sale a las
-     * 12:30 y la tarde entra a las 12:30 es una configuracion valida.
+     * Un turno se compara con el que lo precede y con el que lo sigue en la
+     * jornada. Entre uno y otro debe haber al menos un minuto: si la manana
+     * sale a las 12:30, la tarde recien puede entrar a las 12:31.
      */
     private void validarSolapamiento(TurnoRequest request, Integer idExcluir, Integer idPropio) {
         List<Turno> cadena = turnoRepository
@@ -135,14 +131,19 @@ public class TurnoService {
                 && cadena.get(insercion).getIdTurno() < candidato.getIdTurno()))) {
             insercion++;
         }
-        if (insercion == 0) {
-            return;
+        if (insercion > 0) {
+            Turno anterior = cadena.get(insercion - 1);
+            if (!candidato.getHoraEntrada().isAfter(anterior.getHoraSalida())) {
+                throw new IllegalArgumentException("Debe iniciar después de que termine el turno "
+                        + anterior.getNombre() + " (" + anterior.getHoraSalida().format(HORA_CORTA) + ")");
+            }
         }
-
-        Turno anterior = cadena.get(insercion - 1);
-        if (candidato.getHoraEntrada().isBefore(anterior.getHoraSalida())) {
-            throw new IllegalArgumentException("No puede iniciar antes de que termine el turno "
-                    + anterior.getNombre() + " (" + anterior.getHoraSalida().format(HORA_CORTA) + ")");
+        if (insercion < cadena.size()) {
+            Turno siguiente = cadena.get(insercion);
+            if (!candidato.getHoraSalida().isBefore(siguiente.getHoraEntrada())) {
+                throw new IllegalArgumentException("Debe terminar antes de que empiece el turno "
+                        + siguiente.getNombre() + " (" + siguiente.getHoraEntrada().format(HORA_CORTA) + ")");
+            }
         }
     }
 

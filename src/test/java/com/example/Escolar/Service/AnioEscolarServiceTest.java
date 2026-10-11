@@ -486,19 +486,149 @@ class AnioEscolarServiceTest {
 
     @Test
     void seCambiaLaFechaInicioSiElAnioNoEsVigente() {
-        int actual = LocalDate.now().getYear();
+        // Fechas relativas a hoy: un por comenzar no admite un inicio pasado.
+        LocalDate hoy = LocalDate.now();
+        int actual = hoy.plusDays(90).getYear(); // el año del fin nuevo
         AnioEscolar porComenzar = anio(1, String.valueOf(actual), AnioEscolarService.ESTADO_POR_COMENZAR,
-                LocalDate.of(actual, 12, 15));
-        porComenzar.setFechaInicio(LocalDate.of(actual, 3, 2));
+                hoy.plusDays(60));
+        porComenzar.setFechaInicio(hoy.plusDays(1));
         when(anioEscolarRepository.findByIdAnioAndAccesoNot(anyInt(), any(Acceso.class)))
                 .thenReturn(Optional.of(porComenzar));
 
-        AnioEscolarRequest r = request(String.valueOf(actual), null, LocalDate.of(actual, 12, 20));
-        r.setFechaInicio(LocalDate.of(actual, 4, 1));
+        AnioEscolarRequest r = request(String.valueOf(actual), null, hoy.plusDays(90));
+        r.setFechaInicio(hoy.plusDays(2));
 
         AnioEscolarResponse resultado = anioEscolarService.update(1, r);
 
-        assertEquals(LocalDate.of(actual, 4, 1), resultado.getFechaInicio());
+        assertEquals(hoy.plusDays(2), resultado.getFechaInicio());
+    }
+
+    // ── Inicio de un por comenzar desde hoy ───────────────────────────────
+
+    @Test
+    void crearPorComenzarConInicioPasadoFalla() {
+        LocalDate hoy = LocalDate.now();
+        int siguiente = hoy.getYear() + 1;
+        AnioEscolarRequest r = request(String.valueOf(siguiente), null, LocalDate.of(siguiente, 12, 15));
+        r.setFechaInicio(hoy.minusDays(1));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> anioEscolarService.create(r));
+        assertEquals("La fecha de inicio no puede ser anterior a hoy", ex.getMessage());
+    }
+
+    @Test
+    void crearPorComenzarConInicioHoyOFuturoAcepta() {
+        LocalDate hoy = LocalDate.now();
+        int siguiente = hoy.getYear() + 1;
+        AnioEscolarRequest conHoy = request(String.valueOf(siguiente), null, LocalDate.of(siguiente, 12, 15));
+        conHoy.setFechaInicio(hoy);
+        assertEquals(hoy, anioEscolarService.create(conHoy).getFechaInicio());
+
+        AnioEscolarRequest conManana = request(String.valueOf(siguiente), null, LocalDate.of(siguiente, 12, 15));
+        conManana.setFechaInicio(hoy.plusDays(1));
+        assertEquals(hoy.plusDays(1), anioEscolarService.create(conManana).getFechaInicio());
+    }
+
+    @Test
+    void editarPorComenzarSinTocarSuInicioPasadoAcepta() {
+        LocalDate hoy = LocalDate.now();
+        int actual = hoy.plusDays(90).getYear(); // el año del fin nuevo
+        AnioEscolar porComenzar = anio(1, String.valueOf(actual), AnioEscolarService.ESTADO_POR_COMENZAR,
+                hoy.plusDays(60));
+        porComenzar.setFechaInicio(hoy.minusDays(10));
+        when(anioEscolarRepository.findByIdAnioAndAccesoNot(anyInt(), any(Acceso.class)))
+                .thenReturn(Optional.of(porComenzar));
+
+        AnioEscolarRequest r = request(String.valueOf(actual), null, hoy.plusDays(90));
+        r.setFechaInicio(hoy.minusDays(10));
+
+        AnioEscolarResponse resultado = anioEscolarService.update(1, r);
+
+        assertEquals(hoy.minusDays(10), resultado.getFechaInicio());
+        assertEquals(hoy.plusDays(90), resultado.getFechaFin());
+    }
+
+    @Test
+    void editarPorComenzarConInicioPasadoFalla() {
+        LocalDate hoy = LocalDate.now();
+        int actual = hoy.getYear();
+        AnioEscolar porComenzar = anio(1, String.valueOf(actual), AnioEscolarService.ESTADO_POR_COMENZAR,
+                hoy.plusDays(60));
+        porComenzar.setFechaInicio(hoy.plusDays(5));
+        when(anioEscolarRepository.findByIdAnioAndAccesoNot(anyInt(), any(Acceso.class)))
+                .thenReturn(Optional.of(porComenzar));
+
+        AnioEscolarRequest r = request(String.valueOf(actual), null, hoy.plusDays(60));
+        r.setFechaInicio(hoy.minusDays(1));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> anioEscolarService.update(1, r));
+        assertEquals("La fecha de inicio no puede ser anterior a hoy", ex.getMessage());
+        assertEquals(hoy.plusDays(5), porComenzar.getFechaInicio());
+    }
+
+    // ── Fin de un por comenzar dentro de su año ───────────────────────────
+
+    @Test
+    void crearPorComenzarConFinEnElAnioAnteriorFalla() {
+        int siguiente = LocalDate.now().getYear() + 1;
+        AnioEscolarRequest r = request(String.valueOf(siguiente), null, LocalDate.of(siguiente - 1, 12, 31));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> anioEscolarService.create(r));
+        assertEquals("La fecha de fin debe estar dentro del año " + siguiente, ex.getMessage());
+    }
+
+    @Test
+    void crearPorComenzarConFinEnElAnioPosteriorFalla() {
+        int siguiente = LocalDate.now().getYear() + 1;
+        AnioEscolarRequest r = request(String.valueOf(siguiente), null, LocalDate.of(siguiente + 1, 1, 1));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> anioEscolarService.create(r));
+        assertEquals("La fecha de fin debe estar dentro del año " + siguiente, ex.getMessage());
+    }
+
+    @Test
+    void crearPorComenzarConFinDentroDeSuAnioAcepta() {
+        LocalDate hoy = LocalDate.now();
+        int siguiente = hoy.getYear() + 1;
+        AnioEscolarRequest r = request(String.valueOf(siguiente), null, LocalDate.of(siguiente, 1, 1));
+        r.setFechaInicio(hoy);
+
+        assertEquals(LocalDate.of(siguiente, 1, 1), anioEscolarService.create(r).getFechaFin());
+    }
+
+    @Test
+    void editarPorComenzarConFinEnOtroAnioFalla() {
+        AnioEscolar porComenzar = anio(1, "2027", AnioEscolarService.ESTADO_POR_COMENZAR,
+                LocalDate.of(2027, 12, 15));
+        when(anioEscolarRepository.findByIdAnioAndAccesoNot(anyInt(), any(Acceso.class)))
+                .thenReturn(Optional.of(porComenzar));
+
+        AnioEscolarRequest r = request("2027", null, LocalDate.of(2028, 1, 10));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> anioEscolarService.update(1, r));
+        assertEquals("La fecha de fin debe estar dentro del año 2027", ex.getMessage());
+    }
+
+    @Test
+    void editarPorComenzarSinTocarUnFinAntiguoEnOtroAnioAcepta() {
+        // Registro de antes de la regla: el fin guardado cae fuera de su año.
+        AnioEscolar porComenzar = anio(1, "2027", AnioEscolarService.ESTADO_POR_COMENZAR,
+                LocalDate.of(2026, 12, 15));
+        when(anioEscolarRepository.findByIdAnioAndAccesoNot(anyInt(), any(Acceso.class)))
+                .thenReturn(Optional.of(porComenzar));
+
+        AnioEscolarRequest r = request("2027", null, LocalDate.of(2026, 12, 15));
+        r.setBloqueoHorariosPorFecha(false);
+
+        AnioEscolarResponse resultado = anioEscolarService.update(1, r);
+
+        assertEquals(LocalDate.of(2026, 12, 15), resultado.getFechaFin());
+        assertEquals(false, resultado.getBloqueoHorariosPorFecha());
     }
 
     @Test

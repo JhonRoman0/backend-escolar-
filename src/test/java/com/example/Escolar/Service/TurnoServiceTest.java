@@ -128,11 +128,25 @@ class TurnoServiceTest {
     }
 
     @Test
-    void elEmpateDeLaCadenaEstaPermitido() {
+    void exigeAlMenosUnMinutoTrasElTurnoAnterior() {
         when(turnoRepository.findByAccesoNot(eliminado))
                 .thenReturn(List.of(turno(1, "Mañana", "07:00", "12:30")));
-        // Tarde entra justo cuando sale la manana: es el cambio de turno.
-        assertDoesNotThrow(() -> turnoService.create(request("Tarde", "12:30", "12:50", "13:10", "17:30")));
+        // Entrar justo cuando sale la manana ya no vale; un minuto despues, si.
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> turnoService.create(request("Tarde", "12:30", "12:50", "13:10", "17:30")));
+        assertTrue(ex.getMessage().contains("Mañana"));
+        assertDoesNotThrow(() -> turnoService.create(request("Tarde", "12:31", "12:50", "13:10", "17:30")));
+    }
+
+    @Test
+    void exigeAlMenosUnMinutoAntesDelTurnoSiguiente() {
+        when(turnoRepository.findByAccesoNot(eliminado))
+                .thenReturn(List.of(turno(2, "Tarde", "12:30", "17:30")));
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> turnoService.update(1, request("Mañana", "07:00", "07:20", "07:40", "12:30")));
+        assertTrue(ex.getMessage().contains("Tarde"));
+        assertTrue(ex.getMessage().contains("12:30"));
+        assertDoesNotThrow(() -> turnoService.update(1, request("Mañana", "07:00", "07:20", "07:40", "12:29")));
     }
 
     @Test
@@ -146,12 +160,26 @@ class TurnoServiceTest {
     }
 
     @Test
-    void noComparaConElTurnoQueLoSigue() {
+    void rechazaEditarUnTurnoQueInvadeAlSiguiente() {
         when(turnoRepository.findByAccesoNot(eliminado))
-                .thenReturn(List.of(turno(2, "Tarde", "12:30", "17:30")));
-        // Editar la manana no falla aunque exista una tarde que hoy se pisa con
-        // ella: cada turno se valida solo contra el anterior.
-        assertDoesNotThrow(() -> turnoService.update(1, request("Mañana", "07:00", "07:20", "07:40", "13:00")));
+                .thenReturn(List.of(turno(2, "Tarde", "12:45", "17:30")));
+        // La manana es la primera de la jornada, pero igual se compara con la tarde.
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> turnoService.update(1, request("Mañana", "07:00", "07:20", "07:40", "12:46")));
+        assertTrue(ex.getMessage().contains("Tarde"));
+        assertTrue(ex.getMessage().contains("12:45"));
+    }
+
+    @Test
+    void unTurnoNuevoEnMedioDebeDejarUnMinutoConAmbosLados() {
+        when(turnoRepository.findByAccesoNot(eliminado)).thenReturn(List.of(
+                turno(1, "Mañana", "07:00", "12:00"),
+                turno(2, "Noche", "18:00", "22:00")));
+
+        assertDoesNotThrow(() -> turnoService.create(request("Tarde", "12:01", "12:20", "12:40", "17:59")));
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> turnoService.create(request("Tarde", "12:01", "12:20", "12:40", "18:00")));
+        assertTrue(ex.getMessage().contains("Noche"));
     }
 
     @Test
@@ -211,10 +239,10 @@ class TurnoServiceTest {
     @Test
     void losTurnosSembradosNoSePisanEntreSi() {
         Turno manana = turno(1, "Mañana", "07:00", "12:30");
-        Turno tarde = turno(2, "Tarde", "12:30", "17:30");
+        Turno tarde = turno(2, "Tarde", "12:31", "17:30");
         when(turnoRepository.findByAccesoNot(eliminado)).thenReturn(List.of(manana, tarde));
 
         assertDoesNotThrow(() -> turnoService.update(1, request("Mañana", "07:00", "07:20", "07:40", "12:30")));
-        assertDoesNotThrow(() -> turnoService.update(2, request("Tarde", "12:30", "12:50", "13:10", "17:30")));
+        assertDoesNotThrow(() -> turnoService.update(2, request("Tarde", "12:31", "12:50", "13:10", "17:30")));
     }
 }

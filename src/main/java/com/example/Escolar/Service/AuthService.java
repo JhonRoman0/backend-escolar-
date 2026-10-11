@@ -3,7 +3,10 @@ package com.example.Escolar.Service;
 import com.example.Escolar.Dto.LoginRequest;
 import com.example.Escolar.Dto.LoginResponse;
 import com.example.Escolar.Dto.PermisosRolResponse;
+import com.example.Escolar.Exception.CodigoRecuperacionAgotadoException;
 import com.example.Escolar.Exception.CuentaBloqueadaException;
+import com.example.Escolar.Exception.CuentaInactivaException;
+import com.example.Escolar.Exception.EsperaReenvioCodigoException;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.Rol;
 import com.example.Escolar.Model.Usuario;
@@ -23,6 +26,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -33,6 +37,8 @@ public class AuthService {
 
     public static final int MAX_INTENTOS_FALLIDOS = 5;
     public static final int MINUTOS_TOKEN_RESET = 15;
+    public static final int MAX_INTENTOS_CODIGO = 5;
+    public static final int SEGUNDOS_REENVIO_CODIGO = 45;
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final UsuarioRepository usuarioRepository;
@@ -47,6 +53,13 @@ public class AuthService {
     public LoginResponse login(LoginRequest request) {
         Usuario usuario = usuarioRepository.findByCodigoAndAccesoNot(request.getCodigo(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new BadCredentialsException("Credenciales incorrectas"));
+        // Inactivo: no cuenta intentos y solo revela su estado si la contraseña es correcta.
+        if (esInactivo(usuario)) {
+            if (passwordEncoder.matches(request.getContraseña(), usuario.getContraseña())) {
+                throw new CuentaInactivaException();
+            }
+            throw new BadCredentialsException("Credenciales incorrectas");
+        }
         verificarBloqueo(usuario);
         if (!usuario.getAcceso().getIdAcceso().equals(AccesoConstants.ACTIVO) || !passwordEncoder.matches(request.getContraseña(), usuario.getContraseña())) {
             registrarIntentoFallido(usuario);
@@ -75,26 +88,41 @@ public class AuthService {
     public void forgotPassword(String gmail) {
         Usuario usuario = usuarioRepository.findByGmailAndAccesoNot(gmail, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontro una cuenta con ese email"));
+        if (esInactivo(usuario)) {
+            throw new CuentaInactivaException();
+        }
+        LocalDateTime ahora = LocalDateTime.now();
+        if (usuario.getResetTokenEnviado() != null) {
+            long segundosRestantes = SEGUNDOS_REENVIO_CODIGO
+                    - Duration.between(usuario.getResetTokenEnviado(), ahora).getSeconds();
+            if (segundosRestantes > 0) {
+                throw new EsperaReenvioCodigoException(segundosRestantes);
+            }
+        }
 
         String codigo = generarCodigo6Digitos();
         String codigoHash = generarTokenHash(codigo);
 
         usuario.setResetToken(codigoHash);
-        usuario.setResetTokenExpiracion(LocalDateTime.now().plusMinutes(MINUTOS_TOKEN_RESET));
+        usuario.setResetTokenExpiracion(ahora.plusMinutes(MINUTOS_TOKEN_RESET));
+        usuario.setResetTokenEnviado(ahora);
+        usuario.setIntentosCodigoReset(0);
         usuarioRepository.save(usuario);
 
         emailService.enviarCodigoRecuperacion(gmail, codigo);
         log.info("Código de recuperación enviado a {}", gmail);
     }
 
-    @Transactional
+    // noRollbackFor: el conteo de intentos y la anulación del código deben
+    // persistir aunque la validación termine en excepción.
+    @Transactional(noRollbackFor = {ResourceNotFoundException.class, CodigoRecuperacionAgotadoException.class})
     public void verificarCodigo(String gmail, String codigo) {
         // Valida correo + codigo sin consumirlo: el token sigue vigente hasta
         // que resetPassword lo valide de nuevo al cambiar la contrasena.
         validarCodigoReset(buscarUsuarioPorGmail(gmail), codigo);
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = {ResourceNotFoundException.class, CodigoRecuperacionAgotadoException.class})
     public void resetPassword(String gmail, String codigo, String nuevaContrasena) {
         Usuario usuario = buscarUsuarioPorGmail(gmail);
         validarCodigoReset(usuario, codigo);
@@ -102,6 +130,7 @@ public class AuthService {
         usuario.setContraseña(passwordEncoder.encode(nuevaContrasena));
         usuario.setResetToken(null);
         usuario.setResetTokenExpiracion(null);
+        usuario.setIntentosCodigoReset(0);
         usuario.setIntentosFallidos(0);
         usuario.setFechaBloqueo(null);
         usuario.setDebeCambiarContrasena(false);
@@ -138,17 +167,15 @@ public class AuthService {
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontro una cuenta con ese email"));
     }
 
-    // Validacion comun entre verificarCodigo y resetPassword: existe codigo
-    // solicitado, coincide el hash y no expiro. En caso de expiracion limpia el
-    // token para que un reintento posterior exija solicitar uno nuevo.
+    // Validacion comun entre verificarCodigo y resetPassword. La expiracion se
+    // revisa antes que el hash para que un codigo vencido no consuma intentos;
+    // al agotar los intentos el codigo se anula y hay que solicitar otro.
     private void validarCodigoReset(Usuario usuario, String codigo) {
+        if (esInactivo(usuario)) {
+            throw new CuentaInactivaException();
+        }
         if (usuario.getResetToken() == null) {
             throw new ResourceNotFoundException("No se ha solicitado recuperación de contraseña. Solicite un código primero.");
-        }
-
-        String codigoHash = generarTokenHash(codigo);
-        if (!codigoHash.equals(usuario.getResetToken())) {
-            throw new ResourceNotFoundException("El código ingresado es incorrecto");
         }
 
         if (usuario.getResetTokenExpiracion() == null || LocalDateTime.now().isAfter(usuario.getResetTokenExpiracion())) {
@@ -157,6 +184,26 @@ public class AuthService {
             usuarioRepository.save(usuario);
             throw new ResourceNotFoundException("El código ha expirado. Solicite uno nuevo.");
         }
+
+        String codigoHash = generarTokenHash(codigo);
+        if (!codigoHash.equals(usuario.getResetToken())) {
+            int intentos = (usuario.getIntentosCodigoReset() == null ? 0 : usuario.getIntentosCodigoReset()) + 1;
+            usuario.setIntentosCodigoReset(intentos);
+            if (intentos >= MAX_INTENTOS_CODIGO) {
+                usuario.setResetToken(null);
+                usuario.setResetTokenExpiracion(null);
+                usuarioRepository.save(usuario);
+                throw new CodigoRecuperacionAgotadoException();
+            }
+            usuarioRepository.save(usuario);
+            int restantes = MAX_INTENTOS_CODIGO - intentos;
+            throw new ResourceNotFoundException("El código ingresado es incorrecto. Te queda"
+                    + (restantes == 1 ? "" : "n") + " " + restantes + " intento" + (restantes == 1 ? "" : "s") + ".");
+        }
+    }
+
+    private boolean esInactivo(Usuario usuario) {
+        return AccesoConstants.INACTIVO.equals(usuario.getAcceso().getIdAcceso());
     }
 
     private String generarCodigo6Digitos() {
@@ -169,7 +216,7 @@ public class AuthService {
             return;
         }
         if (usuario.getIntentosFallidos() != null && usuario.getIntentosFallidos() >= MAX_INTENTOS_FALLIDOS) {
-            throw new CuentaBloqueadaException("Cuenta bloqueada permanentemente por intentos fallidos. Contacte al administrador.");
+            throw new CuentaBloqueadaException("Tu cuenta está bloqueada por intentos fallidos. Recupera tu contraseña o comunícate con el administrador.");
         }
         usuario.setFechaBloqueo(null);
         usuario.setIntentosFallidos(0);

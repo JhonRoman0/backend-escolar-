@@ -2,7 +2,10 @@ package com.example.Escolar.Service;
 
 import com.example.Escolar.Dto.LoginRequest;
 import com.example.Escolar.Dto.LoginResponse;
+import com.example.Escolar.Exception.CodigoRecuperacionAgotadoException;
 import com.example.Escolar.Exception.CuentaBloqueadaException;
+import com.example.Escolar.Exception.CuentaInactivaException;
+import com.example.Escolar.Exception.EsperaReenvioCodigoException;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.Usuario;
@@ -29,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
@@ -53,6 +57,8 @@ class AuthServiceTest {
     private RolPermisoService rolPermisoService;
     @Mock
     private AccesoRepository accesoRepository;
+    @Mock
+    private EmailService emailService;
 
     @InjectMocks
     private AuthService authService;
@@ -147,19 +153,182 @@ class AuthServiceTest {
     }
 
     @Test
-    void bloqueoVencidoPermiteReintentar() {
+    void bloqueoEsPermanenteAunqueHayaPasadoElTiempo() {
         stubAccesoRepository();
         Usuario usuario = usuario(5);
-        usuario.setFechaBloqueo(LocalDateTime.now().minusMinutes(31));
+        usuario.setFechaBloqueo(LocalDateTime.now().minusDays(1));
+        when(usuarioRepository.findByCodigoAndAccesoNot(anyString(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+        when(passwordEncoder.matches("clave", "$2a$10$hash")).thenReturn(true);
+
+        CuentaBloqueadaException ex = assertThrows(CuentaBloqueadaException.class, () -> authService.login(request()));
+
+        assertEquals("Tu cuenta está bloqueada por intentos fallidos. Recupera tu contraseña o comunícate con el administrador.",
+                ex.getMessage());
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    void inactivoConContrasenaCorrectaRecibeMensajeSinContarIntentos() {
+        stubAccesoRepository();
+        Usuario usuario = usuario(2);
+        usuario.setAcceso(mockAcceso(AccesoConstants.INACTIVO));
+        when(usuarioRepository.findByCodigoAndAccesoNot(anyString(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+        when(passwordEncoder.matches("clave", "$2a$10$hash")).thenReturn(true);
+
+        assertThrows(CuentaInactivaException.class, () -> authService.login(request()));
+
+        assertEquals(2, usuario.getIntentosFallidos());
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    void inactivoConContrasenaIncorrectaRecibeCredencialesIncorrectasSinContar() {
+        stubAccesoRepository();
+        Usuario usuario = usuario(4);
+        usuario.setAcceso(mockAcceso(AccesoConstants.INACTIVO));
         when(usuarioRepository.findByCodigoAndAccesoNot(anyString(), any(Acceso.class))).thenReturn(Optional.of(usuario));
         when(passwordEncoder.matches("clave", "$2a$10$hash")).thenReturn(false);
 
         assertThrows(BadCredentialsException.class, () -> authService.login(request()));
 
-        ArgumentCaptor<Usuario> captor = ArgumentCaptor.forClass(Usuario.class);
-        verify(usuarioRepository).save(captor.capture());
-        assertEquals(1, captor.getValue().getIntentosFallidos());
-        assertNull(captor.getValue().getFechaBloqueo());
+        assertEquals(4, usuario.getIntentosFallidos());
+        assertNull(usuario.getFechaBloqueo());
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    void inactivoNoPuedeSolicitarCodigoDeRecuperacion() {
+        stubAccesoRepository();
+        Usuario usuario = usuario(0);
+        usuario.setAcceso(mockAcceso(AccesoConstants.INACTIVO));
+        when(usuarioRepository.findByGmailAndAccesoNot(anyString(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+
+        assertThrows(CuentaInactivaException.class, () -> authService.forgotPassword("correo@gmail.com"));
+
+        verify(emailService, never()).enviarCodigoRecuperacion(anyString(), anyString());
+        assertNull(usuario.getResetToken());
+    }
+
+    @Test
+    void inactivoConCodigoPrevioNoPuedeVerificarlo() {
+        stubAccesoRepository();
+        Usuario usuario = usuarioConCodigo("123456");
+        usuario.setAcceso(mockAcceso(AccesoConstants.INACTIVO));
+        when(usuarioRepository.findByGmailAndAccesoNot(anyString(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+
+        assertThrows(CuentaInactivaException.class, () -> authService.verificarCodigo("correo@gmail.com", "123456"));
+        assertThrows(CuentaInactivaException.class,
+                () -> authService.resetPassword("correo@gmail.com", "123456", "ClaveNueva1@"));
+    }
+
+    @Test
+    void solicitarCodigoReiniciaIntentosYEnviaCorreo() {
+        stubAccesoRepository();
+        Usuario usuario = usuario(0);
+        usuario.setIntentosCodigoReset(3);
+        when(usuarioRepository.findByGmailAndAccesoNot(anyString(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+
+        authService.forgotPassword("correo@gmail.com");
+
+        assertEquals(0, usuario.getIntentosCodigoReset());
+        assertNotNull(usuario.getResetToken());
+        assertNotNull(usuario.getResetTokenEnviado());
+        verify(emailService).enviarCodigoRecuperacion(anyString(), anyString());
+    }
+
+    @Test
+    void solicitarCodigoAntesDe45SegundosResponde429() {
+        stubAccesoRepository();
+        Usuario usuario = usuario(0);
+        usuario.setResetTokenEnviado(LocalDateTime.now().minusSeconds(10));
+        when(usuarioRepository.findByGmailAndAccesoNot(anyString(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+
+        EsperaReenvioCodigoException ex = assertThrows(EsperaReenvioCodigoException.class,
+                () -> authService.forgotPassword("correo@gmail.com"));
+
+        assertTrue(ex.getSegundosRestantes() > 0 && ex.getSegundosRestantes() <= 35);
+        verify(emailService, never()).enviarCodigoRecuperacion(anyString(), anyString());
+    }
+
+    @Test
+    void solicitarCodigoDespuesDe45SegundosPermiteReenviar() {
+        stubAccesoRepository();
+        Usuario usuario = usuario(0);
+        usuario.setResetTokenEnviado(LocalDateTime.now().minusSeconds(46));
+        when(usuarioRepository.findByGmailAndAccesoNot(anyString(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+
+        authService.forgotPassword("correo@gmail.com");
+
+        verify(emailService).enviarCodigoRecuperacion(anyString(), anyString());
+    }
+
+    @Test
+    void codigoIncorrectoDescuentaIntentosRestantes() {
+        stubAccesoRepository();
+        Usuario usuario = usuarioConCodigo("123456");
+        when(usuarioRepository.findByGmailAndAccesoNot(anyString(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
+                () -> authService.verificarCodigo("correo@gmail.com", "000000"));
+
+        assertEquals("El código ingresado es incorrecto. Te quedan 4 intentos.", ex.getMessage());
+        assertEquals(1, usuario.getIntentosCodigoReset());
+        assertNotNull(usuario.getResetToken());
+    }
+
+    @Test
+    void quintoCodigoIncorrectoAnulaElCodigo() {
+        stubAccesoRepository();
+        Usuario usuario = usuarioConCodigo("123456");
+        usuario.setIntentosCodigoReset(4);
+        when(usuarioRepository.findByGmailAndAccesoNot(anyString(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+
+        assertThrows(CodigoRecuperacionAgotadoException.class,
+                () -> authService.verificarCodigo("correo@gmail.com", "000000"));
+
+        assertNull(usuario.getResetToken());
+        // Ya anulado, ni el codigo correcto sirve.
+        assertThrows(ResourceNotFoundException.class,
+                () -> authService.verificarCodigo("correo@gmail.com", "123456"));
+    }
+
+    @Test
+    void codigoExpiradoNoConsumeIntentos() {
+        stubAccesoRepository();
+        Usuario usuario = usuarioConCodigo("123456");
+        usuario.setResetTokenExpiracion(LocalDateTime.now().minusMinutes(1));
+        when(usuarioRepository.findByGmailAndAccesoNot(anyString(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
+                () -> authService.verificarCodigo("correo@gmail.com", "000000"));
+
+        assertEquals("El código ha expirado. Solicite uno nuevo.", ex.getMessage());
+        assertEquals(0, usuario.getIntentosCodigoReset());
+    }
+
+    @Test
+    void bloqueadoPuedeRecuperarContrasenaYQuedaDesbloqueado() {
+        stubAccesoRepository();
+        Usuario usuario = usuarioConCodigo("123456");
+        usuario.setIntentosFallidos(5);
+        usuario.setFechaBloqueo(LocalDateTime.now());
+        usuario.setIntentosCodigoReset(2);
+        when(usuarioRepository.findByGmailAndAccesoNot(anyString(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+        when(passwordEncoder.encode("ClaveNueva1@")).thenReturn("$2a$10$nuevo");
+
+        authService.resetPassword("correo@gmail.com", "123456", "ClaveNueva1@");
+
+        assertEquals(0, usuario.getIntentosFallidos());
+        assertNull(usuario.getFechaBloqueo());
+        assertEquals(0, usuario.getIntentosCodigoReset());
+    }
+
+    private Usuario usuarioConCodigo(String codigo) {
+        Usuario usuario = usuario(0);
+        usuario.setResetToken(sha256(codigo));
+        usuario.setResetTokenExpiracion(LocalDateTime.now().plusMinutes(10));
+        usuario.setIntentosCodigoReset(0);
+        return usuario;
     }
 
     @Test

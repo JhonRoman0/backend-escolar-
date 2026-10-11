@@ -9,6 +9,7 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.web.util.HtmlUtils;
 
 @Service
 @RequiredArgsConstructor
@@ -41,22 +42,28 @@ public class EmailService {
         }
     }
 
+    /** Motivo del envío de credenciales: define el asunto y el mensaje del correo. */
+    public enum TipoEnvioCredenciales { CREACION, RESTABLECIMIENTO, REACTIVACION }
+
     /**
-     * Envía las credenciales de acceso (código y contraseña inicial) al crear o
-     * reactivar un usuario. Es síncrono a diferencia de {@link #enviarCodigoRecuperacion}
-     * para que el flujo de creación pueda reflejar el resultado sin fallar la
-     * transacción: ante cualquier error se registra y se devuelve false.
+     * Envía las credenciales de acceso (código y contraseña temporal) al crear,
+     * reactivar o cambiar la contraseña de un usuario. Es síncrono a diferencia de
+     * {@link #enviarCodigoRecuperacion} para que el flujo pueda reflejar el resultado
+     * sin fallar la transacción: ante cualquier error se registra y se devuelve false.
      */
-    public boolean enviarCredencialesAcceso(String destino, String nombre, String codigo, String contraseñaInicial) {
+    public boolean enviarCredencialesAcceso(String destino, String nombre, String codigo, String contraseñaInicial,
+                                            TipoEnvioCredenciales tipo) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
             helper.setFrom(fromAddress);
             helper.setTo(destino);
-            helper.setSubject("Acceso al " + NOMBRE_SISTEMA);
+            helper.setSubject(tipo == TipoEnvioCredenciales.RESTABLECIMIENTO
+                    ? "Nueva contraseña de acceso - " + NOMBRE_SISTEMA
+                    : "Acceso al " + NOMBRE_SISTEMA);
 
-            helper.setText(plantillaCredenciales(nombre, codigo, contraseñaInicial), true);
+            helper.setText(plantillaCredenciales(nombre, codigo, contraseñaInicial, tipo), true);
             mailSender.send(message);
             log.info("Credenciales de acceso enviadas a {}", destino);
             return true;
@@ -99,27 +106,41 @@ public class EmailService {
         return envolverHtml(contenido);
     }
 
-    private String plantillaCredenciales(String nombre, String codigo, String contraseñaInicial) {
+    private String plantillaCredenciales(String nombre, String codigo, String contraseñaInicial,
+                                         TipoEnvioCredenciales tipo) {
+        String titulo = switch (tipo) {
+            case CREACION -> "Bienvenido al " + NOMBRE_SISTEMA;
+            case RESTABLECIMIENTO -> "Nueva contraseña de acceso";
+            case REACTIVACION -> "Cuenta reactivada";
+        };
+        String saludo = "Hola <strong>" + HtmlUtils.htmlEscape(nombre, "UTF-8") + "</strong>, " + switch (tipo) {
+            case CREACION -> "su cuenta de acceso fue creada con las siguientes credenciales:";
+            case RESTABLECIMIENTO -> "el administrador asignó una nueva contraseña temporal a su cuenta:";
+            case REACTIVACION -> "su cuenta fue reactivada con las siguientes credenciales:";
+        };
         String contenido = """
-                <h2 style="color: #333; text-align: center;">Bienvenido al %s</h2>
+                <h2 style="color: #333; text-align: center;">%s</h2>
                 <p style="color: #555; font-size: 15px; text-align: center;">
-                  Hola <strong>%s</strong>, su cuenta de acceso fue creada con las siguientes credenciales:
+                  %s
                 </p>
-                <div style="text-align: center; margin: 30px 0;">
+                <div style="text-align: center; margin: 30px 0 0;">
+                  <p style="color: #64748b; font-size: 13px; margin: 0 0 8px;">Código institucional</p>
                   <span style="display: inline-block; background: #2563eb; color: #ffffff; font-size: 26px; font-weight: bold; letter-spacing: 6px; padding: 14px 28px; border-radius: 8px;">
                     %s
                   </span>
                 </div>
-                <div style="text-align: center; margin: 20px 0;">
+                <div style="text-align: center; margin: 24px 0 30px;">
+                  <p style="color: #64748b; font-size: 13px; margin: 0 0 8px;">Contraseña temporal</p>
                   <span style="display: inline-block; background: #f1f5f9; color: #0f172a; font-size: 18px; font-weight: 600; padding: 10px 20px; border-radius: 8px;">
                     %s
                   </span>
                 </div>
                 <p style="color: #777; font-size: 13px; text-align: center;">
-                  Le recomendamos cambiar su contraseña en su primera sesión.<br>
+                  Por seguridad, deberá cambiar esta contraseña temporal al iniciar sesión por primera vez.<br>
                   Si usted no solicitó esta cuenta, ignore este mensaje.
                 </p>
-                """.formatted(NOMBRE_SISTEMA, nombre, codigo, contraseñaInicial);
+                """.formatted(titulo, saludo, HtmlUtils.htmlEscape(codigo, "UTF-8"),
+                HtmlUtils.htmlEscape(contraseñaInicial, "UTF-8"));
         return envolverHtml(contenido);
     }
 }

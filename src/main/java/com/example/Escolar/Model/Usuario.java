@@ -57,6 +57,10 @@ public class Usuario {
     String resetToken;
     @Column(name = "reset_token_expiracion", nullable = true)
     LocalDateTime resetTokenExpiracion;
+    @Column(name = "reset_token_enviado", nullable = true)
+    LocalDateTime resetTokenEnviado;
+    @Column(name = "intentos_codigo_reset", nullable = false, columnDefinition = "int default 0")
+    Integer intentosCodigoReset = 0;
     // Contraseña asignada por el admin: se exige cambiarla al iniciar sesión.
     @Column(name = "debe_cambiar_contrasena", nullable = false, columnDefinition = "boolean default false")
     Boolean debeCambiarContrasena = false;

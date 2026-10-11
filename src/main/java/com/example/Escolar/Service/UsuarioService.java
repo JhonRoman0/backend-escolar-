@@ -25,6 +25,7 @@ import com.example.Escolar.Repository.RolRepository;
 import com.example.Escolar.Repository.TipoContratoRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
+import com.example.Escolar.Service.EmailService.TipoEnvioCredenciales;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -97,14 +98,17 @@ public class UsuarioService {
             crearDocente(saved, request);
         }
         UsuarioResponse response = toResponse(saved);
-        response.setCredencialesEnviadas(enviarCredencialesAcceso(saved, request));
+        response.setCredencialesEnviadas(enviarCredencialesAcceso(saved, request, TipoEnvioCredenciales.CREACION));
         return response;
     }
 
     @Transactional
     public UsuarioResponse update(Integer id, UsuarioRequest request) {
         Usuario usuario = findUsuario(id);
-        return actualizarRegistro(usuario, id, request);
+        // Solo se notifica por correo cuando el admin asigna una contraseña nueva.
+        boolean cambiaContrasena = request.getContraseña() != null && !request.getContraseña().isBlank();
+        return actualizarRegistro(usuario, id, request,
+                cambiaContrasena ? TipoEnvioCredenciales.RESTABLECIMIENTO : null);
     }
 
     /**
@@ -129,14 +133,12 @@ public class UsuarioService {
         usuario.setFechaBloqueo(null);
         usuario.setResetToken(null);
         usuario.setResetTokenExpiracion(null);
-        return actualizarRegistro(usuario, id, request, true);
+        return actualizarRegistro(usuario, id, request, TipoEnvioCredenciales.REACTIVACION);
     }
 
-    private UsuarioResponse actualizarRegistro(Usuario usuario, Integer id, UsuarioRequest request) {
-        return actualizarRegistro(usuario, id, request, false);
-    }
-
-    private UsuarioResponse actualizarRegistro(Usuario usuario, Integer id, UsuarioRequest request, boolean enviarCredenciales) {
+    /** {@code tipoEnvio} null: no se envían credenciales por correo. */
+    private UsuarioResponse actualizarRegistro(Usuario usuario, Integer id, UsuarioRequest request,
+                                               TipoEnvioCredenciales tipoEnvio) {
         // Se excluye el id propio para permitir conservar su DNI/correo; si los
         // nuevos datos fueran de otra cuenta activa, aqui se detectaria el choque.
         validarDocumentoUnico(request.getDocumentoIdentidad(), id);
@@ -159,19 +161,19 @@ public class UsuarioService {
             }
         }
         UsuarioResponse response = toResponse(usuarioRepository.save(usuario));
-        if (enviarCredenciales) {
-            response.setCredencialesEnviadas(enviarCredencialesAcceso(usuario, request));
+        if (tipoEnvio != null) {
+            response.setCredencialesEnviadas(enviarCredencialesAcceso(usuario, request, tipoEnvio));
         }
         return response;
     }
 
-    private boolean enviarCredencialesAcceso(Usuario usuario, UsuarioRequest request) {
+    private boolean enviarCredencialesAcceso(Usuario usuario, UsuarioRequest request, TipoEnvioCredenciales tipo) {
         String gmail = request.getGmail();
         if (gmail == null || gmail.isBlank()) {
             return false;
         }
         String nombre = (usuario.getNombre() + " " + usuario.getApellidoPat()).trim();
-        return emailService.enviarCredencialesAcceso(gmail, nombre, usuario.getCodigo(), request.getContraseña());
+        return emailService.enviarCredencialesAcceso(gmail, nombre, usuario.getCodigo(), request.getContraseña(), tipo);
     }
 
     @Transactional
@@ -502,4 +504,4 @@ public class UsuarioService {
         response.setAccesoId(rol.getAcceso().getIdAcceso().longValue());
         return response;
     }
-}
+}

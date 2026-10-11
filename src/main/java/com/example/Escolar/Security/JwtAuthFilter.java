@@ -11,15 +11,22 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
+import org.springframework.util.AntPathMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
 @Component
 @RequiredArgsConstructor
 public class JwtAuthFilter extends OncePerRequestFilter {
+
+    public static final String CODIGO_CAMBIO_PENDIENTE = "CAMBIO_CONTRASENA_REQUERIDO";
+    private static final Set<String> RUTAS_CON_CAMBIO_PENDIENTE = Set.of(
+            "/auth/me", "/auth/change-password", "/auth/permisos");
+    private static final AntPathMatcher PATH_MATCHER = new AntPathMatcher();
 
     private final JwtService jwtService;
 
@@ -45,8 +52,23 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     null,
                     List.of(new SimpleGrantedAuthority("ROLE_" + principal.codigo())));
             SecurityContextHolder.getContext().setAuthentication(authentication);
+
+            if (jwtService.isCambioContrasenaPendiente(token) && !permitidaConCambioPendiente(request.getServletPath())) {
+                response.setStatus(403);
+                response.setContentType("application/json");
+                response.setCharacterEncoding("UTF-8");
+                response.getWriter().write("{\"status\":403,\"error\":\"Forbidden\",\"codigo\":\"" + CODIGO_CAMBIO_PENDIENTE
+                        + "\",\"message\":\"Debe cambiar su contraseña antes de continuar\"}");
+                return;
+            }
         }
         filterChain.doFilter(request, response);
+    }
+
+    // Con la contraseña temporal solo se permite lo necesario para cambiarla o salir.
+    private boolean permitidaConCambioPendiente(String ruta) {
+        return RUTAS_CON_CAMBIO_PENDIENTE.contains(ruta)
+                || SecurityConfig.RUTAS_PUBLICAS.stream().anyMatch(patron -> PATH_MATCHER.match(patron, ruta));
     }
 
     // Con SameSite=None la cookie viaja en requests cross-site: se exige que las

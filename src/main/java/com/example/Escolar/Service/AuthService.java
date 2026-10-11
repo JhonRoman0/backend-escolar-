@@ -56,7 +56,8 @@ public class AuthService {
         usuario.setFechaBloqueo(null);
         usuarioRepository.save(usuario);
         List<String> roles = getRoles(usuario);
-        String token = jwtService.generarToken(usuario.getIdUsuario(), usuario.getCodigo(), roles);
+        String token = jwtService.generarToken(usuario.getIdUsuario(), usuario.getCodigo(), roles,
+                Boolean.TRUE.equals(usuario.getDebeCambiarContrasena()));
 
         LoginResponse response = new LoginResponse();
         response.setToken(token);
@@ -103,11 +104,16 @@ public class AuthService {
         usuario.setResetTokenExpiracion(null);
         usuario.setIntentosFallidos(0);
         usuario.setFechaBloqueo(null);
+        usuario.setDebeCambiarContrasena(false);
         usuarioRepository.save(usuario);
     }
 
+    /**
+     * Devuelve un token nuevo sin la marca de cambio pendiente, para que la
+     * sesión actual quede habilitada sin volver a iniciar sesión.
+     */
     @Transactional
-    public void cambiarContrasena(Integer idUsuario, String contrasenaActual, String nuevaContrasena) {
+    public String cambiarContrasena(Integer idUsuario, String contrasenaActual, String nuevaContrasena) {
         Usuario usuario = usuarioRepository.findByIdUsuarioAndAccesoNot(idUsuario,
                         accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontro la cuenta del usuario autenticado"));
@@ -115,11 +121,16 @@ public class AuthService {
         if (!passwordEncoder.matches(contrasenaActual, usuario.getContraseña())) {
             throw new IllegalArgumentException("La contrasena actual es incorrecta");
         }
+        if (passwordEncoder.matches(nuevaContrasena, usuario.getContraseña())) {
+            throw new IllegalArgumentException("La nueva contrasena debe ser diferente a la actual");
+        }
 
         usuario.setContraseña(passwordEncoder.encode(nuevaContrasena));
         usuario.setIntentosFallidos(0);
         usuario.setFechaBloqueo(null);
+        usuario.setDebeCambiarContrasena(false);
         usuarioRepository.save(usuario);
+        return jwtService.generarToken(usuario.getIdUsuario(), usuario.getCodigo(), getRoles(usuario));
     }
 
     private Usuario buscarUsuarioPorGmail(String gmail) {

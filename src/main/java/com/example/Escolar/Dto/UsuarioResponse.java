@@ -27,4 +27,5 @@ public class UsuarioResponse {
     private Integer intentosFallidos;
     private LocalDateTime fechaBloqueo;
     private Boolean credencialesEnviadas;
+    private Boolean debeCambiarContrasena;
 }

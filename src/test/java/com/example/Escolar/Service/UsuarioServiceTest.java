@@ -402,4 +402,65 @@ class UsuarioServiceTest {
         verify(emailService).enviarCredencialesAcceso(
                 eq("jhoanatanguevaravasquez@gmail.com"), eq("JHONATAN GUEVARA"), eq("A20260001"), eq("NuevaClave1"));
     }
+
+    @Test
+    void crearMarcaCambioDeContrasenaObligatorio() {
+        stubCreacionBasica();
+
+        UsuarioResponse response = service.create(requestSinDocente());
+
+        ArgumentCaptor<Usuario> captor = ArgumentCaptor.forClass(Usuario.class);
+        verify(usuarioRepository).save(captor.capture());
+        assertEquals(Boolean.TRUE, captor.getValue().getDebeCambiarContrasena());
+        assertEquals(Boolean.TRUE, response.getDebeCambiarContrasena());
+    }
+
+    @Test
+    void reactivarMarcaCambioDeContrasenaObligatorio() {
+        stubAccesoRepository();
+        stubValidacionesUnicas();
+        Usuario eliminado = usuario(2, AccesoConstants.ELIMINADO);
+        when(usuarioRepository.findById(2)).thenReturn(Optional.of(eliminado));
+        when(passwordEncoder.encode(anyString())).thenReturn("hashNueva");
+        when(rolRepository.findByIdRolAndAccesoNot(any(Integer.class), any(Acceso.class)))
+                .thenReturn(Optional.of(rol(1, "Administrador")));
+        when(docenteRepository.findByUsuarioIdUsuario(2)).thenReturn(Optional.empty());
+        stubSaveYRolesActivos(eliminado, rol(1, "Administrador"));
+
+        service.reactivar(2, requestSinDocente());
+
+        assertEquals(Boolean.TRUE, eliminado.getDebeCambiarContrasena());
+    }
+
+    @Test
+    void actualizarConContrasenaNuevaMarcaCambioObligatorio() {
+        stubAccesoRepository();
+        stubValidacionesUnicas();
+        when(passwordEncoder.encode(anyString())).thenReturn("hashNueva");
+        Usuario activo = usuario(1, AccesoConstants.ACTIVO);
+        stubSaveYRolesActivos(activo, rol(1, "Administrador"));
+        UsuarioRequest request = requestSinDocente();
+        request.setRolIds(null);
+
+        service.update(1, request);
+
+        assertEquals("hashNueva", activo.getContraseña());
+        assertEquals(Boolean.TRUE, activo.getDebeCambiarContrasena());
+    }
+
+    @Test
+    void actualizarSinContrasenaNoMarcaCambioObligatorio() {
+        stubAccesoRepository();
+        stubValidacionesUnicas();
+        Usuario activo = usuario(1, AccesoConstants.ACTIVO);
+        stubSaveYRolesActivos(activo, rol(1, "Administrador"));
+        UsuarioRequest request = requestSinDocente();
+        request.setRolIds(null);
+        request.setContraseña("");
+
+        service.update(1, request);
+
+        assertEquals("hashPrevIa", activo.getContraseña());
+        assertEquals(Boolean.FALSE, activo.getDebeCambiarContrasena());
+    }
 }

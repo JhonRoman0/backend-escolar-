@@ -104,11 +104,15 @@ public class AuthController {
 
     @PostMapping("/change-password")
     public ResponseEntity<Map<String, String>> cambiarContrasena(
-            @Valid @RequestBody CambiarContrasenaRequest request) {
+            @Valid @RequestBody CambiarContrasenaRequest request,
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         UsuarioAutenticado principal = (UsuarioAutenticado) authentication.getPrincipal();
-        authService.cambiarContrasena(principal.idUsuario(),
+        String token = authService.cambiarContrasena(principal.idUsuario(),
                 request.getContrasenaActual(), request.getNuevaContrasena());
+        httpResponse.addHeader(HttpHeaders.SET_COOKIE,
+                cookieSesion(token, jwtExpirationMs / 1000, httpRequest));
         return ResponseEntity.ok(Map.of(
                 "mensaje", "Contrasena actualizada correctamente"
         ));

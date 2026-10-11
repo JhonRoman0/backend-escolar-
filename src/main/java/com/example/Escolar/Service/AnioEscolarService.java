@@ -18,6 +18,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -68,6 +69,10 @@ public class AnioEscolarService {
         if (estado == ESTADO_VIGENTE) {
             validarVigenteSegunCalendario(request.getAnio());
         }
+        if (estado == ESTADO_POR_COMENZAR) {
+            validarInicioPorComenzarNoPasado(request.getFechaInicio());
+            validarFinEnElAnio(request.getAnio(), request.getFechaFin());
+        }
 
         AnioEscolar anioEscolar = new AnioEscolar();
         anioEscolar.setAnio(request.getAnio().trim());
@@ -96,6 +101,8 @@ public class AnioEscolarService {
         // Se captura antes de aplicar request.estado: la congelación aplica al
         // año que ya era vigente al entrar, no al que la misma petición promueve.
         boolean eraVigente = anioEscolar.getEstado() == ESTADO_VIGENTE;
+        String anioAnterior = anioEscolar.getAnio();
+        LocalDate finAnterior = anioEscolar.getFechaFin();
         if (request.getAnio() != null && !request.getAnio().isBlank()) {
             validarAnioUnico(request.getAnio(), id);
             anioEscolar.setAnio(request.getAnio().trim());
@@ -109,6 +116,12 @@ public class AnioEscolarService {
         }
         if (request.getFechaInicio() != null) {
             validarFechaInicioCongelada(eraVigente, anioEscolar.getFechaInicio(), request.getFechaInicio());
+            // Solo si la fecha cambia: un por comenzar cuya fecha guardada ya
+            // paso debe poder seguir editandose sin tocarla.
+            if (anioEscolar.getEstado() == ESTADO_POR_COMENZAR
+                    && !request.getFechaInicio().equals(anioEscolar.getFechaInicio())) {
+                validarInicioPorComenzarNoPasado(request.getFechaInicio());
+            }
             anioEscolar.setFechaInicio(request.getFechaInicio());
         }
         if (request.getFechaFin() != null) {
@@ -125,6 +138,13 @@ public class AnioEscolarService {
         validarFechaFinSiVigente(anioEscolar.getEstado(), anioEscolar.getFechaFin());
         if (anioEscolar.getEstado() == ESTADO_VIGENTE) {
             validarVigenteSegunCalendario(anioEscolar.getAnio());
+        }
+        // Solo si cambio el fin o el año: un registro antiguo con el fin en otro
+        // año debe poder seguir editandose sin tocarlo.
+        if (anioEscolar.getEstado() == ESTADO_POR_COMENZAR
+                && (!Objects.equals(finAnterior, anioEscolar.getFechaFin())
+                || !Objects.equals(anioAnterior, anioEscolar.getAnio()))) {
+            validarFinEnElAnio(anioEscolar.getAnio(), anioEscolar.getFechaFin());
         }
         return toResponse(anioEscolarRepository.save(anioEscolar));
     }
@@ -266,6 +286,28 @@ public class AnioEscolarService {
             return;
         }
         throw new IllegalArgumentException("El año vigente no admite cambios en su fecha de inicio");
+    }
+
+    // Un por comenzar habilita las secciones desde su fecha de inicio, asi que
+    // esa fecha no puede ser anterior a hoy. El vigente queda fuera: registra
+    // un periodo que ya esta en curso.
+    private void validarInicioPorComenzarNoPasado(LocalDate fechaInicio) {
+        if (fechaInicio != null && fechaInicio.isBefore(LocalDate.now())) {
+            throw new IllegalArgumentException("La fecha de inicio no puede ser anterior a hoy");
+        }
+    }
+
+    // El periodo de un por comenzar termina dentro de su propio año: el 2027
+    // cierra en algun dia del 2027. Como el fin debe ser posterior al inicio,
+    // esto tambien impide que el inicio caiga el 31 de diciembre.
+    private void validarFinEnElAnio(String anio, LocalDate fechaFin) {
+        if (fechaFin == null || anio == null || anio.isBlank()) {
+            return;
+        }
+        int valor = Integer.parseInt(anio.trim());
+        if (fechaFin.getYear() != valor) {
+            throw new IllegalArgumentException("La fecha de fin debe estar dentro del año " + valor);
+        }
     }
 
     // Solo se admiten el año en curso y el siguiente: los años futuros se

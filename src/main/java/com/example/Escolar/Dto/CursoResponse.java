@@ -7,6 +7,7 @@ import lombok.Setter;
 @Setter
 public class CursoResponse {
     private Integer idCurso;
+    private String codigo;
     private String nombre;
     private Long accesoId;
 }

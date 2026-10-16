@@ -72,7 +72,9 @@ public class ApiPermisoRegistro {
         registrarLectura("GET", "/cursos", "CURSOS");
         registrarLectura("GET", "/cursos/**", "CURSOS");
         registrar("POST", "/cursos", "CURSOS", "CREAR");
+        registrar("POST", "/cursos/importar-excel", "CURSOS", "CREAR");
         registrar("PUT", "/cursos/**", "CURSOS", "ACTUALIZAR");
+        registrar("PATCH", "/cursos/**", "CURSOS", "ACTUALIZAR");
         registrar("DELETE", "/cursos/**", "CURSOS", "ELIMINAR");
 
         registrarLectura("GET", "/turnos", "TURNOS");

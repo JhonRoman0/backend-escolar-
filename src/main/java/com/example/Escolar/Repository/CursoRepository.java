@@ -13,4 +13,12 @@ public interface CursoRepository extends JpaRepository<Curso, Integer> {
     Optional<Curso> findByIdCursoAndAccesoNot(Integer idCurso, Acceso acceso);
 
     Optional<Curso> findByNombreAndAccesoNot(String nombre, Acceso acceso);
+
+    Optional<Curso> findByCodigoAndAccesoNot(String codigo, Acceso acceso);
+
+    boolean existsByCodigoAndAccesoNot(String codigo, Acceso acceso);
+
+    Optional<Curso> findByCodigo(String codigo);
+
+    Optional<Curso> findByNombreIgnoreCase(String nombre);
 }

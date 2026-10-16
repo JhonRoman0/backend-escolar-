@@ -27,5 +27,6 @@ public interface AsignacionRepository extends JpaRepository<Asignacion, Integer>
      * el horario, las notas y la asistencia cuelgan de esa fila.
      */
     boolean existsByGradoSeccionIdGradoSeccionAndAccesoNot(Integer idGradoSeccion, Acceso acceso);
+    boolean existsByCursoIdCursoAndAccesoNot(Integer idCurso, Acceso acceso);
     long countByAnioEscolarIdAnioAndAccesoNot(Integer idAnio, Acceso acceso);
 }

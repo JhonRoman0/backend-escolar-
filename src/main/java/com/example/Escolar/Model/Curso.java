@@ -17,7 +17,9 @@ public class Curso {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id_curso")
     Integer idCurso;
-    @Column(name = "nombre", length = 50, nullable = false, unique = true)
+    @Column(name = "codigo", length = 50)
+    String codigo;
+    @Column(name = "nombre", length = 150, nullable = false)
     String nombre;
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "id_acceso", nullable = false)

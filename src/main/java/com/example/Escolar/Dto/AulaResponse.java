@@ -9,5 +9,6 @@ public class AulaResponse {
     private Integer idAula;
     private String nombre;
     private Integer capacidad;
+    private boolean usoCompartido;
     private Long accesoId;
 }

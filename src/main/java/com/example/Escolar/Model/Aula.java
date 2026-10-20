@@ -21,6 +21,10 @@ public class Aula {
     String nombre;
     @Column(name = "capacidad", nullable = false)
     Integer capacidad;
+    // Patio, losa deportiva o auditorio: admite varias clases a la misma hora,
+    // asi que no se valida el cruce de aula.
+    @Column(name = "uso_compartido", nullable = false, columnDefinition = "bit(1) not null default 0")
+    boolean usoCompartido;
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "id_acceso", nullable = false)
     Acceso acceso;

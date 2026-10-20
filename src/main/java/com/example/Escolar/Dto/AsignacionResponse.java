@@ -14,6 +14,10 @@ public class AsignacionResponse {
     private Integer idDocente;
     private String docente;
     private Integer idGradoSeccion;
+    private Integer idNivel;
+    private String nivel;
+    private Integer idGrado;
+    private Integer idTurno;
     private String grado;
     private String seccion;
     private String turno;

@@ -11,6 +11,9 @@ import java.util.Optional;
 public interface GradoSeccionRepository extends JpaRepository<GradoSeccion, Integer> {
     List<GradoSeccion> findByGradoAndAccesoNot(Grado grado, Acceso acceso);
 
+    List<GradoSeccion> findByGradoIdGradoAndTurnoIdTurnoAndAnioEscolarIdAnioAndAccesoNot(
+            Integer idGrado, Integer idTurno, Integer idAnio, Acceso acceso);
+
     Optional<GradoSeccion> findByIdGradoSeccionAndAccesoNot(Integer idGradoSeccion, Acceso acceso);
 
     long countByAnioEscolarIdAnioAndAccesoNot(Integer idAnio, Acceso acceso);

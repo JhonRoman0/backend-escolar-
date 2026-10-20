@@ -8,6 +8,7 @@ import com.example.Escolar.Model.AnioEscolar;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.AnioEscolarRepository;
 import com.example.Escolar.Repository.AsignacionRepository;
+import com.example.Escolar.Repository.CursoRepository;
 import com.example.Escolar.Repository.GradoSeccionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,6 +45,10 @@ class AnioEscolarServiceTest {
     private GradoSeccionRepository gradoSeccionRepository;
     @Mock
     private AsignacionRepository asignacionRepository;
+    @Mock
+    private CursoRepository cursoRepository;
+    @Mock
+    private CursoService cursoService;
     @InjectMocks
     private AnioEscolarService anioEscolarService;
 
@@ -690,6 +695,29 @@ class AnioEscolarServiceTest {
         // volver a crearlo.
         verify(anioEscolarRepository).delete(anio);
         verify(anioEscolarRepository, never()).save(any(AnioEscolar.class));
+        // Antes se quitan los cursos que solo estaban eliminados logicamente.
+        verify(cursoService).borrarEliminadosDelAnio(1);
+    }
+
+    @Test
+    void eliminarConCursosFallaYListaTodoLoAsociado() {
+        AnioEscolar anio = anio(1, "2027", AnioEscolarService.ESTADO_POR_COMENZAR, LocalDate.of(2027, 12, 15));
+        when(anioEscolarRepository.findByIdAnioAndAccesoNot(anyInt(), any(Acceso.class)))
+                .thenReturn(Optional.of(anio));
+        when(gradoSeccionRepository.countByAnioEscolarIdAnioAndAccesoNot(anyInt(), any(Acceso.class)))
+                .thenReturn(2L);
+        when(asignacionRepository.countByAnioEscolarIdAnioAndAccesoNot(anyInt(), any(Acceso.class)))
+                .thenReturn(1L);
+        when(cursoRepository.countByAnioEscolarIdAnioAndAccesoNot(anyInt(), any(Acceso.class)))
+                .thenReturn(13L);
+
+        AnioEscolarConGradosException e = assertThrows(AnioEscolarConGradosException.class,
+                () -> anioEscolarService.delete(1));
+
+        assertEquals("No se puede eliminar el año 2027 porque tiene 2 grados, 1 asignación y 13 cursos asociados",
+                e.getMessage());
+        verify(cursoService, never()).borrarEliminadosDelAnio(anyInt());
+        verify(anioEscolarRepository, never()).delete(any(AnioEscolar.class));
     }
 
     @Test

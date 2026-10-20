@@ -71,8 +71,8 @@ public class ApiPermisoRegistro {
 
         registrarLectura("GET", "/cursos", "CURSOS");
         registrarLectura("GET", "/cursos/**", "CURSOS");
-        registrar("POST", "/cursos", "CURSOS", "CREAR");
-        registrar("POST", "/cursos/importar-excel", "CURSOS", "CREAR");
+        // Importar, vista previa, copiar y crear subcursos.
+        registrar("POST", "/cursos/**", "CURSOS", "CREAR");
         registrar("PUT", "/cursos/**", "CURSOS", "ACTUALIZAR");
         registrar("PATCH", "/cursos/**", "CURSOS", "ACTUALIZAR");
         registrar("DELETE", "/cursos/**", "CURSOS", "ELIMINAR");
@@ -141,9 +141,8 @@ public class ApiPermisoRegistro {
 
         registrarLectura("GET", "/competencias", "COMPETENCIAS");
         registrarLectura("GET", "/competencias/**", "COMPETENCIAS");
-        registrar("POST", "/competencias", "COMPETENCIAS", "CREAR");
-        registrar("PUT", "/competencias/**", "COMPETENCIAS", "ACTUALIZAR");
-        registrar("DELETE", "/competencias/**", "COMPETENCIAS", "ELIMINAR");
+        // Solo se activan o desactivan: se crean importando el Excel de cursos.
+        registrar("PATCH", "/competencias/**", "COMPETENCIAS", "ACTUALIZAR");
 
         registrarLectura("GET", "/notas/competencia/**", "NOTAS");
         registrarLectura("GET", "/notas/matricula/**", "NOTAS");

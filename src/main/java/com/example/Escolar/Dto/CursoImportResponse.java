@@ -17,5 +17,6 @@ public class CursoImportResponse {
     private int totalDetectados;
     private int creados;
     private int actualizados;
+    private int inactivados;
     private List<CursoResponse> cursos;
 }

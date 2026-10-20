@@ -20,7 +20,10 @@ public class Competencia {
     @ManyToOne
     @JoinColumn(name = "id_curso", nullable = false)
     Curso curso;
-    @Column(name = "nombre", length = 150, nullable = false)
+    // Numero de la LEYENDA del SIAGIE ("01", "02"...).
+    @Column(name = "codigo", length = 5, nullable = false)
+    String codigo;
+    @Column(name = "nombre", length = 300, nullable = false)
     String nombre;
     @Column(name = "orden", nullable = false)
     byte orden;

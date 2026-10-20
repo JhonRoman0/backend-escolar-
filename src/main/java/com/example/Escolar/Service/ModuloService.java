@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -128,15 +129,17 @@ public class ModuloService {
         response.setCodigo(permiso.getCodigo());
         response.setNombre(permiso.getNombre());
         response.setAccesoId(permiso.getAcceso().getIdAcceso().longValue());
-        response.setAcciones(accionesDelPermiso(permiso.getIdPermiso()));
+        List<PermisoAccion> acciones = accionesVigentes(permiso.getIdPermiso());
+        response.setAcciones(acciones.stream().map(pa -> pa.getAccion().getCodigo()).sorted().toList());
+        response.setEtiquetas(acciones.stream()
+                .filter(pa -> pa.getEtiqueta() != null)
+                .collect(Collectors.toMap(pa -> pa.getAccion().getCodigo(), PermisoAccion::getEtiqueta, (a, b) -> a)));
         return response;
     }
 
-    List<String> accionesDelPermiso(Integer idPermiso) {
+    private List<PermisoAccion> accionesVigentes(Integer idPermiso) {
         return permisoAccionRepository.findByPermisoIdPermisoAndAccesoNot(idPermiso, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
                 .filter(pa -> !pa.getAccion().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
-                .map(pa -> pa.getAccion().getCodigo())
-                .sorted()
                 .toList();
     }
 }

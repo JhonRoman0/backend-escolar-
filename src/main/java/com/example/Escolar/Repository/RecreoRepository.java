@@ -12,6 +12,8 @@ public interface RecreoRepository extends JpaRepository<Recreo, Integer> {
 
     Optional<Recreo> findByIdRecreoAndAccesoNot(Integer idRecreo, Acceso acceso);
 
+    long countByTurnoIdTurnoAndAccesoNot(Integer idTurno, Acceso acceso);
+
     /** Los recreos de un grado en un turno y año: los de todas sus secciones. */
     List<Recreo> findByAnioEscolarIdAnioAndTurnoIdTurnoAndGradoIdGradoAndAccesoNot(
             Integer idAnio, Integer idTurno, Integer idGrado, Acceso acceso);

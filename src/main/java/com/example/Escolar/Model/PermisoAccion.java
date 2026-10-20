@@ -24,6 +24,10 @@ public class PermisoAccion {
     @ManyToOne
     @JoinColumn(name = "id_accion", nullable = false)
     Accion accion;
+    // Nombre de la accion en este modulo ("Importar, copiar y agregar subcursos").
+    // Null: se muestra el nombre generico de la accion.
+    @Column(name = "etiqueta", length = 80)
+    String etiqueta;
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "id_acceso", nullable = false)
     Acceso acceso;

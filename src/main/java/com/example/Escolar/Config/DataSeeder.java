@@ -67,6 +67,7 @@ public class DataSeeder implements CommandLineRunner {
     private final PermisoAccionRepository permisoAccionRepository;
     private final RolPermisoRepository rolPermisoRepository;
     private final RolPermisoAccionRepository rolPermisoAccionRepository;
+    private final CatalogoPermisosSync catalogoPermisosSync;
     private final NivelRepository nivelRepository;
     private final TurnoRepository turnoRepository;
     private final GradoRepository gradoRepository;
@@ -113,6 +114,7 @@ public class DataSeeder implements CommandLineRunner {
         migrarSeccionesInicial();
         seedRoles();
         seedModulosRbac();
+        catalogoPermisosSync.sincronizar();
         seedMatrizRbac();
         if (seedAdminEnabled) {
             seedAdmin();
@@ -555,7 +557,10 @@ public class DataSeeder implements CommandLineRunner {
             nuevo.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
             permiso = permisoRepository.save(nuevo);
         }
-        seed.acciones().forEach(a -> crearPermisoAccionSiFalta(permiso, a));
+        // Los permisos del catalogo los maneja sincronizarCatalogoPermisos.
+        if (CatalogoPermisos.acciones(seed.codigo()).isEmpty()) {
+            seed.acciones().forEach(a -> crearPermisoAccionSiFalta(permiso, a));
+        }
     }
 
     private void crearPermisoAccionSiFalta(Permiso permiso, String codigoAccion) {
@@ -586,7 +591,10 @@ public class DataSeeder implements CommandLineRunner {
                     rp.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
                     return rolPermisoRepository.save(rp);
                 });
-        acciones.forEach(a -> asignarAccionConcedidaSiFalta(rolPermiso, a));
+        // Una accion que el catalogo ya no tiene no se vuelve a conceder.
+        acciones.stream()
+                .filter(a -> CatalogoPermisos.acciones(codigoPermiso).map(c -> c.containsKey(a)).orElse(true))
+                .forEach(a -> asignarAccionConcedidaSiFalta(rolPermiso, a));
     }
 
     private void asignarAccionConcedidaSiFalta(RolPermiso rolPermiso, String codigoAccion) {

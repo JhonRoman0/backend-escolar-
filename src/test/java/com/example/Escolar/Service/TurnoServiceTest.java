@@ -5,6 +5,8 @@ import com.example.Escolar.Dto.TurnoResponse;
 import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.Turno;
 import com.example.Escolar.Repository.AccesoRepository;
+import com.example.Escolar.Repository.GradoSeccionRepository;
+import com.example.Escolar.Repository.RecreoRepository;
 import com.example.Escolar.Repository.TurnoRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,6 +27,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -38,6 +42,10 @@ class TurnoServiceTest {
     private TurnoRepository turnoRepository;
     @Mock
     private AccesoRepository accesoRepository;
+    @Mock
+    private GradoSeccionRepository gradoSeccionRepository;
+    @Mock
+    private RecreoRepository recreoRepository;
     @InjectMocks
     private TurnoService turnoService;
 
@@ -216,6 +224,28 @@ class TurnoServiceTest {
     }
 
     // ---- Lo que ya existia ----
+
+    // ---- Eliminar ----
+
+    @Test
+    void noSeEliminaUnTurnoConSeccionesORecreos() {
+        when(gradoSeccionRepository.countByTurnoIdTurnoAndAccesoNot(any(), any())).thenReturn(3L);
+        when(recreoRepository.countByTurnoIdTurnoAndAccesoNot(any(), any())).thenReturn(1L);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> turnoService.delete(1));
+        assertEquals("No se puede eliminar el turno Mañana porque tiene 3 secciones y 1 recreo asociados", ex.getMessage());
+        verify(turnoRepository, never()).save(any());
+    }
+
+    @Test
+    void unTurnoSinUsoSeElimina() {
+        Turno sinUso = turno(3, "Noche", "18:00", "22:00");
+        when(turnoRepository.findByIdTurnoAndAccesoNot(any(), any())).thenReturn(Optional.of(sinUso));
+
+        turnoService.delete(3);
+
+        assertEquals(ID_ELIMINADO, sinUso.getAcceso().getIdAcceso());
+    }
 
     @Test
     void rechazaNombreDuplicado() {

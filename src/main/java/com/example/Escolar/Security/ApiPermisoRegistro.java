@@ -6,6 +6,8 @@ import org.springframework.util.AntPathMatcher;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 
 @Component
 public class ApiPermisoRegistro {
@@ -64,7 +66,6 @@ public class ApiPermisoRegistro {
         registrarLectura("GET", "/docentes/**", "DOCENTES");
         registrarLectura("GET", "/grados-academicos", "DOCENTES");
         registrarLectura("GET", "/tipos-contrato", "DOCENTES");
-        registrar("POST", "/docentes", "DOCENTES", "CREAR");
         registrar("PUT", "/docentes/**", "DOCENTES", "ACTUALIZAR");
         registrar("DELETE", "/docentes/**", "DOCENTES", "ELIMINAR");
         registrar("GET", "/docentes/reporte", "DOCENTES", "IMPRIMIR_EXPORTAR");
@@ -248,6 +249,17 @@ public class ApiPermisoRegistro {
 
     private void registrarLectura(String metodo, String patron, String permisoCodigo) {
         registrar(metodo, patron, permisoCodigo, null);
+    }
+
+    /** Acciones que piden las rutas de un permiso (sin contar las de solo lectura). */
+    public Set<String> accionesDe(String permisoCodigo) {
+        Set<String> acciones = new TreeSet<>();
+        for (Registro registro : registros) {
+            if (registro.permisoCodigo().equals(permisoCodigo) && registro.accionCodigo() != null) {
+                acciones.add(registro.accionCodigo());
+            }
+        }
+        return acciones;
     }
 
     public Optional<Requisito> buscar(String metodo, String path) {

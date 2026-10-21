@@ -6,6 +6,8 @@ import org.springframework.util.AntPathMatcher;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 
 @Component
 public class ApiPermisoRegistro {
@@ -64,15 +66,14 @@ public class ApiPermisoRegistro {
         registrarLectura("GET", "/docentes/**", "DOCENTES");
         registrarLectura("GET", "/grados-academicos", "DOCENTES");
         registrarLectura("GET", "/tipos-contrato", "DOCENTES");
-        registrar("POST", "/docentes", "DOCENTES", "CREAR");
         registrar("PUT", "/docentes/**", "DOCENTES", "ACTUALIZAR");
         registrar("DELETE", "/docentes/**", "DOCENTES", "ELIMINAR");
         registrar("GET", "/docentes/reporte", "DOCENTES", "IMPRIMIR_EXPORTAR");
 
         registrarLectura("GET", "/cursos", "CURSOS");
         registrarLectura("GET", "/cursos/**", "CURSOS");
-        registrar("POST", "/cursos", "CURSOS", "CREAR");
-        registrar("POST", "/cursos/importar-excel", "CURSOS", "CREAR");
+        // Importar, vista previa, copiar y crear subcursos.
+        registrar("POST", "/cursos/**", "CURSOS", "CREAR");
         registrar("PUT", "/cursos/**", "CURSOS", "ACTUALIZAR");
         registrar("PATCH", "/cursos/**", "CURSOS", "ACTUALIZAR");
         registrar("DELETE", "/cursos/**", "CURSOS", "ELIMINAR");
@@ -141,9 +142,8 @@ public class ApiPermisoRegistro {
 
         registrarLectura("GET", "/competencias", "COMPETENCIAS");
         registrarLectura("GET", "/competencias/**", "COMPETENCIAS");
-        registrar("POST", "/competencias", "COMPETENCIAS", "CREAR");
-        registrar("PUT", "/competencias/**", "COMPETENCIAS", "ACTUALIZAR");
-        registrar("DELETE", "/competencias/**", "COMPETENCIAS", "ELIMINAR");
+        // Solo se activan o desactivan: se crean importando el Excel de cursos.
+        registrar("PATCH", "/competencias/**", "COMPETENCIAS", "ACTUALIZAR");
 
         registrarLectura("GET", "/notas/competencia/**", "NOTAS");
         registrarLectura("GET", "/notas/matricula/**", "NOTAS");
@@ -249,6 +249,17 @@ public class ApiPermisoRegistro {
 
     private void registrarLectura(String metodo, String patron, String permisoCodigo) {
         registrar(metodo, patron, permisoCodigo, null);
+    }
+
+    /** Acciones que piden las rutas de un permiso (sin contar las de solo lectura). */
+    public Set<String> accionesDe(String permisoCodigo) {
+        Set<String> acciones = new TreeSet<>();
+        for (Registro registro : registros) {
+            if (registro.permisoCodigo().equals(permisoCodigo) && registro.accionCodigo() != null) {
+                acciones.add(registro.accionCodigo());
+            }
+        }
+        return acciones;
     }
 
     public Optional<Requisito> buscar(String metodo, String path) {

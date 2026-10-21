@@ -2,8 +2,6 @@ package com.example.Escolar.Config;
 
 import com.example.Escolar.Model.Accion;
 import com.example.Escolar.Model.Acceso;
-import com.example.Escolar.Model.Competencia;
-import com.example.Escolar.Model.Curso;
 import com.example.Escolar.Model.EstadoAsistencia;
 import com.example.Escolar.Model.Grado;
 import com.example.Escolar.Model.GradoAcademico;
@@ -22,8 +20,6 @@ import com.example.Escolar.Model.Usuario;
 import com.example.Escolar.Model.UsuarioRol;
 import com.example.Escolar.Repository.AccionRepository;
 import com.example.Escolar.Repository.AccesoRepository;
-import com.example.Escolar.Repository.CompetenciaRepository;
-import com.example.Escolar.Repository.CursoRepository;
 import com.example.Escolar.Repository.EstadoAsistenciaRepository;
 import com.example.Escolar.Repository.GradoRepository;
 import com.example.Escolar.Repository.GradoAcademicoRepository;
@@ -71,9 +67,8 @@ public class DataSeeder implements CommandLineRunner {
     private final PermisoAccionRepository permisoAccionRepository;
     private final RolPermisoRepository rolPermisoRepository;
     private final RolPermisoAccionRepository rolPermisoAccionRepository;
+    private final CatalogoPermisosSync catalogoPermisosSync;
     private final NivelRepository nivelRepository;
-    private final CompetenciaRepository competenciaRepository;
-    private final CursoRepository cursoRepository;
     private final TurnoRepository turnoRepository;
     private final GradoRepository gradoRepository;
     private final GradoAcademicoRepository gradoAcademicoRepository;
@@ -117,9 +112,9 @@ public class DataSeeder implements CommandLineRunner {
         seedGradosAcademicos();
         seedTiposContrato();
         migrarSeccionesInicial();
-        seedCompetencias();
         seedRoles();
         seedModulosRbac();
+        catalogoPermisosSync.sincronizar();
         seedMatrizRbac();
         if (seedAdminEnabled) {
             seedAdmin();
@@ -334,58 +329,6 @@ public class DataSeeder implements CommandLineRunner {
 
     private Acceso accesoNoEliminado() {
         return accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow();
-    }
-
-    private void seedCompetencias() {
-        crearCompetenciaSiFalta("Comunicación", (byte) 1, "Se comunica oralmente en su lengua materna");
-        crearCompetenciaSiFalta("Comunicación", (byte) 2, "Lee diversos tipos de textos escritos en lengua materna");
-        crearCompetenciaSiFalta("Comunicación", (byte) 3, "Escribe diversos tipos de textos en lengua materna");
-
-        crearCompetenciaSiFalta("Matemática", (byte) 1, "Resuelve problemas de cantidad");
-        crearCompetenciaSiFalta("Matemática", (byte) 2, "Resuelve problemas de forma, movimiento y localización");
-        crearCompetenciaSiFalta("Matemática", (byte) 3, "Resuelve problemas de regularidad, equivalencia y cambio");
-        crearCompetenciaSiFalta("Matemática", (byte) 4, "Resuelve problemas de gestión de datos e incertidumbre");
-
-        crearCompetenciaSiFalta("Personal Social", (byte) 1, "Construye su identidad");
-        crearCompetenciaSiFalta("Personal Social", (byte) 2, "Convive y participa democráticamente");
-        crearCompetenciaSiFalta("Personal Social", (byte) 3, "Construye interpretaciones históricas");
-        crearCompetenciaSiFalta("Personal Social", (byte) 4, "Gestiona responsablemente el espacio y el ambiente");
-        crearCompetenciaSiFalta("Personal Social", (byte) 5, "Gestiona responsablemente los recursos económicos");
-
-        crearCompetenciaSiFalta("Ciencia y Tecnología", (byte) 1, "Indaga mediante métodos científicos para construir conocimientos");
-        crearCompetenciaSiFalta("Ciencia y Tecnología", (byte) 2, "Explica el mundo natural y artificial basándose en conocimientos científicos");
-        crearCompetenciaSiFalta("Ciencia y Tecnología", (byte) 3, "Diseña soluciones tecnológicas para resolver problemas de su entorno");
-
-        crearCompetenciaSiFalta("Educación Física", (byte) 1, "Se desenvuelve de manera autónoma a través de su motricidad");
-        crearCompetenciaSiFalta("Educación Física", (byte) 2, "Asume una vida saludable");
-        crearCompetenciaSiFalta("Educación Física", (byte) 3, "Interactúa a través de sus habilidades sociomotrices");
-
-        crearCompetenciaSiFalta("Arte y Cultura", (byte) 1, "Aprecia de manera crítica manifestaciones artístico-culturales");
-        crearCompetenciaSiFalta("Arte y Cultura", (byte) 2, "Crea proyectos artísticos desde los lenguajes artísticos");
-
-        crearCompetenciaSiFalta("Inglés", (byte) 1, "Se comunica oralmente en lengua extranjera");
-        crearCompetenciaSiFalta("Inglés", (byte) 2, "Lee diversos tipos de textos en lengua extranjera");
-        crearCompetenciaSiFalta("Inglés", (byte) 3, "Escribe diversos tipos de textos en lengua extranjera");
-
-        crearCompetenciaSiFalta("Religión", (byte) 1, "Fortalece su dimensión espiritual yax de vida");
-        crearCompetenciaSiFalta("Religión", (byte) 2, "Aprecia manifestaciones religiosas y/o espirituales");
-    }
-
-    private void crearCompetenciaSiFalta(String nombreCurso, byte orden, String nombreCompetencia) {
-        Curso curso = cursoRepository.findByNombreAndAccesoNot(nombreCurso, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).orElse(null);
-        if (curso == null) {
-            return;
-        }
-        if (competenciaRepository.findByCursoIdCursoAndNombreAndAccesoNot(
-                curso.getIdCurso(), nombreCompetencia, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).isPresent()) {
-            return;
-        }
-        Competencia competencia = new Competencia();
-        competencia.setCurso(curso);
-        competencia.setNombre(nombreCompetencia);
-        competencia.setOrden(orden);
-        competencia.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
-        competenciaRepository.save(competencia);
     }
 
     private void seedAcciones() {
@@ -614,7 +557,10 @@ public class DataSeeder implements CommandLineRunner {
             nuevo.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
             permiso = permisoRepository.save(nuevo);
         }
-        seed.acciones().forEach(a -> crearPermisoAccionSiFalta(permiso, a));
+        // Los permisos del catalogo los maneja sincronizarCatalogoPermisos.
+        if (CatalogoPermisos.acciones(seed.codigo()).isEmpty()) {
+            seed.acciones().forEach(a -> crearPermisoAccionSiFalta(permiso, a));
+        }
     }
 
     private void crearPermisoAccionSiFalta(Permiso permiso, String codigoAccion) {
@@ -645,7 +591,10 @@ public class DataSeeder implements CommandLineRunner {
                     rp.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
                     return rolPermisoRepository.save(rp);
                 });
-        acciones.forEach(a -> asignarAccionConcedidaSiFalta(rolPermiso, a));
+        // Una accion que el catalogo ya no tiene no se vuelve a conceder.
+        acciones.stream()
+                .filter(a -> CatalogoPermisos.acciones(codigoPermiso).map(c -> c.containsKey(a)).orElse(true))
+                .forEach(a -> asignarAccionConcedidaSiFalta(rolPermiso, a));
     }
 
     private void asignarAccionConcedidaSiFalta(RolPermiso rolPermiso, String codigoAccion) {

@@ -38,6 +38,7 @@ public class AulaService {
         Aula aula = new Aula();
         aula.setNombre(request.getNombre().trim());
         aula.setCapacidad(request.getCapacidad());
+        aula.setUsoCompartido(Boolean.TRUE.equals(request.getUsoCompartido()));
         aula.setAcceso(accesoPorId(request.getAccesoId() == null ? AccesoConstants.ACTIVO : request.getAccesoId()));
         return toResponse(aulaRepository.save(aula));
     }
@@ -51,6 +52,9 @@ public class AulaService {
         }
         if (request.getCapacidad() != null) {
             aula.setCapacidad(request.getCapacidad());
+        }
+        if (request.getUsoCompartido() != null) {
+            aula.setUsoCompartido(request.getUsoCompartido());
         }
         if (request.getAccesoId() != null) {
             aula.setAcceso(accesoPorId(request.getAccesoId()));
@@ -111,6 +115,7 @@ public class AulaService {
         response.setIdAula(aula.getIdAula());
         response.setNombre(aula.getNombre());
         response.setCapacidad(aula.getCapacidad());
+        response.setUsoCompartido(aula.isUsoCompartido());
         response.setAccesoId(aula.getAcceso().getIdAcceso());
         return response;
     }

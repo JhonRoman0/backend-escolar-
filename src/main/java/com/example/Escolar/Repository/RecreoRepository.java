@@ -1,20 +1,20 @@
 package com.example.Escolar.Repository;
 
 import com.example.Escolar.Model.Acceso;
-import com.example.Escolar.Model.GradoSeccion;
-import com.example.Escolar.Model.Nivel;
 import com.example.Escolar.Model.Recreo;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface RecreoRepository extends JpaRepository<Recreo, Integer> {
-
     List<Recreo> findByAccesoNot(Acceso acceso);
 
-    List<Recreo> findByNivelAndAccesoNot(Nivel nivel, Acceso acceso);
+    Optional<Recreo> findByIdRecreoAndAccesoNot(Integer idRecreo, Acceso acceso);
 
-    List<Recreo> findByNivelAndGradoSeccionAndAccesoNot(Nivel nivel, GradoSeccion gradoSeccion, Acceso acceso);
+    long countByTurnoIdTurnoAndAccesoNot(Integer idTurno, Acceso acceso);
 
-    List<Recreo> findByNivelAndDiaSemanaAndAccesoNot(Nivel nivel, Byte diaSemana, Acceso acceso);
+    /** Los recreos de un grado en un turno y año: los de todas sus secciones. */
+    List<Recreo> findByAnioEscolarIdAnioAndTurnoIdTurnoAndGradoIdGradoAndAccesoNot(
+            Integer idAnio, Integer idTurno, Integer idGrado, Acceso acceso);
 }

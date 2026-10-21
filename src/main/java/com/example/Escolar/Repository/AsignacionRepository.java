@@ -17,9 +17,6 @@ public interface AsignacionRepository extends JpaRepository<Asignacion, Integer>
 
     List<Asignacion> findByDocenteIdDocenteAndAcceso(Integer idDocente, Acceso acceso);
 
-    Optional<Asignacion> findByCursoIdCursoAndDocenteIdDocenteAndGradoSeccionIdGradoSeccionAndAnioEscolarIdAnioAndAccesoNot(
-            Integer idCurso, Integer idDocente, Integer idGradoSeccion, Integer idAnio, Acceso acceso);
-
     long countByDocenteAndAcceso(Docente docente, Acceso acceso);
 
     /**
@@ -28,5 +25,9 @@ public interface AsignacionRepository extends JpaRepository<Asignacion, Integer>
      */
     boolean existsByGradoSeccionIdGradoSeccionAndAccesoNot(Integer idGradoSeccion, Acceso acceso);
     boolean existsByCursoIdCursoAndAccesoNot(Integer idCurso, Acceso acceso);
+
+    /** Un curso de una seccion tiene un solo docente. */
+    List<Asignacion> findByCursoIdCursoAndGradoSeccionIdGradoSeccionAndAccesoNot(
+            Integer idCurso, Integer idGradoSeccion, Acceso acceso);
     long countByAnioEscolarIdAnioAndAccesoNot(Integer idAnio, Acceso acceso);
 }

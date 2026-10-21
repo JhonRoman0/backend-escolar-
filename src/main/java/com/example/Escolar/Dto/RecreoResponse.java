@@ -9,10 +9,14 @@ import java.time.LocalTime;
 @Setter
 public class RecreoResponse {
     private Integer idRecreo;
+    private Integer idAnio;
+    private String anio;
     private Integer idNivel;
     private String nivel;
-    private Integer idGradoSeccion;
-    private String gradoSeccion;
+    private Integer idTurno;
+    private String turno;
+    private Integer idGrado;
+    private String grado;
     private Byte diaSemana;
     private LocalTime horaInicio;
     private LocalTime horaFin;

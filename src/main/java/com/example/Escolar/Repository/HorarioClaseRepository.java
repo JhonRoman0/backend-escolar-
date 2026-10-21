@@ -23,6 +23,15 @@ public interface HorarioClaseRepository extends JpaRepository<HorarioClase, Inte
 
     List<HorarioClase> findByAsignacionDocenteIdDocenteAndAccesoNot(Integer idDocente, Acceso acceso);
 
+    List<HorarioClase> findByAsignacionGradoSeccionIdGradoSeccionInAndAccesoNot(
+            java.util.Collection<Integer> idsGradoSeccion, Acceso acceso);
+
+    List<HorarioClase> findByAsignacionDocenteIdDocenteAndAsignacionAnioEscolarIdAnioAndAccesoNot(
+            Integer idDocente, Integer idAnio, Acceso acceso);
+
+    List<HorarioClase> findByAulaIdAulaAndAsignacionAnioEscolarIdAnioAndAccesoNot(
+            Integer idAula, Integer idAnio, Acceso acceso);
+
     // Réplica patrón Alumnos: 6 filtros académicos + docente + grado/seccion string, vigente, paginado
     @Query(value = "SELECT h FROM HorarioClase h " +
             "JOIN h.asignacion a JOIN a.gradoSeccion gs JOIN gs.grado g JOIN g.nivel n LEFT JOIN gs.seccion s JOIN gs.turno t JOIN a.anioEscolar anio " +

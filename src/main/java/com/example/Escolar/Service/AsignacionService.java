@@ -13,14 +13,20 @@ import com.example.Escolar.Model.Curso;
 import com.example.Escolar.Model.Docente;
 import com.example.Escolar.Model.GradoSeccion;
 import com.example.Escolar.Model.HorarioClase;
+import com.example.Escolar.Model.Acceso;
+import com.example.Escolar.Model.Nivel;
+import com.example.Escolar.Model.Recreo;
+import com.example.Escolar.Model.TipoCurso;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.AnioEscolarRepository;
 import com.example.Escolar.Repository.AsignacionRepository;
 import com.example.Escolar.Repository.AulaRepository;
 import com.example.Escolar.Repository.CursoRepository;
+import com.example.Escolar.Repository.DocenteNivelRepository;
 import com.example.Escolar.Repository.DocenteRepository;
 import com.example.Escolar.Repository.GradoSeccionRepository;
 import com.example.Escolar.Repository.HorarioClaseRepository;
+import com.example.Escolar.Repository.RecreoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +42,7 @@ import java.util.List;
 public class AsignacionService {
 
     public static final double SEMANAS_POR_MES = 4.33;
+    private static final String QUE = "asignaciones";
 
     private final AsignacionRepository asignacionRepository;
     private final HorarioClaseRepository horarioClaseRepository;
@@ -46,6 +53,8 @@ public class AsignacionService {
     private final AulaRepository aulaRepository;
     private final AccesoRepository accesoRepository;
     private final AccesoContextoService accesoContextoService;
+    private final DocenteNivelRepository docenteNivelRepository;
+    private final RecreoRepository recreoRepository;
 
     public List<AsignacionResponse> getAll(Integer idUsuario, List<String> roles) {
         return asignacionRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
@@ -77,67 +86,46 @@ public class AsignacionService {
         return toResponse(asignacion);
     }
 
+    /**
+     * En un año vigente solo se crea lo que falta (un curso de la seccion sin
+     * docente); eso ya lo garantiza la regla de un docente por curso y seccion.
+     */
     @Transactional
     public AsignacionResponse create(AsignacionRequest request) {
-        Curso curso = findCurso(request.getIdCurso());
-        Docente docente = findDocente(request.getIdDocente());
-        GradoSeccion gradoSeccion = findGradoSeccion(request.getIdGradoSeccion());
-        AnioEscolar anioEscolar = findAnio(request.getIdAnio());
-
-        validarCombinacionUnica(request.getIdCurso(), request.getIdDocente(), request.getIdGradoSeccion(), request.getIdAnio(), null);
-        List<HorarioClase> nuevos = prepararHorarios(request, null);
-        validarHorariosInternos(nuevos);
+        Datos datos = validarDatos(request, null);
+        ReglasAnioEscolar.validarCreable(datos.anio(), true, QUE);
+        List<HorarioClase> nuevos = prepararHorarios(request, datos, null);
 
         Asignacion asignacion = new Asignacion();
-        asignacion.setCurso(curso);
-        asignacion.setDocente(docente);
-        asignacion.setGradoSeccion(gradoSeccion);
-        asignacion.setAnioEscolar(anioEscolar);
+        asignacion.setCurso(datos.curso());
+        asignacion.setDocente(datos.docente());
+        asignacion.setGradoSeccion(datos.gradoSeccion());
+        asignacion.setAnioEscolar(datos.anio());
         asignacion.setAcceso(accesoRepository.findById(request.getAccesoId() == null ? AccesoConstants.ACTIVO : request.getAccesoId()).orElseThrow());
         asignacion = asignacionRepository.save(asignacion);
         guardarHorarios(asignacion, nuevos);
         return toResponse(asignacion);
     }
 
+    /** El formulario siempre manda la asignacion completa: se valida como al crear. */
     @Transactional
     public AsignacionResponse update(Integer id, AsignacionRequest request) {
         Asignacion asignacion = findAsignacion(id);
         validarBloqueoHorarios(asignacion.getAnioEscolar());
-        boolean cursoCambio = request.getIdCurso() != null && !request.getIdCurso().equals(asignacion.getCurso().getIdCurso());
-        boolean docenteCambio = request.getIdDocente() != null && !request.getIdDocente().equals(asignacion.getDocente().getIdDocente());
-        boolean gsCambio = request.getIdGradoSeccion() != null && !request.getIdGradoSeccion().equals(asignacion.getGradoSeccion().getIdGradoSeccion());
-        boolean anioCambio = request.getIdAnio() != null && !request.getIdAnio().equals(asignacion.getAnioEscolar().getIdAnio());
+        ReglasAnioEscolar.validarEditable(asignacion.getAnioEscolar(), QUE);
+        Datos datos = validarDatos(request, id);
+        ReglasAnioEscolar.validarEditable(datos.anio(), QUE);
+        List<HorarioClase> nuevos = prepararHorarios(request, datos, id);
 
-        if (cursoCambio) {
-            asignacion.setCurso(findCurso(request.getIdCurso()));
-        }
-        if (docenteCambio) {
-            asignacion.setDocente(findDocente(request.getIdDocente()));
-        }
-        if (gsCambio) {
-            asignacion.setGradoSeccion(findGradoSeccion(request.getIdGradoSeccion()));
-        }
-        if (anioCambio) {
-            asignacion.setAnioEscolar(findAnio(request.getIdAnio()));
-        }
+        asignacion.setCurso(datos.curso());
+        asignacion.setDocente(datos.docente());
+        asignacion.setGradoSeccion(datos.gradoSeccion());
+        asignacion.setAnioEscolar(datos.anio());
         if (request.getAccesoId() != null) {
             asignacion.setAcceso(accesoRepository.findById(request.getAccesoId()).orElseThrow());
         }
-
-        if (request.getHorarios() != null) {
-            validarCombinacionUnica(
-                    asignacion.getCurso().getIdCurso(),
-                    asignacion.getDocente().getIdDocente(),
-                    asignacion.getGradoSeccion().getIdGradoSeccion(),
-                    asignacion.getAnioEscolar().getIdAnio(),
-                    id);
-            List<HorarioClase> nuevos = prepararHorarios(request, id);
-            validarHorariosInternos(nuevos);
-            asignacion = asignacionRepository.save(asignacion);
-            reemplazarHorarios(asignacion, nuevos);
-        } else {
-            asignacion = asignacionRepository.save(asignacion);
-        }
+        asignacion = asignacionRepository.save(asignacion);
+        reemplazarHorarios(asignacion, nuevos);
         return toResponse(asignacion);
     }
 
@@ -145,6 +133,7 @@ public class AsignacionService {
     public void delete(Integer id) {
         Asignacion asignacion = findAsignacion(id);
         validarBloqueoHorarios(asignacion.getAnioEscolar());
+        ReglasAnioEscolar.validarEditable(asignacion.getAnioEscolar(), QUE);
         asignacion.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
         horarioClaseRepository.findByAsignacionIdAsignacionAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .forEach(h -> h.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()));
@@ -171,23 +160,153 @@ public class AsignacionService {
         return response;
     }
 
-    private List<HorarioClase> prepararHorarios(AsignacionRequest request, Integer idAsignacionExcluido) {
+    private record Datos(AnioEscolar anio, GradoSeccion gradoSeccion, Curso curso, Docente docente) {
+    }
+
+    /** Que el año, la seccion, el curso y el docente encajen entre si. */
+    private Datos validarDatos(AsignacionRequest request, Integer idExcluido) {
+        AnioEscolar anio = findAnio(request.getIdAnio());
+        GradoSeccion gradoSeccion = findGradoSeccion(request.getIdGradoSeccion());
+        Curso curso = findCurso(request.getIdCurso());
+        Docente docente = findDocente(request.getIdDocente());
+        Nivel nivel = gradoSeccion.getGrado().getNivel();
+
+        if (!gradoSeccion.getAnioEscolar().getIdAnio().equals(anio.getIdAnio())) {
+            throw new IllegalArgumentException("La sección " + nombreSeccion(gradoSeccion)
+                    + " no es del año " + anio.getAnio());
+        }
+        if (!curso.getAnioEscolar().getIdAnio().equals(anio.getIdAnio())
+                || !curso.getNivel().getIdNivel().equals(nivel.getIdNivel())) {
+            throw new IllegalArgumentException("El curso " + curso.getNombre() + " no es de la malla de "
+                    + nivel.getNombre() + " del año " + anio.getAnio());
+        }
+        if (!AccesoConstants.ACTIVO.equals(curso.getAcceso().getIdAcceso())) {
+            throw new IllegalArgumentException("El curso " + curso.getNombre() + " está inactivo");
+        }
+        // Se asignan las areas sin subcursos y los subcursos; no las transversales
+        // ni un area que se dicta dividida en subcursos.
+        if (curso.getTipo() == TipoCurso.TRANSVERSAL) {
+            throw new IllegalArgumentException(curso.getNombre() + " es una competencia transversal: no se asigna a un docente");
+        }
+        if (curso.getTipo() == TipoCurso.AREA && curso.isTieneSubcursos()) {
+            throw new IllegalArgumentException(curso.getNombre() + " se dicta en subcursos: asigna cada subcurso");
+        }
+        if (!AccesoConstants.ACTIVO.equals(docente.getAcceso().getIdAcceso())) {
+            throw new IllegalArgumentException("El docente está inactivo");
+        }
+        boolean ensenaEnElNivel = docenteNivelRepository.findByDocenteAndAccesoNot(docente, accesoEliminado()).stream()
+                .anyMatch(dn -> dn.getNivel().getIdNivel().equals(nivel.getIdNivel()));
+        if (!ensenaEnElNivel) {
+            throw new IllegalArgumentException("El docente no enseña en el nivel " + nivel.getNombre());
+        }
+        boolean yaTieneDocente = asignacionRepository
+                .findByCursoIdCursoAndGradoSeccionIdGradoSeccionAndAccesoNot(
+                        curso.getIdCurso(), gradoSeccion.getIdGradoSeccion(), accesoEliminado()).stream()
+                .anyMatch(a -> !a.getIdAsignacion().equals(idExcluido));
+        if (yaTieneDocente) {
+            throw new IllegalArgumentException(curso.getNombre() + " de " + nombreSeccion(gradoSeccion)
+                    + " ya tiene un docente asignado");
+        }
+        return new Datos(anio, gradoSeccion, curso, docente);
+    }
+
+    /**
+     * Cada horario cae dentro del turno de la seccion, en un dia que tiene
+     * recreo y sin cruzarse con el recreo, con los otros horarios de la misma
+     * asignacion ni con las otras clases del año de la seccion, del docente o
+     * del aula (salvo que el aula sea de uso compartido).
+     */
+    private List<HorarioClase> prepararHorarios(AsignacionRequest request, Datos datos, Integer idExcluido) {
+        GradoSeccion gs = datos.gradoSeccion();
+        Integer idAnio = datos.anio().getIdAnio();
+        Acceso eliminado = accesoEliminado();
+        List<Recreo> recreos = recreoRepository.findByAnioEscolarIdAnioAndTurnoIdTurnoAndGradoIdGradoAndAccesoNot(
+                idAnio, gs.getTurno().getIdTurno(), gs.getGrado().getIdGrado(), eliminado);
+        List<HorarioClase> deLaSeccion = vigentes(horarioClaseRepository
+                .findByAsignacionGradoSeccionIdGradoSeccionInAndAccesoNot(List.of(gs.getIdGradoSeccion()), eliminado), idExcluido);
+        List<HorarioClase> delDocente = vigentes(horarioClaseRepository
+                .findByAsignacionDocenteIdDocenteAndAsignacionAnioEscolarIdAnioAndAccesoNot(
+                        datos.docente().getIdDocente(), idAnio, eliminado), idExcluido);
+
         List<HorarioClase> horarios = new ArrayList<>();
         for (HorarioRequest hr : request.getHorarios()) {
-            validarRangoHorario(hr.getHoraInicio(), hr.getHoraFin());
-            validarDiaSemana(hr.getDiaSemana());
+            HorarioUtil.validarDia(hr.getDiaSemana());
+            byte dia = hr.getDiaSemana();
+            HorarioUtil.validarDentroDelTurno(hr.getHoraInicio(), hr.getHoraFin(), gs.getTurno());
+            String cuando = "el " + HorarioUtil.dia(dia) + " de " + HorarioUtil.rango(hr.getHoraInicio(), hr.getHoraFin());
+
+            List<Recreo> recreosDelDia = recreos.stream().filter(r -> r.getDiaSemana() == dia).toList();
+            if (recreosDelDia.isEmpty()) {
+                throw new IllegalArgumentException("Primero configura el recreo de " + gs.getGrado().getNombre()
+                        + " – turno " + gs.getTurno().getNombre() + " para el " + HorarioUtil.dia(dia));
+            }
+            for (Recreo recreo : recreosDelDia) {
+                if (HorarioUtil.seCruzan(hr.getHoraInicio(), hr.getHoraFin(), recreo.getHoraInicio(), recreo.getHoraFin())) {
+                    throw new IllegalArgumentException("La clase " + cuando + " choca con el recreo del "
+                            + HorarioUtil.dia(dia) + " (" + HorarioUtil.rango(recreo.getHoraInicio(), recreo.getHoraFin()) + ")");
+                }
+            }
+            for (HorarioClase otro : horarios) {
+                if (otro.getDiaSemana() == dia
+                        && HorarioUtil.seCruzan(hr.getHoraInicio(), hr.getHoraFin(), otro.getHoraInicio(), otro.getHoraFin())) {
+                    throw new IllegalArgumentException("Los horarios de esta asignación se cruzan " + cuando);
+                }
+            }
+            for (HorarioClase otra : deLaSeccion) {
+                if (seCruza(hr, otra)) {
+                    throw new IllegalArgumentException(nombreSeccion(gs) + " ya tiene " + otra.getAsignacion().getCurso().getNombre()
+                            + " el " + HorarioUtil.dia(dia) + " de " + HorarioUtil.rango(otra.getHoraInicio(), otra.getHoraFin()));
+                }
+            }
+            for (HorarioClase otra : delDocente) {
+                if (seCruza(hr, otra)) {
+                    throw new IllegalArgumentException("El docente ya tiene " + otra.getAsignacion().getCurso().getNombre()
+                            + " en " + nombreSeccion(otra.getAsignacion().getGradoSeccion()) + " el " + HorarioUtil.dia(dia)
+                            + " de " + HorarioUtil.rango(otra.getHoraInicio(), otra.getHoraFin()));
+                }
+            }
             Aula aula = findAula(hr.getIdAula());
-            validarChoqueDocente(hr, request.getIdDocente(), idAsignacionExcluido);
-            validarChoqueAula(hr, idAsignacionExcluido);
+            if (!aula.isUsoCompartido()) {
+                for (HorarioClase otra : vigentes(horarioClaseRepository
+                        .findByAulaIdAulaAndAsignacionAnioEscolarIdAnioAndAccesoNot(aula.getIdAula(), idAnio, eliminado), idExcluido)) {
+                    if (seCruza(hr, otra)) {
+                        throw new IllegalArgumentException("El aula " + aula.getNombre() + " ya está ocupada el "
+                                + HorarioUtil.dia(dia) + " de " + HorarioUtil.rango(otra.getHoraInicio(), otra.getHoraFin())
+                                + " por " + nombreSeccion(otra.getAsignacion().getGradoSeccion()));
+                    }
+                }
+            }
+
             HorarioClase horario = new HorarioClase();
             horario.setAula(aula);
-            horario.setDiaSemana(hr.getDiaSemana());
+            horario.setDiaSemana(dia);
             horario.setHoraInicio(hr.getHoraInicio());
             horario.setHoraFin(hr.getHoraFin());
             horario.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
             horarios.add(horario);
         }
         return horarios;
+    }
+
+    /** Horarios de asignaciones no eliminadas, sin los de la asignacion que se edita. */
+    private List<HorarioClase> vigentes(List<HorarioClase> horarios, Integer idExcluido) {
+        return horarios.stream()
+                .filter(h -> !AccesoConstants.ELIMINADO.equals(h.getAsignacion().getAcceso().getIdAcceso()))
+                .filter(h -> idExcluido == null || !h.getAsignacion().getIdAsignacion().equals(idExcluido))
+                .toList();
+    }
+
+    private boolean seCruza(HorarioRequest hr, HorarioClase existente) {
+        return hr.getDiaSemana() == existente.getDiaSemana()
+                && HorarioUtil.seCruzan(hr.getHoraInicio(), hr.getHoraFin(), existente.getHoraInicio(), existente.getHoraFin());
+    }
+
+    private String nombreSeccion(GradoSeccion gs) {
+        return gs.getGrado().getNombre() + " " + (gs.getSeccion() != null ? gs.getSeccion().getNombre() : "Única");
+    }
+
+    private Acceso accesoEliminado() {
+        return accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow();
     }
 
     private void guardarHorarios(Asignacion asignacion, List<HorarioClase> horarios) {
@@ -198,89 +317,9 @@ public class AsignacionService {
     }
 
     private void reemplazarHorarios(Asignacion asignacion, List<HorarioClase> nuevos) {
-        horarioClaseRepository.findByAsignacionIdAsignacionAndAccesoNot(asignacion.getIdAsignacion(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
-                .forEach(h -> h.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()));
+        horarioClaseRepository.findByAsignacionIdAsignacionAndAccesoNot(asignacion.getIdAsignacion(), accesoEliminado())
+                .forEach(h -> h.setAcceso(accesoEliminado()));
         guardarHorarios(asignacion, nuevos);
-    }
-
-    private void validarCombinacionUnica(Integer idCurso, Integer idDocente, Integer idGradoSeccion, Integer idAnio, Integer idExcluido) {
-        asignacionRepository
-                .findByCursoIdCursoAndDocenteIdDocenteAndGradoSeccionIdGradoSeccionAndAnioEscolarIdAnioAndAccesoNot(
-                        idCurso, idDocente, idGradoSeccion, idAnio, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
-                .filter(a -> idExcluido == null || !a.getIdAsignacion().equals(idExcluido))
-                .ifPresent(a -> {
-                    throw new IllegalArgumentException("Ya existe una asignación con ese curso, docente y grado-sección para el año indicado");
-                });
-    }
-
-    private void validarHorariosInternos(List<HorarioClase> horarios) {
-        for (int i = 0; i < horarios.size(); i++) {
-            for (int j = i + 1; j < horarios.size(); j++) {
-                HorarioClase a = horarios.get(i);
-                HorarioClase b = horarios.get(j);
-                if (seSolapan(a, b)) {
-                    throw new IllegalArgumentException("Los horarios de la misma asignación se superponen: día "
-                            + a.getDiaSemana() + " " + a.getHoraInicio() + "-" + a.getHoraFin()
-                            + " y " + b.getHoraInicio() + "-" + b.getHoraFin());
-                }
-            }
-        }
-    }
-
-    private void validarChoqueDocente(HorarioRequest hr, Integer idDocente, Integer idAsignacionExcluido) {
-        List<HorarioClase> delDocente = horarioClaseRepository
-                .findByAsignacionDocenteIdDocenteAndAccesoNot(idDocente, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
-                .filter(h -> !h.getAsignacion().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
-                .toList();
-        for (HorarioClase existente : delDocente) {
-            if (idAsignacionExcluido != null && existente.getAsignacion().getIdAsignacion().equals(idAsignacionExcluido)) {
-                continue;
-            }
-            if (seSolapan(hr.getDiaSemana(), hr.getHoraInicio(), hr.getHoraFin(), existente)) {
-                throw new IllegalArgumentException("El docente ya tiene clase en ese horario: día "
-                        + existente.getDiaSemana() + " " + existente.getHoraInicio() + "-" + existente.getHoraFin());
-            }
-        }
-    }
-
-    private void validarChoqueAula(HorarioRequest hr, Integer idAsignacionExcluido) {
-        List<HorarioClase> delAula = horarioClaseRepository.findByAulaIdAulaAndAccesoNot(hr.getIdAula(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
-                .filter(h -> !h.getAsignacion().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
-                .toList();
-        for (HorarioClase existente : delAula) {
-            if (idAsignacionExcluido != null && existente.getAsignacion().getIdAsignacion().equals(idAsignacionExcluido)) {
-                continue;
-            }
-            if (seSolapan(hr.getDiaSemana(), hr.getHoraInicio(), hr.getHoraFin(), existente)) {
-                throw new IllegalArgumentException("El aula " + existente.getAula().getNombre()
-                        + " ya está ocupada en ese horario: día " + existente.getDiaSemana()
-                        + " " + existente.getHoraInicio() + "-" + existente.getHoraFin());
-            }
-        }
-    }
-
-    private void validarRangoHorario(LocalTime inicio, LocalTime fin) {
-        if (!inicio.isBefore(fin)) {
-            throw new IllegalArgumentException("La hora de fin debe ser posterior a la hora de inicio");
-        }
-    }
-
-    private void validarDiaSemana(Byte dia) {
-        if (dia == null || dia < 1 || dia > 7) {
-            throw new IllegalArgumentException("El día de la semana debe ser un valor entre 1 (Lunes) y 7 (Domingo)");
-        }
-    }
-
-    private boolean seSolapan(HorarioClase a, HorarioClase b) {
-        return a.getDiaSemana() == b.getDiaSemana()
-                && a.getHoraInicio().isBefore(b.getHoraFin())
-                && b.getHoraInicio().isBefore(a.getHoraFin());
-    }
-
-    private boolean seSolapan(Byte diaSemana, LocalTime inicio, LocalTime fin, HorarioClase existente) {
-        return diaSemana == existente.getDiaSemana()
-                && inicio.isBefore(existente.getHoraFin())
-                && existente.getHoraInicio().isBefore(fin);
     }
 
     private double horas(LocalTime inicio, LocalTime fin) {
@@ -346,6 +385,10 @@ public class AsignacionService {
         response.setIdDocente(asignacion.getDocente().getIdDocente());
         response.setDocente(asignacion.getDocente().getUsuario().getNombre() + " " + asignacion.getDocente().getUsuario().getApellidoPat());
         response.setIdGradoSeccion(asignacion.getGradoSeccion().getIdGradoSeccion());
+        response.setIdNivel(asignacion.getGradoSeccion().getGrado().getNivel().getIdNivel());
+        response.setNivel(asignacion.getGradoSeccion().getGrado().getNivel().getNombre());
+        response.setIdGrado(asignacion.getGradoSeccion().getGrado().getIdGrado());
+        response.setIdTurno(asignacion.getGradoSeccion().getTurno().getIdTurno());
         response.setGrado(asignacion.getGradoSeccion().getGrado().getNombre());
         response.setSeccion(asignacion.getGradoSeccion().getSeccion() != null
                 ? asignacion.getGradoSeccion().getSeccion().getNombre()

@@ -3,8 +3,11 @@ package com.example.Escolar.Service;
 import com.example.Escolar.Dto.TurnoRequest;
 import com.example.Escolar.Dto.TurnoResponse;
 import com.example.Escolar.Exception.ResourceNotFoundException;
+import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.Turno;
 import com.example.Escolar.Repository.AccesoRepository;
+import com.example.Escolar.Repository.GradoSeccionRepository;
+import com.example.Escolar.Repository.RecreoRepository;
 import com.example.Escolar.Repository.TurnoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,6 +28,8 @@ public class TurnoService {
 
     private final TurnoRepository turnoRepository;
     private final AccesoRepository accesoRepository;
+    private final GradoSeccionRepository gradoSeccionRepository;
+    private final RecreoRepository recreoRepository;
 
     public List<TurnoResponse> getAll() {
         return turnoRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
@@ -71,6 +76,22 @@ public class TurnoService {
     @Transactional
     public void delete(Integer id) {
         Turno turno = findTurno(id);
+        // Un turno en uso sostiene secciones (y con ellas matriculas y horarios)
+        // y recreos: quitarlo los dejaria colgando.
+        Acceso eliminado = accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow();
+        long secciones = gradoSeccionRepository.countByTurnoIdTurnoAndAccesoNot(id, eliminado);
+        long recreos = recreoRepository.countByTurnoIdTurnoAndAccesoNot(id, eliminado);
+        if (secciones > 0 || recreos > 0) {
+            List<String> uso = new ArrayList<>();
+            if (secciones > 0) {
+                uso.add(secciones + (secciones == 1 ? " sección" : " secciones"));
+            }
+            if (recreos > 0) {
+                uso.add(recreos + (recreos == 1 ? " recreo" : " recreos"));
+            }
+            throw new IllegalArgumentException("No se puede eliminar el turno " + turno.getNombre()
+                    + " porque tiene " + String.join(" y ", uso) + " asociados");
+        }
         turno.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
         turnoRepository.save(turno);
     }

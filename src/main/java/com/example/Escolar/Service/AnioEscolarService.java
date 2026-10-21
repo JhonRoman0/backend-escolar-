@@ -9,6 +9,7 @@ import com.example.Escolar.Model.AnioEscolar;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.AnioEscolarRepository;
 import com.example.Escolar.Repository.AsignacionRepository;
+import com.example.Escolar.Repository.CursoRepository;
 import com.example.Escolar.Repository.GradoSeccionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -40,6 +41,8 @@ public class AnioEscolarService {
     private final AccesoRepository accesoRepository;
     private final GradoSeccionRepository gradoSeccionRepository;
     private final AsignacionRepository asignacionRepository;
+    private final CursoRepository cursoRepository;
+    private final CursoService cursoService;
 
     // Transaccional porque antes de leer cierra los años vencidos. La anotacion
     // va en el metodo publico y no en cerrarAniosVencidos: al llamarse desde
@@ -180,8 +183,9 @@ public class AnioEscolarService {
         Acceso eliminado = accesoEliminado();
         long grados = gradoSeccionRepository.countByAnioEscolarIdAnioAndAccesoNot(id, eliminado);
         long asignaciones = asignacionRepository.countByAnioEscolarIdAnioAndAccesoNot(id, eliminado);
+        long cursos = cursoRepository.countByAnioEscolarIdAnioAndAccesoNot(id, eliminado);
 
-        if (grados > 0 || asignaciones > 0) {
+        if (grados > 0 || asignaciones > 0 || cursos > 0) {
             List<String> detalles = new ArrayList<>();
             if (grados > 0) {
                 detalles.add(grados + (grados == 1 ? " grado" : " grados"));
@@ -189,11 +193,18 @@ public class AnioEscolarService {
             if (asignaciones > 0) {
                 detalles.add(asignaciones + (asignaciones == 1 ? " asignación" : " asignaciones"));
             }
+            if (cursos > 0) {
+                detalles.add(cursos + (cursos == 1 ? " curso" : " cursos"));
+            }
+            String ultimo = detalles.remove(detalles.size() - 1);
+            String texto = detalles.isEmpty() ? ultimo : String.join(", ", detalles) + " y " + ultimo;
             throw new AnioEscolarConGradosException(
                 "No se puede eliminar el año " + anioEscolar.getAnio()
-                    + " porque tiene " + String.join(" y ", detalles) + " asociados"
+                    + " porque tiene " + texto + " asociados"
             );
         }
+        // Los cursos eliminados logicamente siguen apuntando al año.
+        cursoService.borrarEliminadosDelAnio(id);
         anioEscolarRepository.delete(anioEscolar);
     }
 

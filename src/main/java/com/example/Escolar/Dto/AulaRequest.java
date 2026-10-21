@@ -26,5 +26,7 @@ public class AulaRequest {
     @Min(value = CAPACIDAD_MIN, message = "La capacidad minima es " + CAPACIDAD_MIN)
     @Max(value = CAPACIDAD_MAX, message = "La capacidad maxima es " + CAPACIDAD_MAX)
     private Integer capacidad;
+    /** Null al editar significa que no cambia. */
+    private Boolean usoCompartido;
     private Long accesoId;
 }

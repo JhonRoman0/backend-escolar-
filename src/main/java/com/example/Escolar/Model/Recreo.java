@@ -8,6 +8,7 @@ import lombok.Setter;
 
 import java.time.LocalTime;
 
+/** Un recreo de un grado en un turno: aplica a todas sus secciones de ese turno. */
 @Entity
 @Table(name = "recreo")
 @Getter
@@ -20,11 +21,18 @@ public class Recreo {
     @Column(name = "id_recreo")
     Integer idRecreo;
     @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_anio", nullable = false)
+    AnioEscolar anioEscolar;
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "id_nivel", nullable = false)
     Nivel nivel;
     @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "id_grado_seccion")
-    GradoSeccion gradoSeccion;
+    @JoinColumn(name = "id_turno", nullable = false)
+    Turno turno;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_grado", nullable = false)
+    Grado grado;
+    // 1 = lunes ... 6 = sabado. El domingo no hay clases.
     @Column(name = "dia_semana", nullable = false)
     Byte diaSemana;
     @Column(name = "hora_inicio", nullable = false)

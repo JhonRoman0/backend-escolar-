@@ -1,5 +1,6 @@
 package com.example.Escolar.Security;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -39,6 +40,9 @@ public class SecurityConfig {
     private final JwtAuthFilter jwtAuthFilter;
     private final RbacAuthorizationManager rbacAuthorizationManager;
 
+    @Value("${app.cors.allowed-origins:http://localhost:*}")
+    private List<String> corsOrigenes;
+
     public SecurityConfig(JwtAuthFilter jwtAuthFilter, RbacAuthorizationManager rbacAuthorizationManager) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.rbacAuthorizationManager = rbacAuthorizationManager;
@@ -72,14 +76,13 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of(
-                "https://shy-perceive-safari.ngrok-free.dev",
-                "https://*.ngrok-free.dev",
-                "http://localhost:*"));
+        // Orígenes permitidos desde la propiedad app.cors.allowed-origins (separados por coma).
+        // En producción el front y la API comparten dominio (/api), así que CORS casi no interviene.
+        config.setAllowedOriginPatterns(corsOrigenes);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "ngrok-skip-browser-warning", "X-Requested-With"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With"));
         config.setAllowCredentials(true);
-        config.setExposedHeaders(List.of("Authorization", "ngrok-skip-browser-warning"));
+        config.setExposedHeaders(List.of("Authorization"));
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
         return source;

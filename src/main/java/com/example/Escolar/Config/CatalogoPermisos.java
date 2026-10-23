@@ -20,51 +20,57 @@ import java.util.Optional;
  */
 public final class CatalogoPermisos {
 
+    private static final String SEGURIDAD = "Seguridad";
+    private static final String ACADEMICO = "Académico";
+
     private static final Map<String, Map<String, String>> CATALOGO = new LinkedHashMap<>();
+    private static final Map<String, String> MODULOS = new LinkedHashMap<>();
 
     static {
-        permiso("USUARIOS",
+        permiso("USUARIOS", SEGURIDAD,
                 "CREAR", "Crear usuarios",
                 "ACTUALIZAR", "Editar, cambiar foto y desbloquear",
                 "ELIMINAR", "Eliminar usuarios",
                 "IMPRIMIR_EXPORTAR", "Exportar reporte");
-        permiso("ROLES",
+        permiso("ROLES", SEGURIDAD,
                 "CREAR", "Crear roles",
                 "ACTUALIZAR", "Editar roles",
                 "ELIMINAR", "Eliminar roles");
-        permiso("TURNOS",
+        permiso("TURNOS", ACADEMICO,
                 "CREAR", "Crear turnos",
                 "ACTUALIZAR", "Editar horarios del turno",
                 "ELIMINAR", "Eliminar turnos");
-        permiso("AULAS",
-                "CREAR", "Crear aulas",
-                "ACTUALIZAR", "Editar aulas",
+        permiso("AULAS", ACADEMICO,
+                "CREAR", "Crear aulas y definir su tipo",
+                "ACTUALIZAR", "Editar aulas y su tipo",
                 "ELIMINAR", "Eliminar aulas");
-        permiso("ANIOS_ESCOLARES",
+        permiso("ANIOS_ESCOLARES", ACADEMICO,
                 "CREAR", "Crear años escolares",
                 "ACTUALIZAR", "Editar fechas y cambiar el estado",
                 "ELIMINAR", "Eliminar años escolares");
-        permiso("GRADOS",
+        permiso("GRADOS", ACADEMICO,
                 "CREAR", "Crear grados y secciones",
                 "ACTUALIZAR", "Editar grados y secciones",
                 "ELIMINAR", "Eliminar grados y secciones");
         // Los docentes se crean desde Usuarios, al asignar el rol Docente.
-        permiso("DOCENTES",
+        permiso("DOCENTES", ACADEMICO,
                 "ACTUALIZAR", "Editar datos y foto",
                 "ELIMINAR", "Eliminar docentes",
                 "IMPRIMIR_EXPORTAR", "Exportar reporte");
-        permiso("CURSOS",
+        permiso("CURSOS", ACADEMICO,
                 "CREAR", "Importar, copiar y agregar subcursos",
                 "ACTUALIZAR", "Activar, desactivar y editar subcursos",
                 "ELIMINAR", "Eliminar cursos y subcursos");
         // Las competencias vienen del Excel: solo se activan o desactivan.
-        permiso("COMPETENCIAS",
+        permiso("COMPETENCIAS", ACADEMICO,
                 "ACTUALIZAR", "Activar y desactivar");
-        permiso("ASIGNACIONES",
+        permiso("ASIGNACIONES", ACADEMICO,
                 "CREAR", "Asignar cursos",
                 "ACTUALIZAR", "Editar asignaciones",
                 "ELIMINAR", "Eliminar asignaciones");
-        permiso("RECREOS",
+        permiso("CONFIGURACION_ACADEMICA", ACADEMICO,
+                "ACTUALIZAR", "Editar la hora académica");
+        permiso("RECREOS", ACADEMICO,
                 "CREAR", "Crear recreos",
                 "ACTUALIZAR", "Editar recreos",
                 "ELIMINAR", "Eliminar recreos");
@@ -73,8 +79,9 @@ public final class CatalogoPermisos {
     private CatalogoPermisos() {
     }
 
-    /** Pares accion, etiqueta en orden. */
-    private static void permiso(String codigo, String... accionesYEtiquetas) {
+    /** Modulo al que pertenece el permiso y pares accion, etiqueta en orden. */
+    private static void permiso(String codigo, String modulo, String... accionesYEtiquetas) {
+        MODULOS.put(codigo, modulo);
         Map<String, String> acciones = new LinkedHashMap<>();
         for (int i = 0; i < accionesYEtiquetas.length; i += 2) {
             acciones.put(accionesYEtiquetas[i], accionesYEtiquetas[i + 1]);
@@ -85,6 +92,11 @@ public final class CatalogoPermisos {
     /** Permisos que el catalogo controla. */
     public static Map<String, Map<String, String>> todos() {
         return CATALOGO;
+    }
+
+    /** Modulo (por nombre) en el que la pantalla de accesos muestra el permiso. */
+    public static String modulo(String codigoPermiso) {
+        return MODULOS.get(codigoPermiso);
     }
 
     /** Acciones (codigo -> etiqueta) del permiso, si el catalogo lo controla. */

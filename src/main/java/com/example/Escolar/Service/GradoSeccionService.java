@@ -4,17 +4,21 @@ import com.example.Escolar.Dto.GradoSeccionResponse;
 import com.example.Escolar.Dto.SeccionActualizarRequest;
 import com.example.Escolar.Dto.SeccionRequest;
 import com.example.Escolar.Dto.SeccionResponse;
+import com.example.Escolar.Dto.SeccionNueva;
 import com.example.Escolar.Dto.SeccionesBatchRequest;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.Acceso;
+import com.example.Escolar.Model.Aula;
 import com.example.Escolar.Model.AnioEscolar;
 import com.example.Escolar.Model.Grado;
 import com.example.Escolar.Model.GradoSeccion;
 import com.example.Escolar.Model.Seccion;
+import com.example.Escolar.Model.TipoAula;
 import com.example.Escolar.Model.Turno;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.AnioEscolarRepository;
 import com.example.Escolar.Repository.AsignacionRepository;
+import com.example.Escolar.Repository.AulaRepository;
 import com.example.Escolar.Repository.GradoRepository;
 import com.example.Escolar.Repository.GradoSeccionRepository;
 import com.example.Escolar.Repository.MatriculaRepository;
@@ -56,6 +60,7 @@ public class GradoSeccionService {
     private final MatriculaRepository matriculaRepository;
     private final AsignacionRepository asignacionRepository;
     private final AccesoRepository accesoRepository;
+    private final AulaRepository aulaRepository;
 
     public List<GradoSeccionResponse> getSeccionesByGrado(Integer idGrado) {
         Grado grado = gradoRepository.findByIdGradoAndAccesoNot(idGrado, accesoNoEliminado())
@@ -81,7 +86,8 @@ public class GradoSeccionService {
         Combo combo = combo(request.getIdGrado(), request.getIdTurno(), request.getIdAnio());
         String nombre = normalizar(request.getNombre());
         validarNombreLibre(combo, nombre, null);
-        return guardar(combo, nombre);
+        Aula salon = resolverSalon(request.getIdAula(), combo.turno(), combo.anioEscolar(), null);
+        return guardar(combo, nombre, salon);
     }
 
     /**
@@ -96,21 +102,32 @@ public class GradoSeccionService {
     public List<GradoSeccionResponse> crearLote(SeccionesBatchRequest request) {
         Combo combo = combo(request.getIdGrado(), request.getIdTurno(), request.getIdAnio());
 
+        if (request.getSecciones() == null || request.getSecciones().isEmpty()) {
+            throw new IllegalArgumentException("Indica al menos una sección");
+        }
         List<String> nombres = new ArrayList<>();
+        List<Aula> salones = new ArrayList<>();
         Set<String> pendientes = new HashSet<>();
-        for (String bruto : request.getNombres()) {
-            String nombre = normalizar(bruto);
+        Set<Integer> salonesUsados = new HashSet<>();
+        for (SeccionNueva nueva : request.getSecciones()) {
+            String nombre = normalizar(nueva.getNombre());
             if (!pendientes.add(nombre.toLowerCase())) {
                 throw new IllegalArgumentException("La sección " + nombre + " está repetida en el envío");
             }
-            nombres.add(nombre);
-        }
-
-        for (String nombre : nombres) {
             validarNombreLibre(combo, nombre, null);
+            Aula salon = resolverSalon(nueva.getIdAula(), combo.turno(), combo.anioEscolar(), null);
+            if (!salonesUsados.add(salon.getIdAula())) {
+                throw new IllegalArgumentException("El " + salon.getNombre() + " está elegido para dos secciones del envío");
+            }
+            nombres.add(nombre);
+            salones.add(salon);
         }
 
-        return nombres.stream().map(nombre -> guardar(combo, nombre)).toList();
+        List<GradoSeccionResponse> creadas = new ArrayList<>();
+        for (int i = 0; i < nombres.size(); i++) {
+            creadas.add(guardar(combo, nombres.get(i), salones.get(i)));
+        }
+        return creadas;
     }
 
     /**
@@ -148,6 +165,15 @@ public class GradoSeccionService {
 
         if (!habilitadoParaSecciones(gs.getAnioEscolar())) {
             throw new IllegalArgumentException("El año " + gs.getAnioEscolar().getAnio() + " no está habilitado para administrar secciones");
+        }
+
+        // Con cursos asignados el salon ya no cambia: sus horarios apuntan a el.
+        Integer salonActual = gs.getAula() == null ? null : gs.getAula().getIdAula();
+        if (!request.getIdAula().equals(salonActual)) {
+            if (asignacionRepository.existsByGradoSeccionIdGradoSeccionAndAccesoNot(idGradoSeccion, accesoNoEliminado())) {
+                throw new IllegalArgumentException("No se puede cambiar el salón: la sección ya tiene cursos asignados");
+            }
+            gs.setAula(resolverSalon(request.getIdAula(), gs.getTurno(), gs.getAnioEscolar(), idGradoSeccion));
         }
 
         Seccion s = gs.getSeccion();
@@ -272,8 +298,43 @@ public class GradoSeccionService {
         return new Combo(grado, turno, anioEscolar);
     }
 
+    /**
+     * El salon de una seccion: un aula activa de tipo SALON que ninguna otra
+     * seccion tiene en ese año y turno. En otro turno el mismo salon si se
+     * puede usar (la mañana y la tarde comparten salones).
+     */
+    public Aula resolverSalon(Integer idAula, Turno turno, AnioEscolar anio, Integer idGradoSeccionExcluir) {
+        if (idAula == null) {
+            throw new IllegalArgumentException("Elige el salón de la sección");
+        }
+        Aula aula = aulaRepository.findByIdAulaAndAccesoNot(idAula, accesoNoEliminado())
+                .orElseThrow(() -> new ResourceNotFoundException("Aula no encontrada con id " + idAula));
+        if (!AccesoConstants.ACTIVO.equals(aula.getAcceso().getIdAcceso())) {
+            throw new IllegalArgumentException("El " + aula.getNombre() + " está inactivo");
+        }
+        if (aula.getTipo() != TipoAula.SALON) {
+            throw new IllegalArgumentException(aula.getNombre()
+                    + " no es un salón: los ambientes especiales y los espacios compartidos no se asignan a una sección");
+        }
+        gradoSeccionRepository.findByAulaIdAulaAndAccesoNot(idAula, accesoNoEliminado()).stream()
+                .filter(otra -> !otra.getIdGradoSeccion().equals(idGradoSeccionExcluir))
+                .filter(otra -> otra.getTurno().getIdTurno().equals(turno.getIdTurno())
+                        && otra.getAnioEscolar().getIdAnio().equals(anio.getIdAnio()))
+                .findFirst()
+                .ifPresent(otra -> {
+                    throw new IllegalArgumentException("El " + aula.getNombre() + " ya es el salón de "
+                            + nombreSeccion(otra) + " – turno " + turno.getNombre() + " " + anio.getAnio());
+                });
+        return aula;
+    }
+
+    /** "3.° grado A", o solo el grado si no tiene letra. */
+    public static String nombreSeccion(GradoSeccion gs) {
+        return gs.getGrado().getNombre() + (gs.getSeccion() != null ? " " + gs.getSeccion().getNombre() : "");
+    }
+
     /** Escribe una seccion y su fila de grado_seccion para la combinacion dada. */
-    private GradoSeccionResponse guardar(Combo combo, String nombre) {
+    private GradoSeccionResponse guardar(Combo combo, String nombre, Aula salon) {
         Seccion seccion = new Seccion();
         seccion.setNombre(nombre);
         seccion.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
@@ -284,6 +345,7 @@ public class GradoSeccionService {
         gs.setSeccion(seccion);
         gs.setTurno(combo.turno());
         gs.setAnioEscolar(combo.anioEscolar());
+        gs.setAula(salon);
         gs.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         return toResponse(gradoSeccionRepository.save(gs));
     }
@@ -413,6 +475,8 @@ public class GradoSeccionService {
         response.setTurno(base.getTurno());
         response.setIdAnio(base.getIdAnio());
         response.setAnio(base.getAnio());
+        response.setIdAula(base.getIdAula());
+        response.setAula(base.getAula());
         response.setTieneMatriculas(base.isTieneMatriculas());
         response.setTieneAsignaciones(base.isTieneAsignaciones());
         return response;
@@ -437,6 +501,10 @@ public class GradoSeccionService {
         if (gs.getAnioEscolar() != null) {
             response.setIdAnio(gs.getAnioEscolar().getIdAnio());
             response.setAnio(gs.getAnioEscolar().getAnio());
+        }
+        if (gs.getAula() != null) {
+            response.setIdAula(gs.getAula().getIdAula());
+            response.setAula(gs.getAula().getNombre());
         }
         response.setTieneMatriculas(!matriculaRepository
                 .findByGradoSeccionIdGradoSeccionAndAccesoNot(gs.getIdGradoSeccion(), accesoNoEliminado()).isEmpty());

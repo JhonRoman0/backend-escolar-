@@ -29,6 +29,12 @@ public class GradoSeccion {
     @ManyToOne
     @JoinColumn(name = "id_anio", nullable = false)
     AnioEscolar anioEscolar;
+    // Salon fijo de la seccion (aula de tipo SALON, una por seccion por año y
+    // turno). Opcional en la base para las secciones anteriores a la regla; las
+    // pantallas lo piden siempre y sin el no se le asignan cursos.
+    @ManyToOne
+    @JoinColumn(name = "id_aula")
+    Aula aula;
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "id_acceso", nullable = false)
     Acceso acceso;

@@ -386,7 +386,9 @@ public class DataSeeder implements CommandLineRunner {
                 new PermisoSeed("ASIGNACIONES", "Asignaciones", crud()),
                 new PermisoSeed("RECREOS", "Recreos", crud()),
                 new PermisoSeed("SUSPENSIONES_DOCENTE", "Suspensiones de Docente", List.of("CREAR")),
-                new PermisoSeed("CAMBIOS_DOCENTE", "Cambios de Docente", List.of()))));
+                new PermisoSeed("CAMBIOS_DOCENTE", "Cambios de Docente", List.of()),
+                new PermisoSeed("COMPETENCIAS", "Competencias", List.of("ACTUALIZAR")),
+                new PermisoSeed("CONFIGURACION_ACADEMICA", "Configuración académica", List.of("ACTUALIZAR")))));
 
         crearModuloSiFalta(new ModuloSeed("Estudiantes", "user-graduate", List.of(
                 new PermisoSeed("ALUMNOS", "Alumnos", crudWithExport()),
@@ -397,7 +399,6 @@ public class DataSeeder implements CommandLineRunner {
 
         crearModuloSiFalta(new ModuloSeed("Consolidado", "clipboard-check", List.of(
                 new PermisoSeed("CONSOLIDADOS", "Consolidados", List.of("CREAR", "ACTUALIZAR", "IMPRIMIR_EXPORTAR")),
-                new PermisoSeed("COMPETENCIAS", "Competencias", crud()),
                 new PermisoSeed("NOTAS", "Notas", List.of("CREAR", "AUTORIZAR", "IMPRIMIR_EXPORTAR")))));
 
         crearModuloSiFalta(new ModuloSeed("Portal", "globe", List.of(
@@ -435,6 +436,7 @@ public class DataSeeder implements CommandLineRunner {
         asignarPermiso("Administrador", "AULAS", crud());
         asignarPermiso("Administrador", "ASIGNACIONES", crud());
         asignarPermiso("Administrador", "RECREOS", crud());
+        asignarPermiso("Administrador", "CONFIGURACION_ACADEMICA", List.of("ACTUALIZAR"));
         asignarPermiso("Administrador", "SUSPENSIONES_DOCENTE", List.of("CREAR"));
         asignarPermiso("Administrador", "CAMBIOS_DOCENTE", List.of());
         asignarPermiso("Administrador", "ALUMNOS", crudWithExport());

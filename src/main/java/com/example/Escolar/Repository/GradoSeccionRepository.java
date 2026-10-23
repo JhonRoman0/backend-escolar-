@@ -19,4 +19,7 @@ public interface GradoSeccionRepository extends JpaRepository<GradoSeccion, Inte
     long countByAnioEscolarIdAnioAndAccesoNot(Integer idAnio, Acceso acceso);
 
     long countByTurnoIdTurnoAndAccesoNot(Integer idTurno, Acceso acceso);
+
+    /** Secciones que tienen esta aula como salon. */
+    List<GradoSeccion> findByAulaIdAulaAndAccesoNot(Integer idAula, Acceso acceso);
 }

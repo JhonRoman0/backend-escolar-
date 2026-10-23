@@ -3,9 +3,11 @@ package com.example.Escolar.Service;
 import com.example.Escolar.Dto.GradoRequest;
 import com.example.Escolar.Dto.GradoResponse;
 import com.example.Escolar.Dto.SeccionResponse;
+import com.example.Escolar.Dto.SeccionNueva;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.*;
 import com.example.Escolar.Repository.AccesoRepository;
+import com.example.Escolar.Repository.AsignacionRepository;
 import com.example.Escolar.Repository.GradoRepository;
 import com.example.Escolar.Repository.GradoSeccionRepository;
 import com.example.Escolar.Repository.NivelRepository;
@@ -17,7 +19,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -33,6 +37,7 @@ public class GradoService {
     private final NivelRepository nivelRepository;
     private final AccesoRepository accesoRepository;
     private final GradoSeccionService gradoSeccionService;
+    private final AsignacionRepository asignacionRepository;
 
     public List<GradoResponse> getAll() {
         return gradoRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
@@ -87,7 +92,8 @@ public class GradoService {
         if (request.getSecciones() != null && !request.getSecciones().isEmpty()) {
             crearSecciones(grado, turno, anioEscolar, request.getSecciones());
         } else {
-            crearGradoSeccionSinSeccion(grado, turno, anioEscolar);
+            crearGradoSeccionSinSeccion(grado, turno, anioEscolar,
+                    gradoSeccionService.resolverSalon(request.getIdAula(), turno, anioEscolar, null));
         }
         return toResponse(grado);
     }
@@ -140,18 +146,21 @@ public class GradoService {
         // la lista vacia se llevaba por delante todas las secciones.
         if (request.getSecciones() == null || request.getSecciones().isEmpty()) {
             if (nombresActuales.isEmpty() && turno != null && anioEscolar != null) {
-                crearGradoSeccionSinSeccion(grado, turno, anioEscolar);
+                crearGradoSeccionSinSeccion(grado, turno, anioEscolar,
+                        gradoSeccionService.resolverSalon(request.getIdAula(), turno, anioEscolar, null));
             }
             return;
         }
 
-        Set<String> nombresRequest = new HashSet<>();
-        for (String nombre : request.getSecciones()) {
-            String limpio = nombre.trim();
-            if (!limpio.isEmpty() && !nombresRequest.add(limpio.toLowerCase())) {
+        // Por nombre en minusculas, conservando como vino escrito y su salon.
+        Map<String, SeccionNueva> pedidas = new LinkedHashMap<>();
+        for (SeccionNueva nueva : request.getSecciones()) {
+            String limpio = nueva.getNombre().trim();
+            if (!limpio.isEmpty() && pedidas.putIfAbsent(limpio.toLowerCase(), nueva) != null) {
                 throw new IllegalArgumentException("No se pueden repetir secciones dentro del mismo grado");
             }
         }
+        Set<String> nombresRequest = pedidas.keySet();
 
         // Toda seccion que se quite tiene que quedar al menos una viva, o el grado
         // se quedaria sin ninguna seccion y la cascada de matricula no tendria
@@ -165,6 +174,7 @@ public class GradoService {
                     "El grado " + grado.getNombre() + " debe conservar al menos una sección");
         }
 
+        Set<Integer> salonesDelEnvio = new HashSet<>();
         for (GradoSeccion gs : actuales) {
             if (gs.getSeccion() == null) {
                 // Fila unica de los grados sin letra: se retira solo si no tiene
@@ -174,7 +184,8 @@ public class GradoService {
                 continue;
             }
             String nombre = gs.getSeccion().getNombre().trim();
-            if (nombresRequest.contains(nombre.toLowerCase())) {
+            SeccionNueva pedida = pedidas.get(nombre.toLowerCase());
+            if (pedida != null) {
                 if (turno != null && !gs.getTurno().getIdTurno().equals(turno.getIdTurno())) {
                     gradoSeccionService.validarSinUso(gs);
                     gs.setTurno(turno);
@@ -184,6 +195,7 @@ public class GradoService {
                 if (anioEscolar != null) {
                     gs.setAnioEscolar(anioEscolar);
                 }
+                actualizarSalon(gs, pedida.getIdAula(), salonesDelEnvio);
             } else {
                 gradoSeccionService.validarSinUso(gs);
                 gradoSeccionService.marcarSeccionEliminada(gs);
@@ -191,13 +203,41 @@ public class GradoService {
         }
         gradoSeccionRepository.saveAll(actuales);
 
-        nombresRequest.removeAll(nombresActuales);
-        for (String nuevo : nombresRequest) {
-            crearSeccion(grado,
-                    turno != null ? turno : turnosDe(actuales),
-                    anioEscolar != null ? anioEscolar : aniosDe(actuales),
-                    nuevo);
+        for (Map.Entry<String, SeccionNueva> nueva : pedidas.entrySet()) {
+            if (nombresActuales.contains(nueva.getKey())) {
+                continue;
+            }
+            Turno turnoNueva = turno != null ? turno : turnosDe(actuales);
+            AnioEscolar anioNueva = anioEscolar != null ? anioEscolar : aniosDe(actuales);
+            Aula salon = gradoSeccionService.resolverSalon(nueva.getValue().getIdAula(), turnoNueva, anioNueva, null);
+            if (!salonesDelEnvio.add(salon.getIdAula())) {
+                throw new IllegalArgumentException("El " + salon.getNombre() + " está elegido para dos secciones");
+            }
+            crearSeccion(grado, turnoNueva, anioNueva, nueva.getValue().getNombre(), salon);
         }
+    }
+
+    /**
+     * Cambia el salon de una seccion existente (o lo revalida si cambio de
+     * turno). Con cursos asignados el salon ya no cambia: sus horarios apuntan a el.
+     */
+    private void actualizarSalon(GradoSeccion gs, Integer idAula, Set<Integer> salonesDelEnvio) {
+        Integer actual = gs.getAula() == null ? null : gs.getAula().getIdAula();
+        Integer elegido = idAula != null ? idAula : actual;
+        if (elegido == null) {
+            return;
+        }
+        if (!elegido.equals(actual)
+                && asignacionRepository.existsByGradoSeccionIdGradoSeccionAndAccesoNot(
+                gs.getIdGradoSeccion(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())) {
+            throw new IllegalArgumentException("No se puede cambiar el salón de " + GradoSeccionService.nombreSeccion(gs)
+                    + ": la sección ya tiene cursos asignados");
+        }
+        Aula salon = gradoSeccionService.resolverSalon(elegido, gs.getTurno(), gs.getAnioEscolar(), gs.getIdGradoSeccion());
+        if (!salonesDelEnvio.add(salon.getIdAula())) {
+            throw new IllegalArgumentException("El " + salon.getNombre() + " está elegido para dos secciones");
+        }
+        gs.setAula(salon);
     }
 
     private Turno turnosDe(List<GradoSeccion> filas) {
@@ -208,17 +248,18 @@ public class GradoService {
         return filas.stream().map(GradoSeccion::getAnioEscolar).filter(a -> a != null).findFirst().orElse(null);
     }
 
-    private void crearGradoSeccionSinSeccion(Grado grado, Turno turno, AnioEscolar anioEscolar) {
+    private void crearGradoSeccionSinSeccion(Grado grado, Turno turno, AnioEscolar anioEscolar, Aula salon) {
         GradoSeccion gs = new GradoSeccion();
         gs.setGrado(grado);
         gs.setSeccion(null);
         gs.setTurno(turno);
         gs.setAnioEscolar(anioEscolar);
+        gs.setAula(salon);
         gs.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         gradoSeccionRepository.save(gs);
     }
 
-    private void crearSeccion(Grado grado, Turno turno, AnioEscolar anioEscolar, String nombre) {
+    private void crearSeccion(Grado grado, Turno turno, AnioEscolar anioEscolar, String nombre, Aula salon) {
         Seccion seccion = new Seccion();
         seccion.setNombre(nombre.trim());
         seccion.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
@@ -229,6 +270,7 @@ public class GradoService {
         gradoSeccion.setSeccion(seccion);
         gradoSeccion.setTurno(turno);
         gradoSeccion.setAnioEscolar(anioEscolar);
+        gradoSeccion.setAula(salon);
         gradoSeccion.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         gradoSeccionRepository.save(gradoSeccion);
     }
@@ -244,14 +286,19 @@ public class GradoService {
         gradoRepository.save(grado);
     }
 
-    private void crearSecciones(Grado grado, Turno turno, AnioEscolar anioEscolar, List<String> nombres) {
+    private void crearSecciones(Grado grado, Turno turno, AnioEscolar anioEscolar, List<SeccionNueva> secciones) {
         Set<String> vistos = new HashSet<>();
-        for (String nombre : nombres) {
-            String limpio = nombre.trim();
-            if (!vistos.add(limpio)) {
+        Set<Integer> salones = new HashSet<>();
+        for (SeccionNueva nueva : secciones) {
+            String limpio = nueva.getNombre().trim();
+            if (!vistos.add(limpio.toLowerCase())) {
                 throw new IllegalArgumentException("No se pueden repetir secciones dentro del mismo grado");
             }
-            crearSeccion(grado, turno, anioEscolar, limpio);
+            Aula salon = gradoSeccionService.resolverSalon(nueva.getIdAula(), turno, anioEscolar, null);
+            if (!salones.add(salon.getIdAula())) {
+                throw new IllegalArgumentException("El " + salon.getNombre() + " está elegido para dos secciones");
+            }
+            crearSeccion(grado, turno, anioEscolar, limpio, salon);
         }
     }
 

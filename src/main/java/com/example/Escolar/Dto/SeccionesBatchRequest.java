@@ -1,6 +1,6 @@
 package com.example.Escolar.Dto;
 
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -36,7 +36,8 @@ public class SeccionesBatchRequest {
      */
     @NotEmpty(message = "Indica al menos una sección")
     @Size(max = 26, message = "Máximo 26 secciones por lote")
-    private List<@NotBlank(message = "La sección es obligatoria") @Size(max = 50, message = "Máximo 50 caracteres") String> nombres;
+    @Valid
+    private List<SeccionNueva> secciones;
 
     /**
      * Opcional a proposito, igual que en {@link SeccionRequest}: si no viene se

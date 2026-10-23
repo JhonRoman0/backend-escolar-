@@ -17,6 +17,7 @@ import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.Nivel;
 import com.example.Escolar.Model.Recreo;
 import com.example.Escolar.Model.TipoCurso;
+import com.example.Escolar.Model.TipoAula;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.AnioEscolarRepository;
 import com.example.Escolar.Repository.AsignacionRepository;
@@ -55,6 +56,7 @@ public class AsignacionService {
     private final AccesoContextoService accesoContextoService;
     private final DocenteNivelRepository docenteNivelRepository;
     private final RecreoRepository recreoRepository;
+    private final ConfiguracionAcademicaService configuracionAcademicaService;
 
     public List<AsignacionResponse> getAll(Integer idUsuario, List<String> roles) {
         return asignacionRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
@@ -220,6 +222,12 @@ public class AsignacionService {
         GradoSeccion gs = datos.gradoSeccion();
         Integer idAnio = datos.anio().getIdAnio();
         Acceso eliminado = accesoEliminado();
+        if (gs.getAula() == null) {
+            throw new IllegalArgumentException("Asigna primero el salón de " + nombreSeccion(gs) + " en Grados y secciones");
+        }
+        // La clase dura bloques de la hora academica configurada para el año y
+        // nivel (Configuracion academica). Null: libre, como inicial por defecto.
+        Integer horaAcademica = configuracionAcademicaService.minutosHoraAcademica(datos.anio(), gs.getGrado().getNivel());
         List<Recreo> recreos = recreoRepository.findByAnioEscolarIdAnioAndTurnoIdTurnoAndGradoIdGradoAndAccesoNot(
                 idAnio, gs.getTurno().getIdTurno(), gs.getGrado().getIdGrado(), eliminado);
         List<HorarioClase> deLaSeccion = vigentes(horarioClaseRepository
@@ -233,6 +241,12 @@ public class AsignacionService {
             HorarioUtil.validarDia(hr.getDiaSemana());
             byte dia = hr.getDiaSemana();
             HorarioUtil.validarDentroDelTurno(hr.getHoraInicio(), hr.getHoraFin(), gs.getTurno());
+            if (horaAcademica != null
+                    && Duration.between(hr.getHoraInicio(), hr.getHoraFin()).toMinutes() % horaAcademica != 0) {
+                throw new IllegalArgumentException("La clase debe durar bloques de " + horaAcademica + " minutos ("
+                        + horaAcademica + ", " + horaAcademica * 2 + ", " + horaAcademica * 3 + "…): "
+                        + HorarioUtil.rango(hr.getHoraInicio(), hr.getHoraFin()) + " no cumple");
+            }
             String cuando = "el " + HorarioUtil.dia(dia) + " de " + HorarioUtil.rango(hr.getHoraInicio(), hr.getHoraFin());
 
             List<Recreo> recreosDelDia = recreos.stream().filter(r -> r.getDiaSemana() == dia).toList();
@@ -266,7 +280,12 @@ public class AsignacionService {
                 }
             }
             Aula aula = findAula(hr.getIdAula());
-            if (!aula.isUsoCompartido()) {
+            // Su salon, un ambiente especial o un espacio compartido; nunca el salon de otra seccion.
+            if (aula.getTipo() == TipoAula.SALON && !aula.getIdAula().equals(gs.getAula().getIdAula())) {
+                throw new IllegalArgumentException("El " + aula.getNombre() + " es el salón de otra sección: elige el "
+                        + gs.getAula().getNombre() + ", un ambiente especial o un espacio compartido");
+            }
+            if (aula.getTipo() != TipoAula.COMPARTIDO) {
                 for (HorarioClase otra : vigentes(horarioClaseRepository
                         .findByAulaIdAulaAndAsignacionAnioEscolarIdAnioAndAccesoNot(aula.getIdAula(), idAnio, eliminado), idExcluido)) {
                     if (seCruza(hr, otra)) {

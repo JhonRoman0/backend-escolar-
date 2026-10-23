@@ -3,9 +3,16 @@ package com.example.Escolar.Service;
 import com.example.Escolar.Dto.AulaRequest;
 import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.Aula;
+import com.example.Escolar.Model.AnioEscolar;
+import com.example.Escolar.Model.Grado;
+import com.example.Escolar.Model.GradoSeccion;
+import com.example.Escolar.Model.Seccion;
+import com.example.Escolar.Model.TipoAula;
+import com.example.Escolar.Model.Turno;
 import com.example.Escolar.Model.HorarioClase;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.AulaRepository;
+import com.example.Escolar.Repository.GradoSeccionRepository;
 import com.example.Escolar.Repository.HorarioClaseRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,6 +31,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
@@ -40,6 +48,8 @@ class AulaServiceTest {
     private AccesoRepository accesoRepository;
     @Mock
     private HorarioClaseRepository horarioClaseRepository;
+    @Mock
+    private GradoSeccionRepository gradoSeccionRepository;
     @InjectMocks
     private AulaService aulaService;
 
@@ -144,5 +154,55 @@ class AulaServiceTest {
         verify(horarioClaseRepository).deleteAll(anyList());
         verify(aulaRepository).delete(any(Aula.class));
         verify(aulaRepository, never()).save(any(Aula.class));
+    }
+
+    // ---- Tipo de aula ----
+
+    @Test
+    void unAulaNuevaEsSalonSalvoQueSeElijaOtroTipo() {
+        assertEquals("SALON", aulaService.create(request("Aula 301", 30, AccesoConstants.ACTIVO)).getTipo());
+
+        AulaRequest patio = request("Patio", 50, AccesoConstants.ACTIVO);
+        patio.setTipo(TipoAula.COMPARTIDO);
+        assertEquals("COMPARTIDO", aulaService.create(patio).getTipo());
+    }
+
+    /** El Aula 101 es el salon de 3.° A en la mañana de 2027. */
+    private void esSalonDeTercerA() {
+        Grado grado = new Grado();
+        grado.setNombre("3.° grado");
+        Seccion a = new Seccion();
+        a.setNombre("A");
+        Turno manana = new Turno();
+        manana.setNombre("Mañana");
+        AnioEscolar anio = new AnioEscolar();
+        anio.setAnio("2027");
+        GradoSeccion tercerA = new GradoSeccion();
+        tercerA.setGrado(grado);
+        tercerA.setSeccion(a);
+        tercerA.setTurno(manana);
+        tercerA.setAnioEscolar(anio);
+        when(gradoSeccionRepository.findByAulaIdAulaAndAccesoNot(any(), any())).thenReturn(List.of(tercerA));
+    }
+
+    @Test
+    void unSalonDeUnaSeccionNoSeEliminaNiCambiaDeTipo() {
+        esSalonDeTercerA();
+
+        IllegalArgumentException alEliminar = assertThrows(IllegalArgumentException.class, () -> aulaService.delete(1));
+        assertTrue(alEliminar.getMessage().contains("es el salón de 3.° grado A"));
+
+        AulaRequest aLaboratorio = request("Aula 101", 30, null);
+        aLaboratorio.setTipo(TipoAula.AMBIENTE);
+        IllegalArgumentException alCambiar = assertThrows(IllegalArgumentException.class,
+                () -> aulaService.update(1, aLaboratorio));
+        assertTrue(alCambiar.getMessage().contains("No se puede cambiar el tipo"));
+        verify(aulaRepository, never()).delete(any(Aula.class));
+    }
+
+    @Test
+    void laRespuestaDiceDeQueSeccionEsSalon() {
+        esSalonDeTercerA();
+        assertEquals(List.of("3.° grado A – Mañana 2027"), aulaService.getById(1).getSecciones());
     }
 }

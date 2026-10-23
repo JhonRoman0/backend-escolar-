@@ -1,5 +1,6 @@
 package com.example.Escolar.Dto;
 
+import com.example.Escolar.Model.TipoAula;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -26,7 +27,7 @@ public class AulaRequest {
     @Min(value = CAPACIDAD_MIN, message = "La capacidad minima es " + CAPACIDAD_MIN)
     @Max(value = CAPACIDAD_MAX, message = "La capacidad maxima es " + CAPACIDAD_MAX)
     private Integer capacidad;
-    /** Null al editar significa que no cambia. */
-    private Boolean usoCompartido;
+    /** Salon, ambiente especial o espacio compartido. Null: salon al crear, sin cambio al editar. */
+    private TipoAula tipo;
     private Long accesoId;
 }

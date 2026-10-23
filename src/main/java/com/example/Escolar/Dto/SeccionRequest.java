@@ -20,6 +20,9 @@ public class SeccionRequest {
     @Size(max = 50, message = "Máximo 50 caracteres")
     private String nombre;
 
+    @NotNull(message = "Elige el salón de la sección")
+    private Integer idAula;
+
     /**
      * Opcional a proposito. Al crear se usa el anio vigente y al editar se
      * conserva el que ya tenia la seccion, asi que mandarlo desde el formulario

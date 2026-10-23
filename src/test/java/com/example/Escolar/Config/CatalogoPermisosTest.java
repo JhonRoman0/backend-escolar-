@@ -37,7 +37,7 @@ class CatalogoPermisosTest {
     @Test
     void cubreLosModulosRevisados() {
         assertEquals(new TreeSet<>(java.util.List.of("USUARIOS", "ROLES", "TURNOS", "AULAS", "ANIOS_ESCOLARES",
-                        "GRADOS", "DOCENTES", "CURSOS", "COMPETENCIAS", "ASIGNACIONES", "RECREOS")),
+                        "GRADOS", "DOCENTES", "CURSOS", "COMPETENCIAS", "ASIGNACIONES", "RECREOS", "CONFIGURACION_ACADEMICA")),
                 new TreeSet<>(CatalogoPermisos.todos().keySet()));
     }
 }

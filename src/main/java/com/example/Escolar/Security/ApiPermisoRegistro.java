@@ -223,6 +223,9 @@ public class ApiPermisoRegistro {
         registrarLectura("GET", "/horarios", "HORARIOS");
         registrarLectura("GET", "/horarios/**", "HORARIOS");
 
+        registrarLectura("GET", "/configuracion-academica", "CONFIGURACION_ACADEMICA");
+        registrar("PUT", "/configuracion-academica", "CONFIGURACION_ACADEMICA", "ACTUALIZAR");
+
         registrarLectura("GET", "/recreos", "RECREOS");
         registrarLectura("GET", "/recreos/**", "RECREOS");
         registrar("POST", "/recreos", "RECREOS", "CREAR");

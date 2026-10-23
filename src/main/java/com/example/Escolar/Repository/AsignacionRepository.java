@@ -30,4 +30,6 @@ public interface AsignacionRepository extends JpaRepository<Asignacion, Integer>
     List<Asignacion> findByCursoIdCursoAndGradoSeccionIdGradoSeccionAndAccesoNot(
             Integer idCurso, Integer idGradoSeccion, Acceso acceso);
     long countByAnioEscolarIdAnioAndAccesoNot(Integer idAnio, Acceso acceso);
+
+    long countByAnioEscolarIdAnioAndGradoSeccionGradoNivelIdNivelAndAccesoNot(Integer idAnio, Integer idNivel, Acceso acceso);
 }

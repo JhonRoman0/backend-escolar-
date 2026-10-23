@@ -16,6 +16,7 @@ import com.example.Escolar.Model.Nivel;
 import com.example.Escolar.Model.Recreo;
 import com.example.Escolar.Model.Seccion;
 import com.example.Escolar.Model.TipoCurso;
+import com.example.Escolar.Model.TipoAula;
 import com.example.Escolar.Model.Turno;
 import com.example.Escolar.Model.Usuario;
 import com.example.Escolar.Repository.AccesoRepository;
@@ -78,6 +79,8 @@ class AsignacionServiceTest {
     private DocenteNivelRepository docenteNivelRepository;
     @Mock
     private RecreoRepository recreoRepository;
+    @Mock
+    private ConfiguracionAcademicaService configuracionAcademicaService;
     @InjectMocks
     private AsignacionService asignacionService;
 
@@ -135,8 +138,11 @@ class AsignacionServiceTest {
         enPrimaria.setNivel(primaria);
         when(docenteNivelRepository.findByDocenteAndAccesoNot(eq(docente), any())).thenReturn(List.of(enPrimaria));
 
-        aula(1, "Aula 101", false);
-        aula(2, "Patio", true);
+        // El Aula 101 es el salon de 3.° A; el 102, de otra seccion.
+        tercerA.setAula(aula(1, "Aula 101", TipoAula.SALON));
+        aula(2, "Patio", TipoAula.COMPARTIDO);
+        aula(3, "Laboratorio", TipoAula.AMBIENTE);
+        aula(4, "Aula 102", TipoAula.SALON);
 
         // 3.° grado tiene recreo el lunes de 10:00 a 10:15.
         Recreo recreo = new Recreo();
@@ -145,6 +151,9 @@ class AsignacionServiceTest {
         recreo.setHoraFin(LocalTime.of(10, 15));
         when(recreoRepository.findByAnioEscolarIdAnioAndTurnoIdTurnoAndGradoIdGradoAndAccesoNot(
                 eq(2), eq(1), eq(30), any())).thenReturn(List.of(recreo));
+
+        // Hora academica de 45 minutos, salvo que el test diga otra cosa.
+        when(configuracionAcademicaService.minutosHoraAcademica(any(), any())).thenReturn(45);
 
         when(asignacionRepository.save(any(Asignacion.class))).thenAnswer(inv -> {
             Asignacion asignacion = inv.getArgument(0);
@@ -182,12 +191,13 @@ class AsignacionServiceTest {
         return c;
     }
 
-    private void aula(int id, String nombre, boolean compartida) {
+    private Aula aula(int id, String nombre, TipoAula tipo) {
         Aula a = new Aula();
         a.setIdAula(id);
         a.setNombre(nombre);
-        a.setUsoCompartido(compartida);
+        a.setTipo(tipo);
         when(aulaRepository.findByIdAulaAndAccesoNot(eq(id), any())).thenReturn(Optional.of(a));
+        return a;
     }
 
     private HorarioRequest horario(int idAula, int dia, String inicio, String fin) {
@@ -240,19 +250,19 @@ class AsignacionServiceTest {
 
     @Test
     void exigeRecreoElDiaDeLaClase() {
-        assertTrue(error(request(40, horario(1, 2, "08:00", "09:00")))
+        assertTrue(error(request(40, horario(1, 2, "08:00", "08:45")))
                 .contains("Primero configura el recreo de 3.° grado – turno Mañana para el martes"));
         verify(asignacionRepository, never()).save(any());
     }
 
     @Test
     void rechazaUnaClaseEncimaDelRecreo() {
-        assertTrue(error(request(40, horario(1, 1, "09:30", "10:30"))).contains("choca con el recreo del lunes"));
+        assertTrue(error(request(40, horario(1, 1, "09:30", "10:15"))).contains("choca con el recreo del lunes"));
     }
 
     @Test
     void rechazaUnaClaseFueraDelTurno() {
-        assertTrue(error(request(40, horario(1, 1, "12:00", "13:00"))).contains("fuera del turno Mañana"));
+        assertTrue(error(request(40, horario(1, 1, "12:00", "12:45"))).contains("fuera del turno Mañana"));
     }
 
     @Test
@@ -260,7 +270,7 @@ class AsignacionServiceTest {
         when(horarioClaseRepository.findByAsignacionGradoSeccionIdGradoSeccionInAndAccesoNot(anyCollection(), any()))
                 .thenReturn(List.of(claseExistente("Comunicación", 1, "08:00", "09:00")));
 
-        assertTrue(error(request(40, horario(1, 1, "08:30", "09:30")))
+        assertTrue(error(request(40, horario(1, 1, "08:30", "09:15")))
                 .contains("3.° grado A ya tiene Comunicación el lunes de 08:00–09:00"));
     }
 
@@ -268,14 +278,14 @@ class AsignacionServiceTest {
     void elCruceDelDocenteSeBuscaSoloEnElMismoAnio() {
         when(horarioClaseRepository.findByAsignacionDocenteIdDocenteAndAsignacionAnioEscolarIdAnioAndAccesoNot(
                 eq(7), eq(2), any())).thenReturn(List.of(claseExistente("Arte", 1, "08:00", "09:00")));
-        assertTrue(error(request(40, horario(1, 1, "08:30", "09:30"))).contains("El docente ya tiene Arte"));
+        assertTrue(error(request(40, horario(1, 1, "08:30", "09:15"))).contains("El docente ya tiene Arte"));
 
         // Una clase de otro año no choca: la consulta va filtrada por el año 2.
         when(horarioClaseRepository.findByAsignacionDocenteIdDocenteAndAsignacionAnioEscolarIdAnioAndAccesoNot(
                 eq(7), eq(2), any())).thenReturn(List.of());
         when(horarioClaseRepository.findByAsignacionDocenteIdDocenteAndAsignacionAnioEscolarIdAnioAndAccesoNot(
                 eq(7), eq(1), any())).thenReturn(List.of(claseExistente("Arte", 1, "08:00", "09:00")));
-        assertDoesNotThrow(() -> asignacionService.create(request(40, horario(1, 1, "08:30", "09:30"))));
+        assertDoesNotThrow(() -> asignacionService.create(request(40, horario(1, 1, "08:30", "09:15"))));
     }
 
     @Test
@@ -283,14 +293,58 @@ class AsignacionServiceTest {
         when(horarioClaseRepository.findByAulaIdAulaAndAsignacionAnioEscolarIdAnioAndAccesoNot(anyInt(), eq(2), any()))
                 .thenReturn(List.of(claseExistente("Educación Física", 1, "08:00", "09:00")));
 
-        assertTrue(error(request(40, horario(1, 1, "08:00", "09:00"))).contains("El aula Aula 101 ya está ocupada"));
-        assertDoesNotThrow(() -> asignacionService.create(request(40, horario(2, 1, "08:00", "09:00"))));
+        assertTrue(error(request(40, horario(1, 1, "08:00", "08:45"))).contains("El aula Aula 101 ya está ocupada"));
+        assertDoesNotThrow(() -> asignacionService.create(request(40, horario(2, 1, "08:00", "08:45"))));
     }
 
     @Test
     void rechazaHorariosDeLaMismaAsignacionQueSeCruzan() {
-        assertTrue(error(request(40, horario(1, 1, "08:00", "09:00"), horario(2, 1, "08:30", "09:30")))
+        assertTrue(error(request(40, horario(1, 1, "08:00", "08:45"), horario(2, 1, "08:30", "09:15")))
                 .contains("se cruzan"));
+    }
+
+    // ── Salon y ambientes ──────────────────────────────────────────────────
+
+    @Test
+    void unaSeccionSinSalonNoRecibeCursos() {
+        tercerA.setAula(null);
+        assertTrue(error(request(40, horario(1, 1, "08:00", "08:45")))
+                .contains("Asigna primero el salón de 3.° grado A"));
+    }
+
+    @Test
+    void noSeUsaElSalonDeOtraSeccion() {
+        assertTrue(error(request(40, horario(4, 1, "08:00", "08:45"))).contains("es el salón de otra sección"));
+    }
+
+    @Test
+    void unAmbienteEspecialAdmiteUnaSolaClaseALaVez() {
+        when(horarioClaseRepository.findByAulaIdAulaAndAsignacionAnioEscolarIdAnioAndAccesoNot(eq(3), eq(2), any()))
+                .thenReturn(List.of(claseExistente("Ciencia", 1, "08:00", "09:00")));
+        assertTrue(error(request(40, horario(3, 1, "08:00", "08:45"))).contains("El aula Laboratorio ya está ocupada"));
+        assertDoesNotThrow(() -> asignacionService.create(request(40, horario(3, 1, "09:00", "09:45"))));
+    }
+
+    // ── Horas pedagogicas ──────────────────────────────────────────────────
+
+    @Test
+    void enPrimariaLaClaseDuraBloquesDe45Minutos() {
+        assertTrue(error(request(40, horario(1, 1, "08:00", "09:00"))).contains("bloques de 45 minutos"));
+        assertDoesNotThrow(() -> asignacionService.create(request(40, horario(1, 1, "08:00", "08:45"))));
+        assertDoesNotThrow(() -> asignacionService.create(request(40, horario(1, 1, "08:00", "09:30"))));
+    }
+
+    @Test
+    void usaLaHoraAcademicaConfiguradaDelAnioYNivel() {
+        when(configuracionAcademicaService.minutosHoraAcademica(any(), any())).thenReturn(40);
+        assertTrue(error(request(40, horario(1, 1, "08:00", "08:45"))).contains("bloques de 40 minutos (40, 80, 120…)"));
+        assertDoesNotThrow(() -> asignacionService.create(request(40, horario(1, 1, "08:00", "09:20"))));
+    }
+
+    @Test
+    void conLaHoraAcademicaLibreLaDuracionEsLibre() {
+        when(configuracionAcademicaService.minutosHoraAcademica(any(), any())).thenReturn(null);
+        assertDoesNotThrow(() -> asignacionService.create(request(40, horario(1, 1, "08:00", "08:30"))));
     }
 
     // ── Datos de la asignacion ─────────────────────────────────────────────
@@ -298,28 +352,28 @@ class AsignacionServiceTest {
     @Test
     void rechazaUnCursoDeOtroAnio() {
         matematica.setAnioEscolar(anio(1, "2026", AnioEscolarService.ESTADO_VIGENTE));
-        assertTrue(error(request(40, horario(1, 1, "08:00", "09:00"))).contains("no es de la malla de Primaria"));
+        assertTrue(error(request(40, horario(1, 1, "08:00", "08:45"))).contains("no es de la malla de Primaria"));
     }
 
     @Test
     void noSeAsignaUnaTransversalNiUnAreaConSubcursos() {
         curso(41, "TIC", TipoCurso.TRANSVERSAL);
-        assertTrue(error(request(41, horario(1, 1, "08:00", "09:00"))).contains("transversal"));
+        assertTrue(error(request(41, horario(1, 1, "08:00", "08:45"))).contains("transversal"));
 
         matematica.setTieneSubcursos(true);
-        assertTrue(error(request(40, horario(1, 1, "08:00", "09:00"))).contains("se dicta en subcursos"));
+        assertTrue(error(request(40, horario(1, 1, "08:00", "08:45"))).contains("se dicta en subcursos"));
     }
 
     @Test
     void unSubcursoSiSeAsigna() {
         curso(42, "Álgebra", TipoCurso.SUBCURSO);
-        assertDoesNotThrow(() -> asignacionService.create(request(42, horario(1, 1, "08:00", "09:00"))));
+        assertDoesNotThrow(() -> asignacionService.create(request(42, horario(1, 1, "08:00", "08:45"))));
     }
 
     @Test
     void rechazaUnDocenteQueNoEnsenaEnElNivel() {
         when(docenteNivelRepository.findByDocenteAndAccesoNot(eq(docente), any())).thenReturn(List.of());
-        assertTrue(error(request(40, horario(1, 1, "08:00", "09:00"))).contains("no enseña en el nivel Primaria"));
+        assertTrue(error(request(40, horario(1, 1, "08:00", "08:45"))).contains("no enseña en el nivel Primaria"));
     }
 
     @Test
@@ -328,13 +382,13 @@ class AsignacionServiceTest {
         existente.setIdAsignacion(55);
         when(asignacionRepository.findByCursoIdCursoAndGradoSeccionIdGradoSeccionAndAccesoNot(eq(40), eq(5), any()))
                 .thenReturn(List.of(existente));
-        assertTrue(error(request(40, horario(1, 1, "08:00", "09:00"))).contains("ya tiene un docente asignado"));
+        assertTrue(error(request(40, horario(1, 1, "08:00", "08:45"))).contains("ya tiene un docente asignado"));
     }
 
     @Test
     void rechazaUnCursoInactivo() {
         matematica.setAcceso(inactivo);
-        assertTrue(error(request(40, horario(1, 1, "08:00", "09:00"))).contains("inactivo"));
+        assertTrue(error(request(40, horario(1, 1, "08:00", "08:45"))).contains("inactivo"));
     }
 
     // ── Estado del año ─────────────────────────────────────────────────────
@@ -342,14 +396,14 @@ class AsignacionServiceTest {
     @Test
     void enUnAnioVigenteSeCreaLoQueFaltaPeroNoSeEditaNiElimina() {
         anio.setEstado(AnioEscolarService.ESTADO_VIGENTE);
-        assertDoesNotThrow(() -> asignacionService.create(request(40, horario(1, 1, "08:00", "09:00"))));
+        assertDoesNotThrow(() -> asignacionService.create(request(40, horario(1, 1, "08:00", "08:45"))));
 
         Asignacion guardada = new Asignacion();
         guardada.setIdAsignacion(100);
         guardada.setAnioEscolar(anio);
         when(asignacionRepository.findByIdAsignacionAndAccesoNot(eq(100), any())).thenReturn(Optional.of(guardada));
         assertTrue(assertThrows(IllegalArgumentException.class,
-                () -> asignacionService.update(100, request(40, horario(1, 1, "08:00", "09:00")))).getMessage()
+                () -> asignacionService.update(100, request(40, horario(1, 1, "08:00", "08:45")))).getMessage()
                 .contains("ya no se pueden editar ni eliminar"));
         assertThrows(IllegalArgumentException.class, () -> asignacionService.delete(100));
     }
@@ -357,6 +411,6 @@ class AsignacionServiceTest {
     @Test
     void enUnAnioCerradoNoSeCreanAsignaciones() {
         anio.setEstado(AnioEscolarService.ESTADO_CERRADO);
-        assertTrue(error(request(40, horario(1, 1, "08:00", "09:00"))).contains("ya no se pueden crear asignaciones"));
+        assertTrue(error(request(40, horario(1, 1, "08:00", "08:45"))).contains("ya no se pueden crear asignaciones"));
     }
 }

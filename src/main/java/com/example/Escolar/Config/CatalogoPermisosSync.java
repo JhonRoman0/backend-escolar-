@@ -7,6 +7,7 @@ import com.example.Escolar.Model.PermisoAccion;
 import com.example.Escolar.Model.RolPermiso;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.AccionRepository;
+import com.example.Escolar.Repository.ModuloRepository;
 import com.example.Escolar.Repository.PermisoAccionRepository;
 import com.example.Escolar.Repository.PermisoRepository;
 import com.example.Escolar.Repository.RolPermisoAccionRepository;
@@ -29,6 +30,7 @@ import org.springframework.stereotype.Component;
 public class CatalogoPermisosSync {
 
     private final PermisoRepository permisoRepository;
+    private final ModuloRepository moduloRepository;
     private final AccionRepository accionRepository;
     private final PermisoAccionRepository permisoAccionRepository;
     private final RolPermisoRepository rolPermisoRepository;
@@ -40,6 +42,7 @@ public class CatalogoPermisosSync {
         Acceso eliminado = accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow();
         CatalogoPermisos.todos().forEach((codigoPermiso, acciones) ->
                 permisoRepository.findByCodigoAndAccesoNot(codigoPermiso, eliminado).ifPresent(permiso -> {
+                    moverASuModulo(permiso, eliminado);
                     acciones.forEach((codigoAccion, etiqueta) ->
                             asegurarAccion(permiso, codigoAccion, etiqueta, activo, eliminado));
                     for (PermisoAccion pa : permisoAccionRepository.findByPermisoIdPermisoAndAccesoNot(permiso.getIdPermiso(), eliminado)) {
@@ -48,6 +51,20 @@ public class CatalogoPermisosSync {
                         }
                     }
                 }));
+    }
+
+    // El instalador nunca cambia de modulo un permiso que ya existe: Competencias
+    // se creo dentro de Consolidado y la pantalla de accesos lo mostraba ahi.
+    private void moverASuModulo(Permiso permiso, Acceso eliminado) {
+        String nombre = CatalogoPermisos.modulo(permiso.getCodigo());
+        if (nombre == null || nombre.equals(permiso.getModulo() == null ? null : permiso.getModulo().getModulo())) {
+            return;
+        }
+        moduloRepository.findByModuloAndAccesoNot(nombre, eliminado).ifPresent(modulo -> {
+            log.info("Catálogo de permisos: {} pasa al módulo {}", permiso.getCodigo(), nombre);
+            permiso.setModulo(modulo);
+            permisoRepository.save(permiso);
+        });
     }
 
     private void asegurarAccion(Permiso permiso, String codigoAccion, String etiqueta, Acceso activo, Acceso eliminado) {

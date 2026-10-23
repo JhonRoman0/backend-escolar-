@@ -2,9 +2,11 @@ package com.example.Escolar.Controller;
 
 import com.example.Escolar.Dto.AsignacionRequest;
 import com.example.Escolar.Dto.AsignacionResponse;
+import com.example.Escolar.Dto.ConfiguracionAcademicaResponse;
 import com.example.Escolar.Dto.HorasDocenteResponse;
 import com.example.Escolar.Service.AccesoContextoService;
 import com.example.Escolar.Service.AsignacionService;
+import com.example.Escolar.Service.ConfiguracionAcademicaService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -20,6 +22,7 @@ public class AsignacionController {
 
     private final AsignacionService asignacionService;
     private final AccesoContextoService accesoContextoService;
+    private final ConfiguracionAcademicaService configuracionAcademicaService;
 
     @GetMapping
     public List<AsignacionResponse> getAll() {
@@ -34,6 +37,15 @@ public class AsignacionController {
     @GetMapping("/docente/{idDocente}")
     public List<AsignacionResponse> getByDocente(@PathVariable Integer idDocente) {
         return asignacionService.getByDocente(idDocente, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+    }
+
+    /**
+     * Hora academica del año y nivel, para armar los horarios. Vive aqui y no en
+     * /configuracion-academica para que quien asigna no necesite ese permiso.
+     */
+    @GetMapping("/hora-academica")
+    public ConfiguracionAcademicaResponse horaAcademica(@RequestParam Integer idAnio, @RequestParam Integer idNivel) {
+        return configuracionAcademicaService.obtener(idAnio, idNivel);
     }
 
     @GetMapping("/docente/{idDocente}/horas")

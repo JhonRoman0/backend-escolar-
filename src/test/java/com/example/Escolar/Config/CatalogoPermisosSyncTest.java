@@ -2,12 +2,14 @@ package com.example.Escolar.Config;
 
 import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.Accion;
+import com.example.Escolar.Model.Modulo;
 import com.example.Escolar.Model.Permiso;
 import com.example.Escolar.Model.PermisoAccion;
 import com.example.Escolar.Model.RolPermiso;
 import com.example.Escolar.Model.RolPermisoAccion;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.AccionRepository;
+import com.example.Escolar.Repository.ModuloRepository;
 import com.example.Escolar.Repository.PermisoAccionRepository;
 import com.example.Escolar.Repository.PermisoRepository;
 import com.example.Escolar.Repository.RolPermisoAccionRepository;
@@ -44,6 +46,8 @@ class CatalogoPermisosSyncTest {
 
     @Mock
     private PermisoRepository permisoRepository;
+    @Mock
+    private ModuloRepository moduloRepository;
     @Mock
     private AccionRepository accionRepository;
     @Mock
@@ -137,5 +141,21 @@ class CatalogoPermisosSyncTest {
                 && pa.getAccion().getCodigo().equals("ACTUALIZAR")
                 && "Activar y desactivar".equals(pa.getEtiqueta())
                 && pa.getAcceso() == activo));
+    }
+
+    @Test
+    void mueveElPermisoASuModulo() {
+        // Competencias se habia creado dentro de Consolidado.
+        Modulo consolidado = new Modulo();
+        consolidado.setModulo("Consolidado");
+        competencias.setModulo(consolidado);
+        Modulo academico = new Modulo();
+        academico.setModulo("Académico");
+        when(moduloRepository.findByModuloAndAccesoNot(eq("Académico"), any())).thenReturn(Optional.of(academico));
+
+        sync.sincronizar();
+
+        assertEquals(academico, competencias.getModulo());
+        verify(permisoRepository).save(competencias);
     }
 }

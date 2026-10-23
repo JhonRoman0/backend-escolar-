@@ -6,6 +6,10 @@ import com.example.Escolar.Dto.SeccionesBatchRequest;
 import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.AnioEscolar;
 import com.example.Escolar.Model.Asignacion;
+import com.example.Escolar.Model.Aula;
+import com.example.Escolar.Model.TipoAula;
+import com.example.Escolar.Dto.SeccionNueva;
+import com.example.Escolar.Dto.SeccionActualizarRequest;
 import com.example.Escolar.Model.Grado;
 import com.example.Escolar.Model.GradoSeccion;
 import com.example.Escolar.Model.Matricula;
@@ -15,6 +19,7 @@ import com.example.Escolar.Model.Turno;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.AnioEscolarRepository;
 import com.example.Escolar.Repository.AsignacionRepository;
+import com.example.Escolar.Repository.AulaRepository;
 import com.example.Escolar.Repository.GradoRepository;
 import com.example.Escolar.Repository.GradoSeccionRepository;
 import com.example.Escolar.Repository.MatriculaRepository;
@@ -69,6 +74,8 @@ class GradoSeccionServiceTest {
     private AsignacionRepository asignacionRepository;
     @Mock
     private AccesoRepository accesoRepository;
+    @Mock
+    private AulaRepository aulaRepository;
     @InjectMocks
     private GradoSeccionService service;
 
@@ -115,6 +122,8 @@ class GradoSeccionServiceTest {
         grado.setAcceso(activo);
 
         when(gradoRepository.findByIdGradoAndAccesoNot(anyInt(), any())).thenReturn(Optional.of(grado));
+        // Cada id es un salon activo y libre: a estos tests les interesa la seccion.
+        when(aulaRepository.findByIdAulaAndAccesoNot(anyInt(), any())).thenAnswer(inv -> Optional.of(salon(inv.getArgument(0))));
         when(turnoRepository.findByIdTurnoAndAccesoNot(anyInt(), any()))
                 .thenAnswer(inv -> {
                     int id = inv.getArgument(0);
@@ -146,14 +155,29 @@ class GradoSeccionServiceTest {
         r.setIdGrado(10);
         r.setIdTurno(idTurno);
         r.setNombre(nombre);
+        r.setIdAula(seq.incrementAndGet());
         return r;
+    }
+
+    private Aula salon(int id) {
+        Aula aula = new Aula();
+        aula.setIdAula(id);
+        aula.setNombre("Aula " + id);
+        aula.setTipo(TipoAula.SALON);
+        aula.setAcceso(activo);
+        return aula;
     }
 
     private SeccionesBatchRequest lote(int idTurno, String... nombres) {
         SeccionesBatchRequest r = new SeccionesBatchRequest();
         r.setIdGrado(10);
         r.setIdTurno(idTurno);
-        r.setNombres(List.of(nombres));
+        r.setSecciones(java.util.Arrays.stream(nombres).map(nombre -> {
+            SeccionNueva nueva = new SeccionNueva();
+            nueva.setNombre(nombre);
+            nueva.setIdAula(seq.incrementAndGet());
+            return nueva;
+        }).toList());
         return r;
     }
 
@@ -520,5 +544,69 @@ class GradoSeccionServiceTest {
         List<GradoSeccionResponse> res = service.crearLote(lote(1, "A", "B"));
 
         assertTrue(res.stream().allMatch(r -> porComenzar.getIdAnio() == r.getIdAnio()));
+    }
+
+    // ---- Salon de la seccion ----
+
+    @Test
+    void elSalonEsObligatorio() {
+        SeccionRequest sinSalon = request("A", 1);
+        sinSalon.setIdAula(null);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.create(sinSalon));
+        assertEquals("Elige el salón de la sección", ex.getMessage());
+    }
+
+    @Test
+    void unSalonEsDeUnaSolaSeccionPorAnioYTurno() {
+        GradoSeccion primeroB = seccionExistente("B", manana, 50);
+        primeroB.setAula(salon(7));
+        when(gradoSeccionRepository.findByAulaIdAulaAndAccesoNot(eq(7), any())).thenReturn(List.of(primeroB));
+
+        SeccionRequest enLaMañana = request("A", 1);
+        enLaMañana.setIdAula(7);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.create(enLaMañana));
+        assertTrue(ex.getMessage().contains("ya es el salón de 1ro B"));
+
+        // En la tarde el mismo salon si se puede usar.
+        SeccionRequest enLaTarde = request("A", 2);
+        enLaTarde.setIdAula(7);
+        assertEquals(7, service.create(enLaTarde).getIdAula());
+    }
+
+    @Test
+    void unAmbienteOEspacioCompartidoNoEsSalon() {
+        Aula patio = salon(8);
+        patio.setNombre("Patio");
+        patio.setTipo(TipoAula.COMPARTIDO);
+        when(aulaRepository.findByIdAulaAndAccesoNot(eq(8), any())).thenReturn(Optional.of(patio));
+        SeccionRequest r = request("A", 1);
+        r.setIdAula(8);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.create(r));
+        assertTrue(ex.getMessage().contains("Patio no es un salón"));
+    }
+
+    @Test
+    void unLoteNoRepiteElMismoSalon() {
+        SeccionesBatchRequest r = lote(1, "A", "B");
+        r.getSecciones().get(1).setIdAula(r.getSecciones().get(0).getIdAula());
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.crearLote(r));
+        assertTrue(ex.getMessage().contains("elegido para dos secciones"));
+        verify(gradoSeccionRepository, never()).save(any());
+    }
+
+    @Test
+    void noSeCambiaElSalonDeUnaSeccionConCursosAsignados() {
+        GradoSeccion primeroA = seccionExistente("A", manana, 60);
+        primeroA.setAula(salon(9));
+        when(gradoSeccionRepository.findByIdGradoSeccionAndAccesoNot(eq(60), any())).thenReturn(Optional.of(primeroA));
+        when(asignacionRepository.existsByGradoSeccionIdGradoSeccionAndAccesoNot(eq(60), any())).thenReturn(true);
+        SeccionActualizarRequest cambio = new SeccionActualizarRequest();
+        cambio.setNombre("A");
+        cambio.setIdAula(10);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.update(60, cambio));
+        assertTrue(ex.getMessage().contains("ya tiene cursos asignados"));
     }
 }

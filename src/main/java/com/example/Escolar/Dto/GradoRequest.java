@@ -1,5 +1,6 @@
 package com.example.Escolar.Dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -24,6 +25,10 @@ public class GradoRequest {
 
     @NotNull(message = "El turno es obligatorio")
     private Integer idTurno;
-    private List<@NotBlank(message = "El nombre de la sección es obligatorio") String> secciones;
+    /** Secciones con su salon. Al editar, una existente se reconoce por su nombre. */
+    @Valid
+    private List<SeccionNueva> secciones;
+    /** Salon de la seccion unica, cuando el grado no tiene secciones. */
+    private Integer idAula;
     private Long accesoId;
 }

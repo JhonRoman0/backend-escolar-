@@ -5,8 +5,11 @@ import com.example.Escolar.Dto.AulaResponse;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.Aula;
+import com.example.Escolar.Model.GradoSeccion;
+import com.example.Escolar.Model.TipoAula;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.AulaRepository;
+import com.example.Escolar.Repository.GradoSeccionRepository;
 import com.example.Escolar.Repository.HorarioClaseRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,6 +24,7 @@ public class AulaService {
     private final AulaRepository aulaRepository;
     private final AccesoRepository accesoRepository;
     private final HorarioClaseRepository horarioClaseRepository;
+    private final GradoSeccionRepository gradoSeccionRepository;
 
     public List<AulaResponse> getAll() {
         return aulaRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
@@ -38,7 +42,7 @@ public class AulaService {
         Aula aula = new Aula();
         aula.setNombre(request.getNombre().trim());
         aula.setCapacidad(request.getCapacidad());
-        aula.setUsoCompartido(Boolean.TRUE.equals(request.getUsoCompartido()));
+        aula.setTipo(request.getTipo() == null ? TipoAula.SALON : request.getTipo());
         aula.setAcceso(accesoPorId(request.getAccesoId() == null ? AccesoConstants.ACTIVO : request.getAccesoId()));
         return toResponse(aulaRepository.save(aula));
     }
@@ -53,8 +57,14 @@ public class AulaService {
         if (request.getCapacidad() != null) {
             aula.setCapacidad(request.getCapacidad());
         }
-        if (request.getUsoCompartido() != null) {
-            aula.setUsoCompartido(request.getUsoCompartido());
+        if (request.getTipo() != null && request.getTipo() != aula.getTipo()) {
+            // Un salon que ya es de una seccion no deja de serlo por debajo.
+            List<GradoSeccion> secciones = seccionesDelSalon(aula);
+            if (!secciones.isEmpty()) {
+                throw new IllegalArgumentException("No se puede cambiar el tipo: " + aula.getNombre()
+                        + " es el salón de " + GradoSeccionService.nombreSeccion(secciones.get(0)));
+            }
+            aula.setTipo(request.getTipo());
         }
         if (request.getAccesoId() != null) {
             aula.setAcceso(accesoPorId(request.getAccesoId()));
@@ -65,6 +75,12 @@ public class AulaService {
     @Transactional
     public void delete(Integer id) {
         Aula aula = findAula(id);
+        List<GradoSeccion> secciones = seccionesDelSalon(aula);
+        if (!secciones.isEmpty()) {
+            throw new IllegalArgumentException("No se puede eliminar el aula «" + aula.getNombre()
+                    + "» porque es el salón de " + GradoSeccionService.nombreSeccion(secciones.get(0))
+                    + ". Asígnale otro salón a esa sección primero.");
+        }
         Acceso eliminado = accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow();
         long horariosActivos = horarioClaseRepository.countByAulaIdAulaAndAccesoNot(id, eliminado);
         if (horariosActivos > 0) {
@@ -105,6 +121,11 @@ public class AulaService {
                 .orElseThrow(() -> new IllegalArgumentException("Estado no válido"));
     }
 
+    private List<GradoSeccion> seccionesDelSalon(Aula aula) {
+        return gradoSeccionRepository.findByAulaIdAulaAndAccesoNot(aula.getIdAula(),
+                accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
+    }
+
     private Aula findAula(Integer id) {
         return aulaRepository.findByIdAulaAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("Aula no encontrada con id " + id));
@@ -115,7 +136,11 @@ public class AulaService {
         response.setIdAula(aula.getIdAula());
         response.setNombre(aula.getNombre());
         response.setCapacidad(aula.getCapacidad());
-        response.setUsoCompartido(aula.isUsoCompartido());
+        response.setTipo(aula.getTipo().name());
+        response.setSecciones(seccionesDelSalon(aula).stream()
+                .map(gs -> GradoSeccionService.nombreSeccion(gs) + " – " + gs.getTurno().getNombre()
+                        + " " + gs.getAnioEscolar().getAnio())
+                .toList());
         response.setAccesoId(aula.getAcceso().getIdAcceso());
         return response;
     }

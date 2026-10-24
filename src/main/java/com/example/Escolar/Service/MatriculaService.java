@@ -19,6 +19,7 @@ import com.example.Escolar.Repository.GradoSeccionRepository;
 import com.example.Escolar.Repository.HistorialMatriculaRepository;
 import com.example.Escolar.Repository.MatriculaRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
+import com.example.Escolar.Service.AccesoContextoService.Alcance;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -37,6 +38,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class MatriculaService {
 
+    private static final String PERMISO = "MATRICULAS";
     public static final byte PRINCIPAL = 1;
     public static final byte ESTADO_CERRADO = 2;
 
@@ -282,18 +284,19 @@ public class MatriculaService {
     }
 
     private Set<Integer> idsMatriculasVisibles(Integer idUsuario, List<String> roles) {
-        if (accesoContextoService.esGestion(roles)) {
+        Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, roles);
+        if (alcance == Alcance.TODO) {
             return null;
         }
         Set<Integer> ids = new HashSet<>();
-        if (accesoContextoService.esPersonalDocente(roles)) {
+        if (alcance == Alcance.DOCENTE) {
             for (Matricula matricula : accesoContextoService.matriculasDeGradoSecciones(
                     accesoContextoService.gradoSeccionIdsDeDocente(idUsuario))) {
                 ids.add(matricula.getIdMatricula());
             }
             return ids;
         }
-        if (accesoContextoService.esApoderado(roles)) {
+        if (alcance == Alcance.APODERADO) {
             Apoderado apoderado = accesoContextoService.apoderadoDeUsuario(idUsuario).orElse(null);
             if (apoderado == null) {
                 return ids;

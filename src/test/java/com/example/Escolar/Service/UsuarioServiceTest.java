@@ -2,6 +2,7 @@ package com.example.Escolar.Service;
 
 import com.example.Escolar.Dto.UsuarioRequest;
 import com.example.Escolar.Dto.UsuarioResponse;
+import com.example.Escolar.Exception.DocenteConAsignacionesException;
 import com.example.Escolar.Exception.UsuarioReactivacionException;
 import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.Docente;
@@ -42,6 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -75,6 +77,8 @@ class UsuarioServiceTest {
     private TipoContratoRepository tipoContratoRepository;
     @Mock
     private EmailService emailService;
+    @Mock
+    private DocenteService docenteService;
 
     @InjectMocks
     private UsuarioService service;
@@ -501,4 +505,40 @@ class UsuarioServiceTest {
         assertEquals("hashPrevIa", activo.getContraseña());
         assertEquals(Boolean.FALSE, activo.getDebeCambiarContrasena());
     }
-}
+
+    // Usuario 1 con rol Docente y un docente activo con asignaciones en un año no cerrado.
+    private Docente docenteConAsignaciones(String accion) {
+        stubAccesoRepository();
+        stubValidacionesUnicas();
+        Usuario activo = usuario(1, AccesoConstants.ACTIVO);
+        stubSaveYRolesActivos(activo, rol(3, "Docente"));
+        Docente docente = new Docente();
+        docente.setUsuario(activo);
+        docente.setAcceso(acceso(AccesoConstants.ACTIVO));
+        when(docenteRepository.findByUsuarioIdUsuario(1)).thenReturn(Optional.of(docente));
+        doThrow(new DocenteConAsignacionesException("tiene asignaciones"))
+                .when(docenteService).validarSinAsignacionesVigentes(docente, accion);
+        return docente;
+    }
+
+    @Test
+    void noLeQuitaElRolDocenteSiTieneAsignacionesVigentes() {
+        Docente docente = docenteConAsignaciones("quitar el rol Docente a");
+
+        // El rol 1 no es Docente: se le estaría cambiando a otro rol.
+        assertThrows(DocenteConAsignacionesException.class, () -> service.update(1, requestSinDocente()));
+
+        verify(usuarioRolRepository, never()).deleteByUsuarioIdUsuario(1);
+        assertEquals(AccesoConstants.ACTIVO, docente.getAcceso().getIdAcceso());
+    }
+
+    @Test
+    void noEliminaElUsuarioDeUnDocenteConAsignacionesVigentes() {
+        Docente docente = docenteConAsignaciones("eliminar el usuario de");
+
+        assertThrows(DocenteConAsignacionesException.class, () -> service.delete(1));
+
+        verify(usuarioRepository, never()).save(any(Usuario.class));
+        assertEquals(AccesoConstants.ACTIVO, docente.getAcceso().getIdAcceso());
+    }
+}

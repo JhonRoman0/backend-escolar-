@@ -47,6 +47,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class NotaService {
 
+    private static final String PERMISO = "NOTAS";
     public static final byte NO_USADO = 0;
     public static final byte USADO = 1;
 
@@ -251,10 +252,8 @@ public class NotaService {
 
     @Transactional
     public AutorizacionResponse generarAutorizacion(Integer idUsuario, List<String> roles, AutorizacionRequest request) {
-        boolean esAutorizador = roles != null && roles.stream()
-                .anyMatch(r -> "ADMIN".equalsIgnoreCase(r) || "Administrador".equalsIgnoreCase(r));
-        if (!esAutorizador) {
-            throw new AutorizacionRequeridaException("Solo un director o usuario con rol ADMIN puede generar códigos de autorización");
+        if (!accesoContextoService.tieneAccion(PERMISO, "AUTORIZAR", idUsuario, roles)) {
+            throw new AutorizacionRequeridaException("Necesitas el permiso para autorizar notas para generar códigos de autorización");
         }
         Usuario emisor = findUsuario(idUsuario);
         if (request == null || request.getIdUsuarioDestinatario() == null) {
@@ -285,10 +284,8 @@ public class NotaService {
 
     @Transactional(readOnly = true)
     public List<AutorizacionRegistroResponse> listarAutorizaciones(Integer idUsuario, List<String> roles) {
-        boolean esAutorizador = roles != null && roles.stream()
-                .anyMatch(r -> "ADMIN".equalsIgnoreCase(r) || "Administrador".equalsIgnoreCase(r));
-        if (!esAutorizador) {
-            throw new AutorizacionRequeridaException("Solo el administrador puede consultar los códigos de autorización");
+        if (!accesoContextoService.tieneAccion(PERMISO, "AUTORIZAR", idUsuario, roles)) {
+            throw new AutorizacionRequeridaException("Necesitas el permiso para autorizar notas para consultar los códigos de autorización");
         }
         LocalDateTime ahora = LocalDateTime.now();
         return notaAutorizacionRepository.findAll().stream()
@@ -392,22 +389,16 @@ public class NotaService {
     }
 
     private boolean esVisibleMatricula(Matricula matricula, Integer idUsuario, List<String> roles) {
-        if (accesoContextoService.esGestion(roles)) {
-            return true;
-        }
-        if (accesoContextoService.esPersonalDocente(roles)) {
-            return accesoContextoService.docenteDeUsuario(idUsuario)
-                    .map(d -> matricula.getGradoSeccion().getIdGradoSeccion()
-                            .equals(matricula.getGradoSeccion().getIdGradoSeccion()))
-                    .orElse(false);
-        }
-        if (accesoContextoService.esApoderado(roles)) {
-            return accesoContextoService.apoderadoDeUsuario(idUsuario)
+        return switch (accesoContextoService.alcance(PERMISO, idUsuario, roles)) {
+            case TODO -> true;
+            // Solo las matrículas de las secciones donde enseña.
+            case DOCENTE -> accesoContextoService.gradoSeccionIdsDeDocente(idUsuario)
+                    .contains(matricula.getGradoSeccion().getIdGradoSeccion());
+            case APODERADO -> accesoContextoService.apoderadoDeUsuario(idUsuario)
                     .map(a -> a.getIdApoderado().equals(
                             matricula.getAlumnoApoderado().getApoderado().getIdApoderado()))
                     .orElse(false);
-        }
-        return false;
+        };
     }
 
     private String generarCodigo() {

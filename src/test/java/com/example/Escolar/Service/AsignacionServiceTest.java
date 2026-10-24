@@ -1,6 +1,7 @@
 package com.example.Escolar.Service;
 
 import com.example.Escolar.Dto.AsignacionRequest;
+import com.example.Escolar.Dto.AsignacionResponse;
 import com.example.Escolar.Dto.HorarioRequest;
 import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.AnioEscolar;
@@ -29,6 +30,7 @@ import com.example.Escolar.Repository.DocenteRepository;
 import com.example.Escolar.Repository.GradoSeccionRepository;
 import com.example.Escolar.Repository.HorarioClaseRepository;
 import com.example.Escolar.Repository.RecreoRepository;
+import com.example.Escolar.Service.AccesoContextoService.Alcance;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -43,6 +45,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -412,5 +415,42 @@ class AsignacionServiceTest {
     void enUnAnioCerradoNoSeCreanAsignaciones() {
         anio.setEstado(AnioEscolarService.ESTADO_CERRADO);
         assertTrue(error(request(40, horario(1, 1, "08:00", "08:45"))).contains("ya no se pueden crear asignaciones"));
+    }
+
+    private Asignacion asignacionDe(int id, Docente deDocente) {
+        Asignacion asignacion = new Asignacion();
+        asignacion.setIdAsignacion(id);
+        asignacion.setCurso(matematica);
+        asignacion.setDocente(deDocente);
+        asignacion.setGradoSeccion(tercerA);
+        asignacion.setAnioEscolar(anio);
+        asignacion.setAcceso(activo);
+        return asignacion;
+    }
+
+    // Hay dos asignaciones: la 1 es del docente del usuario 50 y la 2 de otro docente.
+    private List<Integer> asignacionesQueVe(Alcance alcance) {
+        Usuario usuario = new Usuario();
+        usuario.setNombre("Luis");
+        usuario.setApellidoPat("Paz");
+        Docente otro = new Docente();
+        otro.setIdDocente(8);
+        otro.setUsuario(usuario);
+        when(asignacionRepository.findByAccesoNot(any())).thenReturn(List.of(asignacionDe(1, docente), asignacionDe(2, otro)));
+        when(accesoContextoService.alcance("ASIGNACIONES", 50, List.of("Docente"))).thenReturn(alcance);
+        when(accesoContextoService.docenteDeUsuario(50)).thenReturn(Optional.of(docente));
+        return asignacionService.getAll(50, List.of("Docente")).stream()
+                .map(AsignacionResponse::getIdAsignacion)
+                .toList();
+    }
+
+    @Test
+    void conSoloLecturaElDocenteVeSoloSusAsignaciones() {
+        assertEquals(List.of(1), asignacionesQueVe(Alcance.DOCENTE));
+    }
+
+    @Test
+    void conPermisoDeEscrituraVeTodasLasAsignaciones() {
+        assertEquals(List.of(1, 2), asignacionesQueVe(Alcance.TODO));
     }
 }

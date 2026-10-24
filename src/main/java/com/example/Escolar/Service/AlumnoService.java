@@ -21,6 +21,7 @@ import com.example.Escolar.Repository.MatriculaRepository;
 import com.example.Escolar.Repository.RolRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
+import com.example.Escolar.Service.AccesoContextoService.Alcance;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -44,6 +45,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class AlumnoService {
 
+    private static final String PERMISO = "ALUMNOS";
     public static final byte PRINCIPAL = 1;
 
     public static final String ROL_APODERADO = "APODERADO";
@@ -639,10 +641,11 @@ public class AlumnoService {
     }
 
     private Set<Integer> idsAlumnosVisibles(Integer idUsuario, List<String> roles) {
-        if (accesoContextoService.esGestion(roles)) {
+        Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, roles);
+        if (alcance == Alcance.TODO) {
             return null;
         }
-        if (accesoContextoService.esPersonalDocente(roles)) {
+        if (alcance == Alcance.DOCENTE) {
             Set<Integer> ids = new HashSet<>();
             for (Matricula matricula : accesoContextoService.matriculasDeGradoSecciones(
                     accesoContextoService.gradoSeccionIdsDeDocente(idUsuario))) {
@@ -650,7 +653,7 @@ public class AlumnoService {
             }
             return ids;
         }
-        if (accesoContextoService.esApoderado(roles)) {
+        if (alcance == Alcance.APODERADO) {
             Set<Integer> ids = new HashSet<>();
             Apoderado apoderado = accesoContextoService.apoderadoDeUsuario(idUsuario).orElse(null);
             if (apoderado == null) {

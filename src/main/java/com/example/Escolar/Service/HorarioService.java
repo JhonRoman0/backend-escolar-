@@ -8,6 +8,7 @@ import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.AnioEscolarRepository;
 import com.example.Escolar.Repository.HorarioClaseRepository;
 import com.example.Escolar.Repository.MatriculaRepository;
+import com.example.Escolar.Service.AccesoContextoService.Alcance;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -19,6 +20,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class HorarioService {
 
+    private static final String PERMISO = "HORARIOS";
     public static final byte ESTADO_ACTIVO = 1;
 
     private final HorarioClaseRepository horarioClaseRepository;
@@ -34,8 +36,7 @@ public class HorarioService {
             Integer idUsuario, List<String> roles,
             org.springframework.data.domain.Pageable pageable) {
         Integer anio = resolverAnio(idAnio);
-        boolean esGestion = accesoContextoService.esGestion(roles);
-        if (esGestion) {
+        if (accesoContextoService.alcance(PERMISO, idUsuario, roles) == Alcance.TODO) {
             org.springframework.data.domain.Page<HorarioClase> page = horarioClaseRepository.findFiltrados(
                     accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow(), anio,
                     idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idDocente, grado, seccion, pageable);
@@ -73,9 +74,10 @@ public class HorarioService {
         Integer anio = resolverAnio(idAnio);
         List<HorarioClase> horarios;
 
-        if (accesoContextoService.esGestion(roles)) {
+        Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, roles);
+        if (alcance == Alcance.TODO) {
             horarios = horarioClaseRepository.findPlanosPorDocenteYAnio(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow(), anio, idDocente);
-        } else if (accesoContextoService.esPersonalDocente(roles)) {
+        } else if (alcance == Alcance.DOCENTE) {
             Integer idPropio = accesoContextoService.docenteDeUsuario(idUsuario)
                     .map(d -> d.getIdDocente())
                     .orElse(null);
@@ -98,7 +100,7 @@ public class HorarioService {
             throw new ResourceNotFoundException("El alumno con id " + idAlumno + " no tiene matrícula activa");
         }
 
-        if (accesoContextoService.esApoderado(roles)) {
+        if (accesoContextoService.alcance(PERMISO, idUsuario, roles) == Alcance.APODERADO) {
             boolean esHijo = matriculas.stream().anyMatch(m ->
                     accesoContextoService.apoderadoDeUsuario(idUsuario)
                             .map(ap -> ap.getIdApoderado().equals(
@@ -126,25 +128,24 @@ public class HorarioService {
 
     private List<HorarioClase> filtrarPorVisibilidad(List<HorarioClase> horarios,
                                                       Integer idUsuario, List<String> roles) {
-        if (accesoContextoService.esGestion(roles)) {
+        Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, roles);
+        if (alcance == Alcance.TODO) {
             return horarios;
         }
-        if (accesoContextoService.esPersonalDocente(roles)) {
+        if (alcance == Alcance.DOCENTE) {
             Set<Integer> gradoSeccionIds = accesoContextoService.gradoSeccionIdsDeDocente(idUsuario);
             return horarios.stream()
                     .filter(h -> gradoSeccionIds.contains(
                             h.getAsignacion().getGradoSeccion().getIdGradoSeccion()))
                     .toList();
         }
-        if (accesoContextoService.esApoderado(roles)) {
-            Set<Integer> gradoSeccionIds = accesoContextoService.gradoSeccionIdsDeApoderado(
-                    accesoContextoService.apoderadoDeUsuario(idUsuario).orElse(null));
-            return horarios.stream()
-                    .filter(h -> gradoSeccionIds.contains(
-                            h.getAsignacion().getGradoSeccion().getIdGradoSeccion()))
-                    .toList();
-        }
-        return List.of();
+        // Apoderado: horarios de las secciones de sus hijos.
+        Set<Integer> gradoSeccionIds = accesoContextoService.gradoSeccionIdsDeApoderado(
+                accesoContextoService.apoderadoDeUsuario(idUsuario).orElse(null));
+        return horarios.stream()
+                .filter(h -> gradoSeccionIds.contains(
+                        h.getAsignacion().getGradoSeccion().getIdGradoSeccion()))
+                .toList();
     }
 
     private List<HorarioClase> aplicarFiltros(List<HorarioClase> horarios,

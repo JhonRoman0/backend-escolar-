@@ -4,6 +4,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.AntPathMatcher;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -12,11 +13,19 @@ import java.util.TreeSet;
 @Component
 public class ApiPermisoRegistro {
 
-    public record Requisito(String permisoCodigo, String accionCodigo) {
+    // Basta con tener uno de los permisos (más de uno solo en lecturas de catálogo).
+    public record Requisito(Set<String> permisosCodigo, String accionCodigo) {
     }
 
-    private record Registro(String metodo, String patron, String permisoCodigo, String accionCodigo) {
+    private record Registro(String metodo, String patron, Set<String> permisosCodigo, String accionCodigo) {
     }
+
+    // Módulos que muestran filtros o selectores de la estructura académica (niveles, años, grados, secciones, turnos).
+    private static final String[] LECTORES_ESTRUCTURA = {
+            "DOCENTES", "CURSOS", "COMPETENCIAS", "TURNOS", "GRADOS", "ANIOS_ESCOLARES", "AULAS", "ASIGNACIONES",
+            "RECREOS", "CONFIGURACION_ACADEMICA", "SUSPENSIONES_DOCENTE", "CAMBIOS_DOCENTE", "ALUMNOS", "APODERADOS",
+            "MATRICULAS", "ASISTENCIAS", "NOTAS", "CONSOLIDADOS", "HORARIOS", "PLANTILLAS", "USUARIOS"
+    };
 
     private final List<Registro> registros = new ArrayList<>();
     private final AntPathMatcher matcher = new AntPathMatcher();
@@ -62,51 +71,51 @@ public class ApiPermisoRegistro {
         registrar("PUT", "/roles-permiso/**", "ROLES_PERMISOS", "ACTUALIZAR");
         registrar("DELETE", "/roles-permiso/**", "ROLES_PERMISOS", "ELIMINAR");
 
-        registrarLectura("GET", "/docentes", "DOCENTES");
+        registrarLectura("GET", "/docentes", "DOCENTES", "ASIGNACIONES", "SUSPENSIONES_DOCENTE", "HORARIOS", "NOTAS");
         registrarLectura("GET", "/docentes/**", "DOCENTES");
-        registrarLectura("GET", "/grados-academicos", "DOCENTES");
-        registrarLectura("GET", "/tipos-contrato", "DOCENTES");
+        registrarLectura("GET", "/grados-academicos", "DOCENTES", "USUARIOS");
+        registrarLectura("GET", "/tipos-contrato", "DOCENTES", "USUARIOS");
         registrar("PUT", "/docentes/**", "DOCENTES", "ACTUALIZAR");
         registrar("DELETE", "/docentes/**", "DOCENTES", "ELIMINAR");
         registrar("GET", "/docentes/reporte", "DOCENTES", "IMPRIMIR_EXPORTAR");
 
-        registrarLectura("GET", "/cursos", "CURSOS");
-        registrarLectura("GET", "/cursos/**", "CURSOS");
+        registrarLectura("GET", "/cursos", "CURSOS", "COMPETENCIAS", "ASIGNACIONES");
+        registrarLectura("GET", "/cursos/**", "CURSOS", "COMPETENCIAS", "ASIGNACIONES");
         // Importar, vista previa, copiar y crear subcursos.
         registrar("POST", "/cursos/**", "CURSOS", "CREAR");
         registrar("PUT", "/cursos/**", "CURSOS", "ACTUALIZAR");
         registrar("PATCH", "/cursos/**", "CURSOS", "ACTUALIZAR");
         registrar("DELETE", "/cursos/**", "CURSOS", "ELIMINAR");
 
-        registrarLectura("GET", "/turnos", "TURNOS");
-        registrarLectura("GET", "/turnos/**", "TURNOS");
+        registrarLectura("GET", "/turnos", "TURNOS", LECTORES_ESTRUCTURA);
+        registrarLectura("GET", "/turnos/**", "TURNOS", LECTORES_ESTRUCTURA);
         registrar("POST", "/turnos", "TURNOS", "CREAR");
         registrar("PUT", "/turnos/**", "TURNOS", "ACTUALIZAR");
         registrar("DELETE", "/turnos/**", "TURNOS", "ELIMINAR");
 
-        registrarLectura("GET", "/grados", "GRADOS");
-        registrarLectura("GET", "/grados/**", "GRADOS");
+        registrarLectura("GET", "/grados", "GRADOS", LECTORES_ESTRUCTURA);
+        registrarLectura("GET", "/grados/**", "GRADOS", LECTORES_ESTRUCTURA);
         registrar("POST", "/grados", "GRADOS", "CREAR");
         registrar("PUT", "/grados/**", "GRADOS", "ACTUALIZAR");
         registrar("DELETE", "/grados/**", "GRADOS", "ELIMINAR");
 
-        registrarLectura("GET", "/niveles", "GRADOS");
-        registrarLectura("GET", "/secciones", "GRADOS");
-        registrarLectura("GET", "/secciones/**", "GRADOS");
+        registrarLectura("GET", "/niveles", "GRADOS", LECTORES_ESTRUCTURA);
+        registrarLectura("GET", "/secciones", "GRADOS", LECTORES_ESTRUCTURA);
+        registrarLectura("GET", "/secciones/**", "GRADOS", LECTORES_ESTRUCTURA);
         registrar("POST", "/secciones", "GRADOS", "CREAR");
         registrar("POST", "/secciones/lote", "GRADOS", "CREAR");
         registrar("PUT", "/secciones/**", "GRADOS", "ACTUALIZAR");
         registrar("DELETE", "/secciones/**", "GRADOS", "ELIMINAR");
 
-        registrarLectura("GET", "/anios-escolares", "ANIOS_ESCOLARES");
-        registrarLectura("GET", "/anios-escolares/**", "ANIOS_ESCOLARES");
+        registrarLectura("GET", "/anios-escolares", "ANIOS_ESCOLARES", LECTORES_ESTRUCTURA);
+        registrarLectura("GET", "/anios-escolares/**", "ANIOS_ESCOLARES", LECTORES_ESTRUCTURA);
         registrar("POST", "/anios-escolares", "ANIOS_ESCOLARES", "CREAR");
         registrar("PUT", "/anios-escolares/**", "ANIOS_ESCOLARES", "ACTUALIZAR");
         registrar("PATCH", "/anios-escolares/**", "ANIOS_ESCOLARES", "ACTUALIZAR");
         registrar("DELETE", "/anios-escolares/**", "ANIOS_ESCOLARES", "ELIMINAR");
 
-        registrarLectura("GET", "/aulas", "AULAS");
-        registrarLectura("GET", "/aulas/**", "AULAS");
+        registrarLectura("GET", "/aulas", "AULAS", "GRADOS", "ASIGNACIONES");
+        registrarLectura("GET", "/aulas/**", "AULAS", "GRADOS", "ASIGNACIONES");
         registrar("POST", "/aulas", "AULAS", "CREAR");
         registrar("PUT", "/aulas/**", "AULAS", "ACTUALIZAR");
         registrar("DELETE", "/aulas/**", "AULAS", "ELIMINAR");
@@ -140,8 +149,8 @@ public class ApiPermisoRegistro {
         registrar("DELETE", "/matriculas/**", "MATRICULAS", "ELIMINAR");
         registrar("GET", "/matriculas/reporte", "MATRICULAS", "IMPRIMIR_EXPORTAR");
 
-        registrarLectura("GET", "/competencias", "COMPETENCIAS");
-        registrarLectura("GET", "/competencias/**", "COMPETENCIAS");
+        registrarLectura("GET", "/competencias", "COMPETENCIAS", "CURSOS", "NOTAS", "CONSOLIDADOS");
+        registrarLectura("GET", "/competencias/**", "COMPETENCIAS", "CURSOS", "NOTAS", "CONSOLIDADOS");
         // Solo se activan o desactivan: se crean importando el Excel de cursos.
         registrar("PATCH", "/competencias/**", "COMPETENCIAS", "ACTUALIZAR");
 
@@ -226,8 +235,8 @@ public class ApiPermisoRegistro {
         registrarLectura("GET", "/configuracion-academica", "CONFIGURACION_ACADEMICA");
         registrar("PUT", "/configuracion-academica", "CONFIGURACION_ACADEMICA", "ACTUALIZAR");
 
-        registrarLectura("GET", "/recreos", "RECREOS");
-        registrarLectura("GET", "/recreos/**", "RECREOS");
+        registrarLectura("GET", "/recreos", "RECREOS", "ASIGNACIONES");
+        registrarLectura("GET", "/recreos/**", "RECREOS", "ASIGNACIONES");
         registrar("POST", "/recreos", "RECREOS", "CREAR");
         registrar("PUT", "/recreos/**", "RECREOS", "ACTUALIZAR");
         registrar("DELETE", "/recreos/**", "RECREOS", "ELIMINAR");
@@ -247,18 +256,22 @@ public class ApiPermisoRegistro {
     }
 
     private void registrar(String metodo, String patron, String permisoCodigo, String accionCodigo) {
-        registros.add(new Registro(metodo, patron, permisoCodigo, accionCodigo));
+        registros.add(new Registro(metodo, patron, Set.of(permisoCodigo), accionCodigo));
     }
 
-    private void registrarLectura(String metodo, String patron, String permisoCodigo) {
-        registrar(metodo, patron, permisoCodigo, null);
+    // Los `lectores` son otros permisos que también pueden leer la ruta porque sus pantallas la usan.
+    private void registrarLectura(String metodo, String patron, String permisoCodigo, String... lectores) {
+        Set<String> permisos = new LinkedHashSet<>();
+        permisos.add(permisoCodigo);
+        permisos.addAll(List.of(lectores));
+        registros.add(new Registro(metodo, patron, Set.copyOf(permisos), null));
     }
 
     /** Acciones que piden las rutas de un permiso (sin contar las de solo lectura). */
     public Set<String> accionesDe(String permisoCodigo) {
         Set<String> acciones = new TreeSet<>();
         for (Registro registro : registros) {
-            if (registro.permisoCodigo().equals(permisoCodigo) && registro.accionCodigo() != null) {
+            if (registro.permisosCodigo().contains(permisoCodigo) && registro.accionCodigo() != null) {
                 acciones.add(registro.accionCodigo());
             }
         }
@@ -268,7 +281,7 @@ public class ApiPermisoRegistro {
     public Optional<Requisito> buscar(String metodo, String path) {
         for (Registro registro : registros) {
             if (registro.metodo().equals(metodo) && matcher.match(registro.patron(), path)) {
-                return Optional.of(new Requisito(registro.permisoCodigo(), registro.accionCodigo()));
+                return Optional.of(new Requisito(registro.permisosCodigo(), registro.accionCodigo()));
             }
         }
         return Optional.empty();

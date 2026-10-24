@@ -2,6 +2,7 @@ package com.example.Escolar.Service;
 
 import com.example.Escolar.Dto.LoginRequest;
 import com.example.Escolar.Dto.LoginResponse;
+import com.example.Escolar.Dto.PermisosRolResponse;
 import com.example.Escolar.Exception.CodigoRecuperacionAgotadoException;
 import com.example.Escolar.Exception.CuentaBloqueadaException;
 import com.example.Escolar.Exception.CuentaInactivaException;
@@ -59,6 +60,8 @@ class AuthServiceTest {
     private AccesoRepository accesoRepository;
     @Mock
     private EmailService emailService;
+    @Mock
+    private AccesoContextoService accesoContextoService;
 
     @InjectMocks
     private AuthService authService;
@@ -101,6 +104,8 @@ class AuthServiceTest {
         when(passwordEncoder.matches("clave", "$2a$10$hash")).thenReturn(true);
         when(usuarioRolRepository.findByUsuarioIdUsuario(1)).thenReturn(List.of());
         when(jwtService.generarToken(1, "ADM20240001", List.of())).thenReturn("token");
+        when(rolPermisoService.obtenerPermisosDelUsuario(1)).thenReturn(new PermisosRolResponse());
+        when(accesoContextoService.vinculo(1)).thenReturn(AccesoContextoService.Alcance.TODO);
 
         authService.login(request());
 
@@ -372,6 +377,8 @@ class AuthServiceTest {
         when(passwordEncoder.matches("clave", "$2a$10$hash")).thenReturn(true);
         when(usuarioRolRepository.findByUsuarioIdUsuario(1)).thenReturn(List.of());
         when(jwtService.generarToken(1, "ADM20240001", List.of(), true)).thenReturn("tokenPendiente");
+        when(rolPermisoService.obtenerPermisosDelUsuario(1)).thenReturn(new PermisosRolResponse());
+        when(accesoContextoService.vinculo(1)).thenReturn(AccesoContextoService.Alcance.TODO);
 
         LoginResponse response = authService.login(request());
 
@@ -388,6 +395,8 @@ class AuthServiceTest {
         when(passwordEncoder.encode("ClaveNueva1@")).thenReturn("$2a$10$nuevo");
         when(usuarioRolRepository.findByUsuarioIdUsuario(1)).thenReturn(List.of());
         when(jwtService.generarToken(1, "ADM20240001", List.of())).thenReturn("tokenLimpio");
+        when(rolPermisoService.obtenerPermisosDelUsuario(1)).thenReturn(new PermisosRolResponse());
+        when(accesoContextoService.vinculo(1)).thenReturn(AccesoContextoService.Alcance.TODO);
 
         String token = authService.cambiarContrasena(1, "claveTemporal", "ClaveNueva1@");
 

@@ -28,7 +28,6 @@ import com.example.Escolar.Model.Usuario;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.AlumnoApoderadoRepository;
 import com.example.Escolar.Repository.AlumnoRepository;
-import com.example.Escolar.Repository.ApoderadoRepository;
 import com.example.Escolar.Repository.AsistenciaAlumnoRepository;
 import com.example.Escolar.Repository.DiaFeriadoRepository;
 import com.example.Escolar.Repository.EstadoAsistenciaRepository;
@@ -36,6 +35,7 @@ import com.example.Escolar.Repository.HistorialAsistenciaRepository;
 import com.example.Escolar.Repository.JustificacionRepository;
 import com.example.Escolar.Repository.MatriculaRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
+import com.example.Escolar.Service.AccesoContextoService.Alcance;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -61,6 +61,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AsistenciaService {
 
+    private static final String PERMISO = "ASISTENCIAS";
     public static final byte PRINCIPAL = 1;
 
     public static final String ESTADO_PUNTUAL = "Puntual";
@@ -80,7 +81,6 @@ public class AsistenciaService {
     private final AlumnoRepository alumnoRepository;
     private final AlumnoApoderadoRepository alumnoApoderadoRepository;
     private final MatriculaRepository matriculaRepository;
-    private final ApoderadoRepository apoderadoRepository;
     private final UsuarioRepository usuarioRepository;
     private final NotificacionService notificacionService;
     private final AccesoRepository accesoRepository;
@@ -211,15 +211,16 @@ public class AsistenciaService {
                                                         Integer idNivel, Integer idGrado, Integer idSeccion,
                                                         Integer idTurno, Integer idGradoSeccion, Integer idAnio) {
         List<Matricula> base = matriculaRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
+        Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, roles);
         List<Matricula> porRol;
-        if (accesoContextoService.esGestion(roles)) {
+        if (alcance == Alcance.TODO) {
             porRol = base;
-        } else if (accesoContextoService.esPersonalDocente(roles)) {
+        } else if (alcance == Alcance.DOCENTE) {
             Set<Integer> gradoSeccionIds = accesoContextoService.gradoSeccionIdsDeDocente(idUsuario);
             porRol = base.stream()
                     .filter(m -> gradoSeccionIds.contains(m.getGradoSeccion().getIdGradoSeccion()))
                     .toList();
-        } else if (accesoContextoService.esApoderado(roles)) {
+        } else {
             Apoderado apoderado = accesoContextoService.apoderadoDeUsuario(idUsuario).orElse(null);
             if (apoderado == null) return List.of();
             List<Matricula> visibles = new ArrayList<>();
@@ -228,8 +229,6 @@ public class AsistenciaService {
                         .ifPresent(visibles::add);
             }
             porRol = visibles;
-        } else {
-            return List.of();
         }
         boolean filtrando = idNivel != null || idGrado != null || idSeccion != null || idTurno != null || idGradoSeccion != null || idAnio != null;
         if (!filtrando) return porRol;
@@ -257,7 +256,7 @@ public class AsistenciaService {
     }
 
     private boolean esVisibleUsuarioRegistrador(Integer idUsuarioConsulta, Integer idUsuario, List<String> roles) {
-        if (accesoContextoService.esGestion(roles)) {
+        if (accesoContextoService.alcance(PERMISO, idUsuario, roles) == Alcance.TODO) {
             return true;
         }
         return idUsuarioConsulta != null && idUsuarioConsulta.equals(idUsuario);
@@ -389,13 +388,11 @@ public class AsistenciaService {
 
     @Transactional(readOnly = true)
     public List<ResumenMensualResponse> asistenciasDeHijos(Integer idUsuarioAutenticado, List<String> roles) {
-        if (!accesoContextoService.esApoderado(roles) && !accesoContextoService.esGestion(roles)) {
+        // Solo tiene hijos quien está vinculado a un apoderado.
+        Apoderado apoderado = accesoContextoService.apoderadoDeUsuario(idUsuarioAutenticado).orElse(null);
+        if (apoderado == null) {
             return List.of();
         }
-        Apoderado apoderado = apoderadoRepository
-                .findByUsuarioIdUsuarioAndAccesoNot(idUsuarioAutenticado, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Apoderado no encontrado para el usuario " + idUsuarioAutenticado));
 
         LocalDate hoy = LocalDate.now();
         LocalDate inicio = hoy.withDayOfMonth(1);

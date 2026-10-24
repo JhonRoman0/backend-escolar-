@@ -15,6 +15,7 @@ import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
 import com.example.Escolar.Security.JwtService;
+import com.example.Escolar.Service.AccesoContextoService.Alcance;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -49,6 +50,7 @@ public class AuthService {
     private final RolPermisoService rolPermisoService;
     private final AccesoRepository accesoRepository;
     private final EmailService emailService;
+    private final AccesoContextoService accesoContextoService;
 
     public LoginResponse login(LoginRequest request) {
         Usuario usuario = usuarioRepository.findByCodigoAndAccesoNot(request.getCodigo(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
@@ -75,13 +77,17 @@ public class AuthService {
         LoginResponse response = new LoginResponse();
         response.setToken(token);
         response.setUsuario(usuarioService.getById(usuario.getIdUsuario()));
-        response.setPermisos(rolPermisoService.obtenerPermisosDelUsuario(usuario.getIdUsuario()));
+        response.setPermisos(permisosActuales(usuario.getIdUsuario()));
         response.setEsAdmin(roles.stream().anyMatch(nombre -> "ADMIN".equalsIgnoreCase(nombre)));
         return response;
     }
 
     public PermisosRolResponse permisosActuales(Integer idUsuario) {
-        return rolPermisoService.obtenerPermisosDelUsuario(idUsuario);
+        PermisosRolResponse permisos = rolPermisoService.obtenerPermisosDelUsuario(idUsuario);
+        // El front lo usa para saber qué parte de los datos ve quien solo tiene lectura.
+        Alcance vinculo = accesoContextoService.vinculo(idUsuario);
+        permisos.setVinculo(vinculo == Alcance.TODO ? null : vinculo.name());
+        return permisos;
     }
 
     @Transactional

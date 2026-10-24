@@ -10,6 +10,7 @@ import com.example.Escolar.Repository.ApoderadoRepository;
 import com.example.Escolar.Repository.AsignacionRepository;
 import com.example.Escolar.Repository.DocenteRepository;
 import com.example.Escolar.Repository.MatriculaRepository;
+import com.example.Escolar.Security.ConcesionesService;
 import com.example.Escolar.Security.UsuarioAutenticado;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -32,6 +33,12 @@ public class AccesoContextoService {
     private final MatriculaRepository matriculaRepository;
     private final AsignacionRepository asignacionRepository;
     private final AccesoRepository accesoRepository;
+    private final ConcesionesService concesionesService;
+
+    /** Qué parte de los datos de un módulo ve el usuario. */
+    public enum Alcance { TODO, DOCENTE, APODERADO }
+
+    private static final Set<String> ACCIONES_ESCRITURA = Set.of("CREAR", "ACTUALIZAR", "ELIMINAR");
 
     public Integer idUsuarioAutenticado() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -49,39 +56,42 @@ public class AccesoContextoService {
         return roles != null && roles.stream().anyMatch(r -> "ADMIN".equalsIgnoreCase(r));
     }
 
-    public boolean esAdministrador(List<String> roles) {
-        return roles != null && roles.stream().anyMatch(r -> "Administrador".equalsIgnoreCase(r));
+    // Con escritura en el permiso del módulo lo gestiona y ve todo. Solo con lectura,
+    // el docente ve lo suyo, el apoderado lo de sus hijos y cualquier otro usuario todo.
+    public Alcance alcance(String permisoCodigo, Integer idUsuario, List<String> roles) {
+        if (esAdmin(roles)) {
+            return Alcance.TODO;
+        }
+        Set<String> acciones = concesionesService.accionesPorPermiso(idUsuario).getOrDefault(permisoCodigo, Set.of());
+        if (acciones.stream().anyMatch(ACCIONES_ESCRITURA::contains)) {
+            return Alcance.TODO;
+        }
+        return vinculo(idUsuario);
     }
 
-    public boolean esSecretaria(List<String> roles) {
-        return roles != null && roles.stream().anyMatch(r -> "Secretaria".equalsIgnoreCase(r));
+    /** A quién está vinculado el usuario: a un docente, a un apoderado o a ninguno (TODO). */
+    public Alcance vinculo(Integer idUsuario) {
+        if (docenteDeUsuario(idUsuario).isPresent()) {
+            return Alcance.DOCENTE;
+        }
+        if (apoderadoDeUsuario(idUsuario).isPresent()) {
+            return Alcance.APODERADO;
+        }
+        return Alcance.TODO;
     }
 
-    public boolean esDocente(List<String> roles) {
-        return roles != null && roles.stream().anyMatch(r -> "DOCENTE".equalsIgnoreCase(r));
-    }
-
-    public boolean esAuxiliar(List<String> roles) {
-        return roles != null && roles.stream().anyMatch(r -> "Auxiliar".equalsIgnoreCase(r));
-    }
-
-    public boolean esApoderado(List<String> roles) {
-        return roles != null && roles.stream().anyMatch(r -> "APODERADO".equalsIgnoreCase(r));
-    }
-
-    public boolean esGestion(List<String> roles) {
-        return esAdmin(roles) || esAdministrador(roles) || esSecretaria(roles);
-    }
-
-    public boolean esPersonalDocente(List<String> roles) {
-        return esDocente(roles) || esAuxiliar(roles);
+    public boolean tieneAccion(String permisoCodigo, String accionCodigo, Integer idUsuario, List<String> roles) {
+        return esAdmin(roles) || concesionesService.accionesPorPermiso(idUsuario)
+                .getOrDefault(permisoCodigo, Set.of()).contains(accionCodigo);
     }
 
     public Optional<Docente> docenteDeUsuario(Integer idUsuario) {
         if (idUsuario == null) {
             return Optional.empty();
         }
-        return docenteRepository.findByUsuarioIdUsuario(idUsuario);
+        // Al quitarle el rol Docente su registro queda eliminado: ya no cuenta como vínculo.
+        return docenteRepository.findByUsuarioIdUsuario(idUsuario)
+                .filter(d -> !d.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO));
     }
 
     public Optional<Apoderado> apoderadoDeUsuario(Integer idUsuario) {

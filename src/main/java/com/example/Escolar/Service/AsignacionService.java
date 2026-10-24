@@ -37,6 +37,8 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.function.Predicate;
 
 @Service
 @RequiredArgsConstructor
@@ -44,6 +46,7 @@ public class AsignacionService {
 
     public static final double SEMANAS_POR_MES = 4.33;
     private static final String QUE = "asignaciones";
+    private static final String PERMISO = "ASIGNACIONES";
 
     private final AsignacionRepository asignacionRepository;
     private final HorarioClaseRepository horarioClaseRepository;
@@ -59,30 +62,25 @@ public class AsignacionService {
     private final ConfiguracionAcademicaService configuracionAcademicaService;
 
     public List<AsignacionResponse> getAll(Integer idUsuario, List<String> roles) {
+        Predicate<Asignacion> visible = visibles(idUsuario, roles);
         return asignacionRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
-                .filter(a -> esVisible(a, idUsuario, roles))
+                .filter(visible)
                 .map(this::toResponse)
                 .toList();
     }
 
     public List<AsignacionResponse> getByDocente(Integer idDocente, Integer idUsuario, List<String> roles) {
-        if (accesoContextoService.esPersonalDocente(roles)) {
-            Integer idDocentePropio = accesoContextoService.docenteDeUsuario(idUsuario)
-                    .map(Docente::getIdDocente)
-                    .orElse(null);
-            if (idDocentePropio == null || !idDocentePropio.equals(idDocente)) {
-                throw new ResourceNotFoundException("Docente no encontrado con id " + idDocente);
-            }
-        }
         findDocente(idDocente);
+        Predicate<Asignacion> visible = visibles(idUsuario, roles);
         return asignacionRepository.findByDocenteIdDocenteAndAccesoNot(idDocente, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
+                .filter(visible)
                 .map(this::toResponse)
                 .toList();
     }
 
     public AsignacionResponse getById(Integer id, Integer idUsuario, List<String> roles) {
         Asignacion asignacion = findAsignacion(id);
-        if (!esVisible(asignacion, idUsuario, roles)) {
+        if (!visibles(idUsuario, roles).test(asignacion)) {
             throw new ResourceNotFoundException("Asignación no encontrada con id " + id);
         }
         return toResponse(asignacion);
@@ -349,21 +347,22 @@ public class AsignacionService {
         return Math.round(valor * 100.0) / 100.0;
     }
 
-    private boolean esVisible(Asignacion asignacion, Integer idUsuario, List<String> roles) {
-        if (accesoContextoService.esGestion(roles)) {
-            return true;
-        }
-        if (accesoContextoService.esPersonalDocente(roles)) {
-            return accesoContextoService.docenteDeUsuario(idUsuario)
-                    .map(d -> d.getIdDocente().equals(asignacion.getDocente().getIdDocente()))
-                    .orElse(false);
-        }
-        if (accesoContextoService.esApoderado(roles)) {
-            return accesoContextoService.gradoSeccionIdsDeApoderado(
-                    accesoContextoService.apoderadoDeUsuario(idUsuario).orElse(null))
-                    .contains(asignacion.getGradoSeccion().getIdGradoSeccion());
-        }
-        return false;
+    // Se calcula una vez por consulta: el alcance lee los permisos del usuario.
+    private Predicate<Asignacion> visibles(Integer idUsuario, List<String> roles) {
+        return switch (accesoContextoService.alcance(PERMISO, idUsuario, roles)) {
+            case TODO -> asignacion -> true;
+            case DOCENTE -> {
+                Integer idDocente = accesoContextoService.docenteDeUsuario(idUsuario)
+                        .map(Docente::getIdDocente)
+                        .orElse(null);
+                yield asignacion -> asignacion.getDocente().getIdDocente().equals(idDocente);
+            }
+            case APODERADO -> {
+                Set<Integer> secciones = accesoContextoService.gradoSeccionIdsDeApoderado(
+                        accesoContextoService.apoderadoDeUsuario(idUsuario).orElse(null));
+                yield asignacion -> secciones.contains(asignacion.getGradoSeccion().getIdGradoSeccion());
+            }
+        };
     }
 
     private Asignacion findAsignacion(Integer id) {

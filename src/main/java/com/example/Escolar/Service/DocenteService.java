@@ -32,6 +32,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -81,6 +84,31 @@ public class DocenteService {
         return toResponse(docenteRepository.save(docente));
     }
 
+    /**
+     * Un docente con asignaciones en un año vigente o por comenzar no deja de serlo:
+     * sus cursos quedarían a cargo de alguien que ya no es docente. Las de años
+     * cerrados no cuentan: son historia y siguen apuntando a su registro.
+     * `accion` completa el mensaje: "No se puede {accion} Ana Ruiz…".
+     */
+    public void validarSinAsignacionesVigentes(Docente docente, String accion) {
+        Map<String, Long> porAnio = asignacionRepository
+                .findByDocenteIdDocenteAndAccesoNot(docente.getIdDocente(), accesoNoEliminado()).stream()
+                .filter(a -> a.getAnioEscolar().getEstado() != AnioEscolarService.ESTADO_CERRADO)
+                .collect(Collectors.groupingBy(a -> a.getAnioEscolar().getAnio(), TreeMap::new, Collectors.counting()));
+        if (porAnio.isEmpty()) {
+            return;
+        }
+        long total = porAnio.values().stream().mapToLong(Long::longValue).sum();
+        String detalle = porAnio.entrySet().stream()
+                .map(e -> e.getKey() + ": " + e.getValue())
+                .collect(Collectors.joining(", "));
+        Usuario usuario = docente.getUsuario();
+        throw new DocenteConAsignacionesException(String.format(
+                "No se puede %s %s %s: tiene %d %s (%s). Reasígnalas en Cambios de docente o elimínalas primero.",
+                accion, usuario.getNombre(), usuario.getApellidoPat(), total,
+                total == 1 ? "asignación" : "asignaciones", detalle));
+    }
+
     @Transactional
     public void delete(Integer id) {
         Docente docente = findDocente(id);
@@ -93,14 +121,8 @@ public class DocenteService {
             );
         }
 
-        // Regla 2: verificar que no tenga asignaciones activas
-        long asignacionesActivas = asignacionRepository.countByDocenteAndAcceso(docente, accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
-        if (asignacionesActivas > 0) {
-            throw new DocenteConAsignacionesException(
-                "No se puede eliminar al docente porque tiene " + asignacionesActivas
-                + " asignacion(es) activa(s). Primero debe eliminar o reasignar sus asignaciones."
-            );
-        }
+        // Regla 2: que no tenga asignaciones en un año vigente o por comenzar
+        validarSinAsignacionesVigentes(docente, "eliminar a");
 
         docente.setAcceso(accesoNoEliminado());
         docenteRepository.save(docente);

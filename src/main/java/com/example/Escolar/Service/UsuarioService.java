@@ -58,6 +58,7 @@ public class UsuarioService {
     private final GradoAcademicoRepository gradoAcademicoRepository;
     private final TipoContratoRepository tipoContratoRepository;
     private final EmailService emailService;
+    private final DocenteService docenteService;
 
     public Page<UsuarioResponse> getAll(Pageable pageable) {
         return getAll(pageable, null, null, null);
@@ -150,6 +151,10 @@ public class UsuarioService {
             boolean eraDocenteActivo = docenteExistente.isPresent()
                     && !docenteExistente.get().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO);
             boolean seraDocente = seleccionaDocente(request.getRolIds());
+            // Se valida antes de tocar sus roles: sus cursos no pueden quedar sin docente.
+            if (eraDocenteActivo && !seraDocente) {
+                docenteService.validarSinAsignacionesVigentes(docenteExistente.get(), "quitar el rol Docente a");
+            }
 
             usuarioRolRepository.deleteByUsuarioIdUsuario(id);
             assignRoles(usuario, request.getRolIds());
@@ -187,6 +192,9 @@ public class UsuarioService {
     @Transactional
     public void delete(Integer id) {
         Usuario usuario = findUsuario(id);
+        docenteRepository.findByUsuarioIdUsuario(id)
+                .filter(d -> !d.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
+                .ifPresent(d -> docenteService.validarSinAsignacionesVigentes(d, "eliminar el usuario de"));
         usuario.setAcceso(accesoEliminado());
         usuarioRepository.save(usuario);
         // Si el usuario era docente, su registro Docente (y sus niveles) tambien

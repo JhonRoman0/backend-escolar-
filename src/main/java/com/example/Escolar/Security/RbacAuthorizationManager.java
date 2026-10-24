@@ -1,16 +1,5 @@
 package com.example.Escolar.Security;
 
-import com.example.Escolar.Model.Accion;
-import com.example.Escolar.Model.Permiso;
-import com.example.Escolar.Model.Rol;
-import com.example.Escolar.Model.RolPermiso;
-import com.example.Escolar.Model.RolPermisoAccion;
-import com.example.Escolar.Model.UsuarioRol;
-import com.example.Escolar.Repository.AccesoRepository;
-import com.example.Escolar.Repository.RolPermisoAccionRepository;
-import com.example.Escolar.Repository.RolPermisoRepository;
-import com.example.Escolar.Repository.UsuarioRolRepository;
-import com.example.Escolar.Service.AccesoConstants;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.authorization.AuthorizationManager;
@@ -18,8 +7,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
 import org.springframework.stereotype.Component;
 
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -29,10 +16,7 @@ import java.util.function.Supplier;
 public class RbacAuthorizationManager implements AuthorizationManager<RequestAuthorizationContext> {
 
     private final ApiPermisoRegistro apiPermisoRegistro;
-    private final UsuarioRolRepository usuarioRolRepository;
-    private final RolPermisoRepository rolPermisoRepository;
-    private final RolPermisoAccionRepository rolPermisoAccionRepository;
-    private final AccesoRepository accesoRepository;
+    private final ConcesionesService concesionesService;
 
     @Override
     public AuthorizationDecision authorize(Supplier<? extends Authentication> authentication, RequestAuthorizationContext object) {
@@ -54,54 +38,19 @@ public class RbacAuthorizationManager implements AuthorizationManager<RequestAut
             return new AuthorizationDecision(true);
         }
 
-        Set<String> permisos = new HashSet<>();
-        Map<String, Set<String>> accionesPorPermiso = new HashMap<>();
-        cargarConcesiones(principal.idUsuario(), permisos, accionesPorPermiso);
+        Map<String, Set<String>> accionesPorPermiso = concesionesService.accionesPorPermiso(principal.idUsuario());
 
-        if (!permisos.contains(requisito.permisoCodigo())) {
-            return new AuthorizationDecision(false);
-        }
-        if (requisito.accionCodigo() != null) {
-            Set<String> acciones = accionesPorPermiso.get(requisito.permisoCodigo());
-            if (acciones == null || !acciones.contains(requisito.accionCodigo())) {
-                return new AuthorizationDecision(false);
+        // Basta con uno de los permisos de la ruta (los catálogos se leen desde varios módulos).
+        for (String permisoCodigo : requisito.permisosCodigo()) {
+            Set<String> acciones = accionesPorPermiso.get(permisoCodigo);
+            if (acciones != null && (requisito.accionCodigo() == null || acciones.contains(requisito.accionCodigo()))) {
+                return new AuthorizationDecision(true);
             }
         }
-        return new AuthorizationDecision(true);
+        return new AuthorizationDecision(false);
     }
 
     private boolean esAdmin(UsuarioAutenticado principal) {
         return principal.roles().stream().anyMatch(nombre -> "ADMIN".equalsIgnoreCase(nombre));
-    }
-
-    private void cargarConcesiones(Integer idUsuario, Set<String> permisos, Map<String, Set<String>> accionesPorPermiso) {
-        for (UsuarioRol usuarioRol : usuarioRolRepository.findByUsuarioIdUsuario(idUsuario)) {
-            Rol rol = usuarioRol.getRol();
-            if (rol.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO)) {
-                continue;
-            }
-            for (RolPermiso rolPermiso : rolPermisoRepository.findByRolIdRol(rol.getIdRol())) {
-                if (!rolPermiso.getAcceso().getIdAcceso().equals(AccesoConstants.ACTIVO)) {
-                    continue;
-                }
-                Permiso permiso = rolPermiso.getPermiso();
-                if (permiso.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO)) {
-                    continue;
-                }
-                permisos.add(permiso.getCodigo());
-                Set<String> acciones = accionesPorPermiso.computeIfAbsent(permiso.getCodigo(), k -> new HashSet<>());
-                for (RolPermisoAccion rolPermisoAccion : rolPermisoAccionRepository
-                        .findByRolPermisoIdRolPermiso(rolPermiso.getIdRolPermiso())) {
-                    if (!rolPermisoAccion.getAcceso().getIdAcceso().equals(AccesoConstants.ACTIVO)) {
-                        continue;
-                    }
-                    Accion accion = rolPermisoAccion.getAccion();
-                    if (accion.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO)) {
-                        continue;
-                    }
-                    acciones.add(accion.getCodigo());
-                }
-            }
-        }
     }
 }

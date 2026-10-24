@@ -7,6 +7,7 @@ import com.example.Escolar.Model.Matricula;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.ApoderadoRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
+import com.example.Escolar.Service.AccesoContextoService.Alcance;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +20,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class ApoderadoService {
 
+    private static final String PERMISO = "APODERADOS";
     private final ApoderadoRepository apoderadoRepository;
     private final UsuarioRepository usuarioRepository;
     private final AccesoContextoService accesoContextoService;
@@ -62,17 +64,18 @@ public class ApoderadoService {
 
     private boolean esVisible(Integer idApoderado, Integer idUsuario, List<String> roles) {
         if (idApoderado == null) {
-            return accesoContextoService.esGestion(roles);
+            return accesoContextoService.alcance(PERMISO, idUsuario, roles) == Alcance.TODO;
         }
         Set<Integer> visibles = idsApoderadosVisibles(idUsuario, roles);
         return visibles == null || visibles.contains(idApoderado);
     }
 
     private Set<Integer> idsApoderadosVisibles(Integer idUsuario, List<String> roles) {
-        if (accesoContextoService.esGestion(roles)) {
+        Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, roles);
+        if (alcance == Alcance.TODO) {
             return null;
         }
-        if (accesoContextoService.esPersonalDocente(roles)) {
+        if (alcance == Alcance.DOCENTE) {
             Set<Integer> ids = new HashSet<>();
             for (Matricula matricula : accesoContextoService.matriculasDeGradoSecciones(
                     accesoContextoService.gradoSeccionIdsDeDocente(idUsuario))) {
@@ -80,7 +83,7 @@ public class ApoderadoService {
             }
             return ids;
         }
-        if (accesoContextoService.esApoderado(roles)) {
+        if (alcance == Alcance.APODERADO) {
             Set<Integer> ids = new HashSet<>();
             Apoderado apoderado = accesoContextoService.apoderadoDeUsuario(idUsuario).orElse(null);
             if (apoderado != null) {

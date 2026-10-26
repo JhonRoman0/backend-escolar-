@@ -26,5 +26,7 @@ public class DocenteResponse {
     private Integer gradoAcademicoId;
     private String gradoAcademicoNombre;
     private List<NivelResponse> niveles;
+    // Niveles con asignaciones en un año vigente o por comenzar: no se le pueden quitar.
+    private List<Integer> nivelesConAsignaciones;
     private List<RolResponse> roles;
 }

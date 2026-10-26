@@ -8,6 +8,7 @@ import com.example.Escolar.Dto.RolResponse;
 import com.example.Escolar.Exception.DocenteConAsignacionesException;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.Acceso;
+import com.example.Escolar.Model.Asignacion;
 import com.example.Escolar.Model.Docente;
 import com.example.Escolar.Model.DocenteNivel;
 import com.example.Escolar.Model.Nivel;
@@ -67,6 +68,9 @@ public class DocenteService {
     @Transactional
     public DocenteResponse update(Integer id, DocenteRequest request) {
         Docente docente = findDocente(id);
+        if (request.getNiveles() != null) {
+            validarNivelesQueQuita(docente, request.getNiveles());
+        }
         Usuario usuario = docente.getUsuario();
         validarDocumentoUnico(request.getDocumentoIdentidad(), usuario.getIdUsuario());
         validarGmailUnico(request.getGmail(), usuario.getIdUsuario());
@@ -80,7 +84,10 @@ public class DocenteService {
             }
         }
         aplicarDatosAcademicos(docente, request);
-        sincronizarNiveles(docente, request.getNiveles());
+        // Sin lista de niveles no se tocan (antes se borraban todos).
+        if (request.getNiveles() != null) {
+            sincronizarNiveles(docente, request.getNiveles());
+        }
         return toResponse(docenteRepository.save(docente));
     }
 
@@ -91,9 +98,13 @@ public class DocenteService {
      * `accion` completa el mensaje: "No se puede {accion} Ana Ruiz…".
      */
     public void validarSinAsignacionesVigentes(Docente docente, String accion) {
-        Map<String, Long> porAnio = asignacionRepository
-                .findByDocenteIdDocenteAndAccesoNot(docente.getIdDocente(), accesoNoEliminado()).stream()
-                .filter(a -> a.getAnioEscolar().getEstado() != AnioEscolarService.ESTADO_CERRADO)
+        validarSinAsignacionesVigentes(docente, null, accion);
+    }
+
+    /** Igual, pero solo cuentan las asignaciones de `nivel` (null: todas). */
+    public void validarSinAsignacionesVigentes(Docente docente, Nivel nivel, String accion) {
+        Map<String, Long> porAnio = asignacionesVigentes(docente).stream()
+                .filter(a -> nivel == null || nivelDe(a).equals(nivel.getIdNivel()))
                 .collect(Collectors.groupingBy(a -> a.getAnioEscolar().getAnio(), TreeMap::new, Collectors.counting()));
         if (porAnio.isEmpty()) {
             return;
@@ -104,9 +115,32 @@ public class DocenteService {
                 .collect(Collectors.joining(", "));
         Usuario usuario = docente.getUsuario();
         throw new DocenteConAsignacionesException(String.format(
-                "No se puede %s %s %s: tiene %d %s (%s). Reasígnalas en Cambios de docente o elimínalas primero.",
+                "No se puede %s %s %s: tiene %d %s%s (%s). Reasígnalas en Cambios de docente o elimínalas primero.",
                 accion, usuario.getNombre(), usuario.getApellidoPat(), total,
-                total == 1 ? "asignación" : "asignaciones", detalle));
+                total == 1 ? "asignación" : "asignaciones",
+                nivel == null ? "" : " de " + nivel.getNombre(), detalle));
+    }
+
+    // Las de años cerrados no cuentan: son historia.
+    private List<Asignacion> asignacionesVigentes(Docente docente) {
+        return asignacionRepository
+                .findByDocenteIdDocenteAndAccesoNot(docente.getIdDocente(), accesoNoEliminado()).stream()
+                .filter(a -> a.getAnioEscolar().getEstado() != AnioEscolarService.ESTADO_CERRADO)
+                .toList();
+    }
+
+    private Integer nivelDe(Asignacion asignacion) {
+        return asignacion.getGradoSeccion().getGrado().getNivel().getIdNivel();
+    }
+
+    // Se valida antes de guardar nada: solo importan los niveles que pierde.
+    private void validarNivelesQueQuita(Docente docente, List<Integer> nuevos) {
+        for (DocenteNivel actual : docenteNivelRepository.findByDocenteAndAccesoNot(docente, accesoNoEliminado())) {
+            Nivel nivel = actual.getNivel();
+            if (!nuevos.contains(nivel.getIdNivel())) {
+                validarSinAsignacionesVigentes(docente, nivel, "quitar el nivel " + nivel.getNombre() + " a");
+            }
+        }
     }
 
     @Transactional
@@ -290,6 +324,10 @@ public class DocenteService {
         response.setGradoAcademicoId(docente.getGradoAcademico() != null ? docente.getGradoAcademico().getIdGradoAcademico() : null);
         response.setGradoAcademicoNombre(docente.getGradoAcademico() != null ? docente.getGradoAcademico().getNombre() : null);
         response.setNiveles(nivelesDe(docente));
+        response.setNivelesConAsignaciones(asignacionesVigentes(docente).stream()
+                .map(this::nivelDe)
+                .distinct()
+                .toList());
         response.setRoles(getRolesDelUsuario(usuario.getIdUsuario()));
         return response;
     }

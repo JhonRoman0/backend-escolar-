@@ -29,12 +29,9 @@ public class Matricula {
     @ManyToOne
     @JoinColumn(name = "id_grado_seccion", nullable = false)
     GradoSeccion gradoSeccion;
-    @Column(name = "solicitud_matricula", nullable = false)
-    byte solicitudMatricula;
-    @Column(name = "fecha_pago")
-    LocalDate fechaPago;
-    @Column(name = "monto_pago")
-    BigDecimal montoPago;
+    // Precio del nivel en ese año; lo pagado está en pago_matricula.
+    @Column(name = "monto", precision = 10, scale = 2)
+    BigDecimal monto;
     @Column(name = "fecha_registro", nullable = false)
     LocalDate fechaRegistro;
     @Column(name = "observaciones", length = 500)

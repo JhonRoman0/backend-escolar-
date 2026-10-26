@@ -30,5 +30,7 @@ public class GradoRequest {
     private List<SeccionNueva> secciones;
     /** Salon de la seccion unica, cuando el grado no tiene secciones. */
     private Integer idAula;
+    /** null al crear: Si. Se aplica a todas las filas del mismo grado. */
+    private Boolean repite;
     private Long accesoId;
 }

@@ -17,10 +17,12 @@ public class NivelService {
 
     public List<NivelResponse> getAll() {
         return nivelRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
+                .sorted(OrdenAcademicoService.POR_ORDEN_NIVEL)
                 .map(nivel -> {
                     NivelResponse response = new NivelResponse();
                     response.setIdNivel(nivel.getIdNivel());
                     response.setNombre(nivel.getNombre());
+                    response.setOrden(nivel.getOrden());
                     return response;
                 })
                 .toList();

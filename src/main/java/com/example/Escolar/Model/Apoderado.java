@@ -24,8 +24,9 @@ public class Apoderado {
     String celular;
     @Column(name = "direccion", length = 120)
     String direccion;
-    @Column(name = "parentesco", length = 30)
-    String parentesco;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "sexo", length = 10)
+    Sexo sexo;
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "id_acceso", nullable = false)
     Acceso acceso;

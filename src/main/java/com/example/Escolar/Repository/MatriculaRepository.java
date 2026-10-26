@@ -20,13 +20,14 @@ public interface MatriculaRepository extends JpaRepository<Matricula, Integer> {
 
     Optional<Matricula> findByIdMatriculaAndAccesoNot(Integer idMatricula, Acceso acceso);
 
-    Optional<Matricula> findByAlumnoApoderadoAndAccesoNot(AlumnoApoderado alumnoApoderado, Acceso acceso);
 
-    Optional<Matricula> findByAlumnoApoderadoAndAcceso(AlumnoApoderado alumnoApoderado, Acceso acceso);
 
-    boolean existsByAlumnoApoderado(AlumnoApoderado alumnoApoderado);
 
     List<Matricula> findByGradoSeccionIdGradoSeccionAndAccesoNot(Integer idGradoSeccion, Acceso acceso);
+
+    long countByGradoSeccionIdGradoSeccionAndAccesoNot(Integer idGradoSeccion, Acceso acceso);
+
+    List<Matricula> findByAlumnoApoderadoAlumnoIdAlumnoAndAccesoNot(Integer idAlumno, Acceso acceso);
 
     List<Matricula> findByFechaRegistroBetweenAndAccesoNot(LocalDate inicio, LocalDate fin, Acceso acceso);
 

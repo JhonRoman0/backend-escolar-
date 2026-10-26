@@ -95,17 +95,15 @@ public class HorarioService {
     public List<HorarioPlanoResponse> porAlumno(Integer idAlumno, Integer idAnio,
                                                   Integer idUsuario, List<String> roles) {
         Integer anio = resolverAnio(idAnio);
-        List<Matricula> matriculas = matriculaRepository.findActivasPorAlumnoId(idAlumno, accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
+        List<Matricula> matriculas = matriculaRepository.findActivasPorAlumnoId(idAlumno, accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow()).stream()
+                .filter(m -> m.getGradoSeccion().getAnioEscolar().getIdAnio().equals(anio))
+                .toList();
         if (matriculas.isEmpty()) {
             throw new ResourceNotFoundException("El alumno con id " + idAlumno + " no tiene matrícula activa");
         }
 
         if (accesoContextoService.alcance(PERMISO, idUsuario, roles) == Alcance.APODERADO) {
-            boolean esHijo = matriculas.stream().anyMatch(m ->
-                    accesoContextoService.apoderadoDeUsuario(idUsuario)
-                            .map(ap -> ap.getIdApoderado().equals(
-                                    m.getAlumnoApoderado().getApoderado().getIdApoderado()))
-                            .orElse(false));
+            boolean esHijo = accesoContextoService.esApoderadoDe(idUsuario, matriculas.get(0));
             if (!esHijo) {
                 throw new ResourceNotFoundException("El alumno con id " + idAlumno + " no es hijo del apoderado autenticado");
             }

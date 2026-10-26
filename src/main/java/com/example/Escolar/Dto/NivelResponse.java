@@ -8,4 +8,5 @@ import lombok.Setter;
 public class NivelResponse {
     private Integer idNivel;
     private String nombre;
+    private Integer orden;
 }

@@ -18,6 +18,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -106,10 +107,7 @@ public class AccesoContextoService {
         if (apoderado == null) {
             return ids;
         }
-        for (AlumnoApoderado alumnoApoderado : alumnoApoderadoRepository.findByApoderado(apoderado)) {
-            matriculaRepository.findByAlumnoApoderadoAndAccesoNot(alumnoApoderado, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
-                    .ifPresent(m -> ids.add(m.getGradoSeccion().getIdGradoSeccion()));
-        }
+        matriculasDeHijos(apoderado).forEach(m -> ids.add(m.getGradoSeccion().getIdGradoSeccion()));
         return ids;
     }
 
@@ -131,5 +129,41 @@ public class AccesoContextoService {
                     .forEach(matriculas::add);
         }
         return matriculas;
+    }
+
+    /** Matrículas de todos los hijos del apoderado (principal o secundario), de cualquier año. */
+    public List<Matricula> matriculasDeHijos(Apoderado apoderado) {
+        List<Matricula> matriculas = new ArrayList<>();
+        if (apoderado == null) {
+            return matriculas;
+        }
+        for (AlumnoApoderado vinculo : alumnoApoderadoRepository.findByApoderado(apoderado)) {
+            matriculas.addAll(matriculaRepository.findByAlumnoApoderadoAlumnoIdAlumnoAndAccesoNot(
+                    vinculo.getAlumno().getIdAlumno(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()));
+        }
+        return matriculas;
+    }
+
+    public boolean esApoderadoDe(Integer idUsuario, Matricula matricula) {
+        Integer idAlumno = matricula.getAlumnoApoderado().getAlumno().getIdAlumno();
+        return apoderadoDeUsuario(idUsuario)
+                .map(apoderado -> alumnoApoderadoRepository.findByApoderado(apoderado).stream()
+                        .anyMatch(v -> v.getAlumno().getIdAlumno().equals(idAlumno)))
+                .orElse(false);
+    }
+
+    /**
+     * Un alumno puede tener a la vez la matrícula del año vigente y la del año por
+     * comenzar. La actual es la del vigente; si no la hay, la del año más reciente.
+     */
+    public Optional<Matricula> matriculaActual(Integer idAlumno) {
+        return elegirActual(matriculaRepository.findByAlumnoApoderadoAlumnoIdAlumnoAndAccesoNot(
+                idAlumno, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()));
+    }
+
+    public static Optional<Matricula> elegirActual(List<Matricula> matriculas) {
+        return matriculas.stream()
+                .max(Comparator.comparing((Matricula m) -> m.getGradoSeccion().getAnioEscolar().getEstado() == AnioEscolarService.ESTADO_VIGENTE)
+                        .thenComparing(m -> m.getGradoSeccion().getAnioEscolar().getAnio()));
     }
 }

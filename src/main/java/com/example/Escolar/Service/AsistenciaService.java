@@ -223,12 +223,7 @@ public class AsistenciaService {
         } else {
             Apoderado apoderado = accesoContextoService.apoderadoDeUsuario(idUsuario).orElse(null);
             if (apoderado == null) return List.of();
-            List<Matricula> visibles = new ArrayList<>();
-            for (AlumnoApoderado vinculo : alumnoApoderadoRepository.findByApoderado(apoderado)) {
-                matriculaRepository.findByAlumnoApoderadoAndAccesoNot(vinculo, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
-                        .ifPresent(visibles::add);
-            }
-            porRol = visibles;
+            porRol = accesoContextoService.matriculasDeHijos(apoderado);
         }
         boolean filtrando = idNivel != null || idGrado != null || idSeccion != null || idTurno != null || idGradoSeccion != null || idAnio != null;
         if (!filtrando) return porRol;
@@ -401,8 +396,7 @@ public class AsistenciaService {
         List<ResumenMensualResponse> resultado = new ArrayList<>();
         for (AlumnoApoderado vinculo : alumnoApoderadoRepository.findByApoderado(apoderado)) {
             Alumno alumno = vinculo.getAlumno();
-            Optional<Matricula> matriculaOpt = matriculaRepository
-                    .findByAlumnoApoderadoAndAccesoNot(vinculo, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
+            Optional<Matricula> matriculaOpt = accesoContextoService.matriculaActual(alumno.getIdAlumno());
             if (matriculaOpt.isEmpty()) {
                 continue;
             }
@@ -778,11 +772,7 @@ public class AsistenciaService {
     }
 
     private Matricula resolverMatriculaVigente(Alumno alumno) {
-        AlumnoApoderado principal = alumnoApoderadoRepository.findByAlumno(alumno).stream()
-                .filter(v -> v.getApoPrincipal() == PRINCIPAL)
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("El alumno no tiene un apoderado principal registrado"));
-        return matriculaRepository.findByAlumnoApoderadoAndAccesoNot(principal, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
+        return accesoContextoService.matriculaActual(alumno.getIdAlumno())
                 .orElseThrow(() -> new IllegalArgumentException("El alumno no tiene una matrícula vigente"));
     }
 

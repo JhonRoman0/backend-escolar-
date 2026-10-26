@@ -1,5 +1,6 @@
 package com.example.Escolar.Dto;
 
+import com.example.Escolar.Model.AlumnoApoderado;
 import com.example.Escolar.Model.Apoderado;
 import com.example.Escolar.Model.Usuario;
 import lombok.Getter;
@@ -19,7 +20,10 @@ public class ApoderadoResponse {
     private String gmail;
     private String celular;
     private String direccion;
+    private Integer idParentesco;
     private String parentesco;
+    private String sexo;
+    private boolean principal;
     private String documentoIdentidad;
     private LocalDate fechaNaci;
     private String urlFoto;
@@ -33,8 +37,19 @@ public class ApoderadoResponse {
         }
         response.setCelular(apoderado.getCelular());
         response.setDireccion(apoderado.getDireccion());
-        response.setParentesco(apoderado.getParentesco());
+        response.setSexo(apoderado.getSexo() == null ? null : apoderado.getSexo().name());
         response.setAccesoId(apoderado.getAcceso().getIdAcceso().longValue());
+        return response;
+    }
+
+    // El parentesco es del vínculo con un alumno, no del apoderado.
+    public static ApoderadoResponse fromVinculo(AlumnoApoderado vinculo) {
+        ApoderadoResponse response = fromEntity(vinculo.getApoderado());
+        if (vinculo.getParentesco() != null) {
+            response.setIdParentesco(vinculo.getParentesco().getIdParentesco());
+            response.setParentesco(vinculo.getParentesco().getNombre());
+        }
+        response.setPrincipal(vinculo.getApoPrincipal() == 1);
         return response;
     }
 

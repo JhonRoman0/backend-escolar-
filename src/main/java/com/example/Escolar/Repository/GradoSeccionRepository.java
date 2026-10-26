@@ -18,6 +18,13 @@ public interface GradoSeccionRepository extends JpaRepository<GradoSeccion, Inte
 
     long countByAnioEscolarIdAnioAndAccesoNot(Integer idAnio, Acceso acceso);
 
+    List<GradoSeccion> findByAnioEscolarIdAnioAndAccesoNot(Integer idAnio, Acceso acceso);
+
+    // Bloquea la sección mientras se cuenta su cupo: dos matrículas no toman el último lugar a la vez.
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("SELECT gs FROM GradoSeccion gs WHERE gs.idGradoSeccion = :id")
+    Optional<GradoSeccion> bloquear(@org.springframework.data.repository.query.Param("id") Integer id);
+
     long countByTurnoIdTurnoAndAccesoNot(Integer idTurno, Acceso acceso);
 
     /** Secciones que tienen esta aula como salon. */

@@ -25,4 +25,8 @@ public class AlumnoApoderado {
     Apoderado apoderado;
     @Column(name = "apo_principal", nullable = false)
     byte apoPrincipal;
+    // Va en el vínculo: la misma persona puede ser padre de un alumno y tío de otro.
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_parentesco")
+    Parentesco parentesco;
 }

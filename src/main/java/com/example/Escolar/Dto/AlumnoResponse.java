@@ -22,6 +22,9 @@ public class AlumnoResponse {
     private String direccion;
     private String documentoIdentidad;
     private String urlFoto;
+    private String sexo;
+    private boolean tieneDiscapacidad;
+    private String discapacidad;
     private Long accesoId;
     private List<ApoderadoResponse> apoderados;
     // Enriquecimiento vía matrícula vigente (fallback "Sin matrícula")
@@ -49,13 +52,15 @@ public class AlumnoResponse {
         response.setDireccion(alumno.getDireccion());
         response.setDocumentoIdentidad(alumno.getDocumentoIdentidad());
         response.setUrlFoto(alumno.getUrlFoto());
+        response.setSexo(alumno.getSexo() == null ? null : alumno.getSexo().name());
+        response.setTieneDiscapacidad(Boolean.TRUE.equals(alumno.getTieneDiscapacidad()));
+        response.setDiscapacidad(alumno.getDiscapacidad());
         response.setAccesoId(alumno.getAcceso().getIdAcceso().longValue());
         if (vinculos != null) {
             response.setApoderados(vinculos.stream()
                     .sorted(Comparator.comparing(AlumnoApoderado::getApoPrincipal).reversed())
-                    .map(AlumnoApoderado::getApoderado)
-                    .filter(ap -> ap.getAcceso().getIdAcceso() != 2)
-                    .map(ApoderadoResponse::fromEntity)
+                    .filter(v -> v.getApoderado().getAcceso().getIdAcceso() != 2)
+                    .map(ApoderadoResponse::fromVinculo)
                     .toList());
         }
         // Fallback académico cuando no se enriquece vía servicio

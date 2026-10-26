@@ -52,6 +52,9 @@ public final class CatalogoPermisos {
                 "CREAR", "Crear grados y secciones",
                 "ACTUALIZAR", "Editar grados y secciones",
                 "ELIMINAR", "Eliminar grados y secciones");
+        // Define el grado siguiente al matricular y qué grados no repiten.
+        permiso("ORDEN_GRADOS", ACADEMICO,
+                "ACTUALIZAR", "Ordenar niveles y grados, y marcar si repiten");
         // Los docentes se crean desde Usuarios, al asignar el rol Docente.
         permiso("DOCENTES", ACADEMICO,
                 "ACTUALIZAR", "Editar datos y foto",
@@ -70,6 +73,10 @@ public final class CatalogoPermisos {
                 "ELIMINAR", "Eliminar asignaciones");
         permiso("CONFIGURACION_ACADEMICA", ACADEMICO,
                 "ACTUALIZAR", "Editar la hora académica");
+        permiso("PAGOS_MATRICULA", "Pagos",
+                "CREAR", "Crear métodos de pago",
+                "ACTUALIZAR", "Editar métodos de pago y montos",
+                "ELIMINAR", "Eliminar métodos de pago");
         permiso("RECREOS", ACADEMICO,
                 "CREAR", "Crear recreos",
                 "ACTUALIZAR", "Editar recreos",

@@ -1,7 +1,7 @@
 package com.example.Escolar.Controller;
 
 import com.example.Escolar.Dto.AlumnoReporteResponse;
-import com.example.Escolar.Dto.AlumnoRequest;
+import com.example.Escolar.Dto.AlumnoEdicionRequest;
 import com.example.Escolar.Dto.AlumnoResponse;
 import com.example.Escolar.Service.AccesoContextoService;
 import com.example.Escolar.Service.AlumnoService;
@@ -50,21 +50,9 @@ public class AlumnoController {
         return alumnoService.getByDocumento(documento, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
     }
 
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public AlumnoResponse create(@Valid @RequestBody AlumnoRequest request) {
-        return alumnoService.create(request);
-    }
-
     @PutMapping("/{id}")
-    public AlumnoResponse update(@PathVariable Integer id, @Valid @RequestBody AlumnoRequest request) {
-        return alumnoService.update(id, request);
-    }
-
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Integer id) {
-        alumnoService.delete(id);
-        return ResponseEntity.noContent().build();
+    public AlumnoResponse update(@PathVariable Integer id, @Valid @RequestBody AlumnoEdicionRequest request) {
+        return alumnoService.actualizarDiscapacidad(id, request);
     }
 
     @PostMapping(value = "/{id}/foto", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

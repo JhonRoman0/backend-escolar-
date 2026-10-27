@@ -3,6 +3,7 @@ package com.example.Escolar.Controller;
 import com.example.Escolar.Dto.GradoRequest;
 import com.example.Escolar.Dto.GradoResponse;
 import com.example.Escolar.Service.GradoService;
+import com.example.Escolar.Service.OrdenAcademicoService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -17,6 +18,7 @@ import java.util.List;
 public class GradoController {
 
     private final GradoService gradoService;
+    private final OrdenAcademicoService ordenAcademicoService;
 
     @GetMapping
     public List<GradoResponse> getAll(@RequestParam(required = false) Integer idNivel,
@@ -41,6 +43,17 @@ public class GradoController {
     @PutMapping("/{id}")
     public GradoResponse update(@PathVariable Integer id, @Valid @RequestBody GradoRequest request) {
         return gradoService.update(id, request);
+    }
+
+    @PatchMapping("/{id}/repite")
+    public GradoResponse cambiarRepite(@PathVariable Integer id, @RequestParam boolean repite) {
+        return gradoService.cambiarRepite(id, repite);
+    }
+
+    @PutMapping("/{id}/orden")
+    public ResponseEntity<Void> mover(@PathVariable Integer id, @RequestParam boolean subir) {
+        ordenAcademicoService.moverGrado(id, subir);
+        return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{id}")

@@ -8,6 +8,7 @@ import com.example.Escolar.Model.GradoAcademico;
 import com.example.Escolar.Model.GradoSeccion;
 import com.example.Escolar.Model.Modulo;
 import com.example.Escolar.Model.Nivel;
+import com.example.Escolar.Model.Parentesco;
 import com.example.Escolar.Model.Permiso;
 import com.example.Escolar.Model.PermisoAccion;
 import com.example.Escolar.Model.Rol;
@@ -26,6 +27,7 @@ import com.example.Escolar.Repository.GradoAcademicoRepository;
 import com.example.Escolar.Repository.GradoSeccionRepository;
 import com.example.Escolar.Repository.ModuloRepository;
 import com.example.Escolar.Repository.NivelRepository;
+import com.example.Escolar.Repository.ParentescoRepository;
 import com.example.Escolar.Repository.PermisoAccionRepository;
 import com.example.Escolar.Repository.PermisoRepository;
 import com.example.Escolar.Repository.RolPermisoAccionRepository;
@@ -37,6 +39,7 @@ import com.example.Escolar.Repository.TurnoRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
 import com.example.Escolar.Service.AccesoConstants;
+import com.example.Escolar.Service.OrdenAcademicoService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -75,6 +78,8 @@ public class DataSeeder implements CommandLineRunner {
     private final TipoContratoRepository tipoContratoRepository;
     private final SeccionRepository seccionRepository;
     private final GradoSeccionRepository gradoSeccionRepository;
+    private final ParentescoRepository parentescoRepository;
+    private final OrdenAcademicoService ordenAcademicoService;
     private final PasswordEncoder passwordEncoder;
 
     @Value("${jwt.admin.codigo}")
@@ -112,6 +117,9 @@ public class DataSeeder implements CommandLineRunner {
         seedGradosAcademicos();
         seedTiposContrato();
         migrarSeccionesInicial();
+        ordenAcademicoService.inicializar();
+        seedRepiteGrados();
+        seedParentescos();
         seedRoles();
         seedModulosRbac();
         catalogoPermisosSync.sincronizar();
@@ -287,6 +295,36 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     /**
+     * Solo llena los grados que aun no lo tienen: en Inicial y en el primer grado
+     * de Primaria nadie repite. Despues se cambia desde Catalogos.
+     */
+    private void seedRepiteGrados() {
+        for (Grado grado : gradoRepository.findByAccesoNot(accesoNoEliminado())) {
+            if (grado.getRepite() != null) {
+                continue;
+            }
+            String nivel = grado.getNivel().getNombre();
+            boolean noRepite = "Inicial".equalsIgnoreCase(nivel)
+                    || ("Primaria".equalsIgnoreCase(nivel) && Integer.valueOf(1).equals(grado.getOrden()));
+            grado.setRepite(!noRepite);
+            gradoRepository.save(grado);
+        }
+    }
+
+    /** Catalogo sin pantalla: el formulario de matricula solo lo consulta. */
+    private void seedParentescos() {
+        for (String nombre : List.of("Padre", "Madre", "Abuelo/a", "Tío/a", "Hermano/a", "Tutor legal", "Otro")) {
+            if (parentescoRepository.findByNombre(nombre).isPresent()) {
+                continue;
+            }
+            Parentesco parentesco = new Parentesco();
+            parentesco.setNombre(nombre);
+            parentesco.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
+            parentescoRepository.save(parentesco);
+        }
+    }
+
+    /**
      * Antes Inicial era el unico nivel sin secciones: cada grado guardaba una fila
      * de grado_seccion con la seccion en nulo y toda la app la mostraba como
      * "Unica". Ahora Inicial maneja letras como los demas niveles, asi que esa
@@ -381,6 +419,7 @@ public class DataSeeder implements CommandLineRunner {
                 new PermisoSeed("CURSOS", "Cursos", crud()),
                 new PermisoSeed("TURNOS", "Turnos", crud()),
                 new PermisoSeed("GRADOS", "Grados", crud()),
+                new PermisoSeed("ORDEN_GRADOS", "Orden de grados", List.of("ACTUALIZAR")),
                 new PermisoSeed("ANIOS_ESCOLARES", "Años Escolares", crud()),
                 new PermisoSeed("AULAS", "Aulas", crud()),
                 new PermisoSeed("ASIGNACIONES", "Asignaciones", crud()),
@@ -396,6 +435,9 @@ public class DataSeeder implements CommandLineRunner {
 
         crearModuloSiFalta(new ModuloSeed("Matricula", "clipboard-list", List.of(
                 new PermisoSeed("MATRICULAS", "Matrículas", crudWithExport()))));
+
+        crearModuloSiFalta(new ModuloSeed("Pagos", "wallet", List.of(
+                new PermisoSeed("PAGOS_MATRICULA", "Pagos de matrícula", crud()))));
 
         crearModuloSiFalta(new ModuloSeed("Consolidado", "clipboard-check", List.of(
                 new PermisoSeed("CONSOLIDADOS", "Consolidados", List.of("CREAR", "ACTUALIZAR", "IMPRIMIR_EXPORTAR")),
@@ -432,6 +474,7 @@ public class DataSeeder implements CommandLineRunner {
         asignarPermiso("Administrador", "CURSOS", crud());
         asignarPermiso("Administrador", "TURNOS", crud());
         asignarPermiso("Administrador", "GRADOS", crud());
+        asignarPermiso("Administrador", "ORDEN_GRADOS", List.of("ACTUALIZAR"));
         asignarPermiso("Administrador", "ANIOS_ESCOLARES", crud());
         asignarPermiso("Administrador", "AULAS", crud());
         asignarPermiso("Administrador", "ASIGNACIONES", crud());
@@ -442,6 +485,7 @@ public class DataSeeder implements CommandLineRunner {
         asignarPermiso("Administrador", "ALUMNOS", crudWithExport());
         asignarPermiso("Administrador", "APODERADOS", crud());
         asignarPermiso("Administrador", "MATRICULAS", crudWithExport());
+        asignarPermiso("Administrador", "PAGOS_MATRICULA", crud());
         asignarPermiso("Administrador", "CONSOLIDADOS", List.of("CREAR", "ACTUALIZAR", "IMPRIMIR_EXPORTAR"));
         asignarPermiso("Administrador", "COMPETENCIAS", crud());
         asignarPermiso("Administrador", "NOTAS", List.of("CREAR", "AUTORIZAR", "IMPRIMIR_EXPORTAR"));

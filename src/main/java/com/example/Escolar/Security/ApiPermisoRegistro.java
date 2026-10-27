@@ -24,7 +24,7 @@ public class ApiPermisoRegistro {
     private static final String[] LECTORES_ESTRUCTURA = {
             "DOCENTES", "CURSOS", "COMPETENCIAS", "TURNOS", "GRADOS", "ANIOS_ESCOLARES", "AULAS", "ASIGNACIONES",
             "RECREOS", "CONFIGURACION_ACADEMICA", "SUSPENSIONES_DOCENTE", "CAMBIOS_DOCENTE", "ALUMNOS", "APODERADOS",
-            "MATRICULAS", "ASISTENCIAS", "NOTAS", "CONSOLIDADOS", "HORARIOS", "PLANTILLAS", "USUARIOS"
+            "MATRICULAS", "ASISTENCIAS", "NOTAS", "CONSOLIDADOS", "HORARIOS", "PLANTILLAS", "USUARIOS", "PAGOS_MATRICULA", "ORDEN_GRADOS"
     };
 
     private final List<Registro> registros = new ArrayList<>();
@@ -96,10 +96,14 @@ public class ApiPermisoRegistro {
         registrarLectura("GET", "/grados", "GRADOS", LECTORES_ESTRUCTURA);
         registrarLectura("GET", "/grados/**", "GRADOS", LECTORES_ESTRUCTURA);
         registrar("POST", "/grados", "GRADOS", "CREAR");
+        // Antes que PUT /grados/**: el orden tiene permiso propio.
+        registrar("PUT", "/grados/*/orden", "ORDEN_GRADOS", "ACTUALIZAR");
+        registrar("PATCH", "/grados/*/repite", "ORDEN_GRADOS", "ACTUALIZAR");
         registrar("PUT", "/grados/**", "GRADOS", "ACTUALIZAR");
         registrar("DELETE", "/grados/**", "GRADOS", "ELIMINAR");
 
         registrarLectura("GET", "/niveles", "GRADOS", LECTORES_ESTRUCTURA);
+        registrar("PUT", "/niveles/*/orden", "ORDEN_GRADOS", "ACTUALIZAR");
         registrarLectura("GET", "/secciones", "GRADOS", LECTORES_ESTRUCTURA);
         registrarLectura("GET", "/secciones/**", "GRADOS", LECTORES_ESTRUCTURA);
         registrar("POST", "/secciones", "GRADOS", "CREAR");
@@ -130,7 +134,6 @@ public class ApiPermisoRegistro {
         registrarLectura("GET", "/alumnos/**", "ALUMNOS");
         registrar("POST", "/alumnos/{id}/foto", "ALUMNOS", "ACTUALIZAR");
         registrar("DELETE", "/alumnos/{id}/foto", "ALUMNOS", "ACTUALIZAR");
-        registrar("POST", "/alumnos", "ALUMNOS", "CREAR");
         registrar("PUT", "/alumnos/**", "ALUMNOS", "ACTUALIZAR");
         registrar("DELETE", "/alumnos/**", "ALUMNOS", "ELIMINAR");
         registrar("GET", "/alumnos/reporte", "ALUMNOS", "IMPRIMIR_EXPORTAR");
@@ -138,12 +141,26 @@ public class ApiPermisoRegistro {
         registrarLectura("GET", "/apoderados", "APODERADOS");
         registrarLectura("GET", "/apoderados/**", "APODERADOS");
         registrar("POST", "/apoderados", "APODERADOS", "CREAR");
+        registrar("POST", "/apoderados/alumno/*", "APODERADOS", "CREAR");
         registrar("PUT", "/apoderados/**", "APODERADOS", "ACTUALIZAR");
         registrar("DELETE", "/apoderados/**", "APODERADOS", "ELIMINAR");
 
+        registrarLectura("GET", "/parentescos", "MATRICULAS", "APODERADOS", "ALUMNOS");
+        registrarLectura("GET", "/sexos", "MATRICULAS", "APODERADOS", "ALUMNOS");
+
+        registrarLectura("GET", "/metodos-pago", "PAGOS_MATRICULA", "MATRICULAS");
+        registrar("POST", "/metodos-pago", "PAGOS_MATRICULA", "CREAR");
+        registrar("PUT", "/metodos-pago/*", "PAGOS_MATRICULA", "ACTUALIZAR");
+        registrar("DELETE", "/metodos-pago/*", "PAGOS_MATRICULA", "ELIMINAR");
+        registrarLectura("GET", "/montos-matricula", "PAGOS_MATRICULA", "MATRICULAS");
+        registrar("PUT", "/montos-matricula", "PAGOS_MATRICULA", "ACTUALIZAR");
+
+        // Estudiantes también busca apoderados por DNI al agregar uno.
+        registrarLectura("GET", "/matriculas/inscripcion/apoderado/*", "MATRICULAS", "APODERADOS");
         registrarLectura("GET", "/matriculas", "MATRICULAS");
         registrarLectura("GET", "/matriculas/**", "MATRICULAS");
-        registrar("POST", "/matriculas", "MATRICULAS", "CREAR");
+        registrar("POST", "/matriculas/inscripcion", "MATRICULAS", "CREAR");
+        registrar("POST", "/matriculas/inscripcion/validar", "MATRICULAS", "CREAR");
         registrar("POST", "/matriculas/**", "MATRICULAS", "ACTUALIZAR");
         registrar("PUT", "/matriculas/**", "MATRICULAS", "ACTUALIZAR");
         registrar("DELETE", "/matriculas/**", "MATRICULAS", "ELIMINAR");

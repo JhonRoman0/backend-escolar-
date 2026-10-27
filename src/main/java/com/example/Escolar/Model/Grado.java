@@ -25,4 +25,10 @@ public class Grado {
     @ManyToOne
     @JoinColumn(name = "id_nivel", nullable = false)
     Nivel nivel;
+    // Posición dentro del nivel; la asigna el sistema. Grados con el mismo nombre y nivel comparten orden.
+    @Column(name = "orden")
+    Integer orden;
+    // false: sus alumnos pasan al grado siguiente sin esperar el cierre del año.
+    @Column(name = "repite")
+    Boolean repite;
 }

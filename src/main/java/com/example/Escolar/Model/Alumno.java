@@ -33,6 +33,13 @@ public class Alumno {
     LocalDate fechaNacimiento;
     @Column(name = "direccion", length = 120)
     String direccion;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "sexo", length = 10)
+    Sexo sexo;
+    @Column(name = "tiene_discapacidad")
+    Boolean tieneDiscapacidad;
+    @Column(name = "discapacidad", length = 255)
+    String discapacidad;
     @Column(name = "documento_identidad", length = 20, unique = true)
     String documentoIdentidad;
     @Column(name = "url_foto", nullable = true)

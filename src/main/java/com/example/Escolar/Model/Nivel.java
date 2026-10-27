@@ -19,6 +19,9 @@ public class Nivel {
     Integer idNivel;
     @Column(name = "nombre", length = 50, nullable = false, unique = true)
     String nombre;
+    // Posición entre niveles (Inicial, Primaria, Secundaria); la asigna el sistema.
+    @Column(name = "orden")
+    Integer orden;
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "id_acceso", nullable = false)
     Acceso acceso;

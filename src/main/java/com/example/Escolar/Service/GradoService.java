@@ -38,9 +38,11 @@ public class GradoService {
     private final AccesoRepository accesoRepository;
     private final GradoSeccionService gradoSeccionService;
     private final AsignacionRepository asignacionRepository;
+    private final OrdenAcademicoService ordenAcademicoService;
 
     public List<GradoResponse> getAll() {
         return gradoRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
+                .sorted(OrdenAcademicoService.POR_ORDEN_GRADO)
                 .map(this::toResponse)
                 .toList();
     }
@@ -48,6 +50,7 @@ public class GradoService {
     public List<GradoResponse> getAllByNivel(Integer idNivel) {
         Nivel nivel = findNivel(idNivel);
         return gradoRepository.findByNivelAndAccesoNot(nivel, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
+                .sorted(OrdenAcademicoService.POR_ORDEN_GRADO)
                 .map(this::toResponse)
                 .toList();
     }
@@ -86,8 +89,13 @@ public class GradoService {
         Grado grado = new Grado();
         grado.setNombre(request.getNombre().trim());
         grado.setNivel(nivel);
+        grado.setOrden(ordenAcademicoService.ordenParaNuevo(grado.getNombre(), nivel, null));
+        grado.setRepite(request.getRepite() != null ? request.getRepite() : repiteDelGrupo(grado));
         grado.setAcceso(accesoRepository.findById(request.getAccesoId() == null ? AccesoConstants.ACTIVO : request.getAccesoId()).orElseThrow());
         grado = gradoRepository.save(grado);
+        if (request.getRepite() != null) {
+            aplicarRepiteAlGrupo(grado, request.getRepite());
+        }
 
         if (request.getSecciones() != null && !request.getSecciones().isEmpty()) {
             crearSecciones(grado, turno, anioEscolar, request.getSecciones());
@@ -105,8 +113,15 @@ public class GradoService {
         if (request.getNombre() != null && !request.getNombre().isBlank()) {
             grado.setNombre(request.getNombre().trim());
         }
-        if (request.getIdNivel() != null) {
+        Nivel nivelAnterior = grado.getNivel();
+        if (request.getIdNivel() != null && !request.getIdNivel().equals(nivelAnterior.getIdNivel())) {
             grado.setNivel(findNivel(request.getIdNivel()));
+            grado.setOrden(ordenAcademicoService.ordenParaNuevo(grado.getNombre(), grado.getNivel(), grado.getIdGrado()));
+            gradoRepository.save(grado);
+            ordenAcademicoService.compactar(nivelAnterior);
+        }
+        if (request.getRepite() != null) {
+            aplicarRepiteAlGrupo(grado, request.getRepite());
         }
         if (request.getAccesoId() != null) {
             grado.setAcceso(accesoRepository.findById(request.getAccesoId()).orElseThrow());
@@ -128,6 +143,32 @@ public class GradoService {
 
         validarCombinacionUnica(grado.getNombre(), idNivelFinal, turnoFinal, anioFinal, id);
         return toResponse(gradoRepository.save(grado));
+    }
+
+    @Transactional
+    public GradoResponse cambiarRepite(Integer id, boolean repite) {
+        Grado grado = findGrado(id);
+        aplicarRepiteAlGrupo(grado, repite);
+        return toResponse(gradoRepository.save(grado));
+    }
+
+    // Las filas del mismo grado (una por turno) comparten "repite".
+    private Boolean repiteDelGrupo(Grado grado) {
+        return grupo(grado).stream().map(Grado::getRepite).filter(r -> r != null).findFirst().orElse(true);
+    }
+
+    private void aplicarRepiteAlGrupo(Grado grado, boolean repite) {
+        grado.setRepite(repite);
+        List<Grado> grupo = grupo(grado);
+        grupo.forEach(g -> g.setRepite(repite));
+        gradoRepository.saveAll(grupo);
+    }
+
+    private List<Grado> grupo(Grado grado) {
+        return gradoRepository.findByNivelAndAccesoNot(grado.getNivel(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
+                .filter(g -> !g.getIdGrado().equals(grado.getIdGrado()))
+                .filter(g -> java.util.Objects.equals(g.getOrden(), grado.getOrden()))
+                .toList();
     }
 
     private void sincronizarSecciones(Grado grado, GradoRequest request) {
@@ -284,6 +325,7 @@ public class GradoService {
         }
         grado.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
         gradoRepository.save(grado);
+        ordenAcademicoService.compactar(grado.getNivel());
     }
 
     private void crearSecciones(Grado grado, Turno turno, AnioEscolar anioEscolar, List<SeccionNueva> secciones) {
@@ -351,6 +393,9 @@ public class GradoService {
         response.setNombre(grado.getNombre());
         response.setIdNivel(grado.getNivel().getIdNivel());
         response.setNivel(grado.getNivel().getNombre());
+        response.setOrden(grado.getOrden());
+        response.setNivelOrden(grado.getNivel().getOrden());
+        response.setRepite(grado.getRepite());
         response.setAccesoId(grado.getAcceso().getIdAcceso().longValue());
         List<GradoSeccion> filas = gradoSeccionRepository.findByGradoAndAccesoNot(grado, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
         if (!filas.isEmpty()) {

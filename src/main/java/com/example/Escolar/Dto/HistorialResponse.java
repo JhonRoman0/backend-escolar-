@@ -14,6 +14,8 @@ public class HistorialResponse {
     private String seccion;
     private String turno;
     private Integer idAnio;
+    private String anio;
+    private String nivel;
     private LocalDate fechaInicio;
     private LocalDate fechaFinal;
     private String motivo;

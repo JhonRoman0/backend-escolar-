@@ -394,10 +394,7 @@ public class NotaService {
             // Solo las matrículas de las secciones donde enseña.
             case DOCENTE -> accesoContextoService.gradoSeccionIdsDeDocente(idUsuario)
                     .contains(matricula.getGradoSeccion().getIdGradoSeccion());
-            case APODERADO -> accesoContextoService.apoderadoDeUsuario(idUsuario)
-                    .map(a -> a.getIdApoderado().equals(
-                            matricula.getAlumnoApoderado().getApoderado().getIdApoderado()))
-                    .orElse(false);
+            case APODERADO -> accesoContextoService.esApoderadoDe(idUsuario, matricula);
         };
     }
 

@@ -2,23 +2,24 @@ package com.example.Escolar.Service;
 
 import com.example.Escolar.Dto.HistorialResponse;
 import com.example.Escolar.Dto.MatriculaReporteResponse;
-import com.example.Escolar.Dto.MatriculaRequest;
+import com.example.Escolar.Dto.PagoMatriculaResponse;
 import com.example.Escolar.Dto.MatriculaResponse;
 import com.example.Escolar.Exception.ResourceNotFoundException;
+import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.Alumno;
 import com.example.Escolar.Model.AlumnoApoderado;
 import com.example.Escolar.Model.Apoderado;
 import com.example.Escolar.Model.GradoSeccion;
 import com.example.Escolar.Model.HistorialMatricula;
 import com.example.Escolar.Model.Matricula;
-import com.example.Escolar.Model.Usuario;
+import com.example.Escolar.Model.PagoMatricula;
+import com.example.Escolar.Model.TipoPago;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.AlumnoApoderadoRepository;
-import com.example.Escolar.Repository.AlumnoRepository;
 import com.example.Escolar.Repository.GradoSeccionRepository;
 import com.example.Escolar.Repository.HistorialMatriculaRepository;
 import com.example.Escolar.Repository.MatriculaRepository;
-import com.example.Escolar.Repository.UsuarioRepository;
+import com.example.Escolar.Repository.PagoMatriculaRepository;
 import com.example.Escolar.Service.AccesoContextoService.Alcance;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -31,7 +32,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 @Service
@@ -39,15 +39,12 @@ import java.util.Set;
 public class MatriculaService {
 
     private static final String PERMISO = "MATRICULAS";
-    public static final byte PRINCIPAL = 1;
-    public static final byte ESTADO_CERRADO = 2;
 
     private final MatriculaRepository matriculaRepository;
     private final HistorialMatriculaRepository historialMatriculaRepository;
-    private final AlumnoRepository alumnoRepository;
     private final AlumnoApoderadoRepository alumnoApoderadoRepository;
     private final GradoSeccionRepository gradoSeccionRepository;
-    private final UsuarioRepository usuarioRepository;
+    private final PagoMatriculaRepository pagoMatriculaRepository;
     private final AccesoRepository accesoRepository;
     private final AccesoContextoService accesoContextoService;
 
@@ -106,122 +103,70 @@ public class MatriculaService {
         return toResponse(matricula);
     }
 
-    @Transactional
-    public MatriculaResponse create(MatriculaRequest request, Integer idUsuarioRegistro) {
-        Alumno alumno = findAlumno(request.getIdAlumno());
-        AlumnoApoderado alumnoApoderado = resolverVinculoPrincipal(alumno);
-        GradoSeccion gradoSeccion = findGradoSeccion(request.getIdGradoSeccion());
-        Usuario usuario = findUsuario(idUsuarioRegistro);
-
-        cerrarMatriculaAnteriorSiAplica(alumnoApoderado, gradoSeccion);
-
-        Matricula matricula = new Matricula();
-        matricula.setAlumnoApoderado(alumnoApoderado);
-        matricula.setGradoSeccion(gradoSeccion);
-        matricula.setUsuario(usuario);
-        matricula.setSolicitudMatricula(request.getSolicitudMatricula());
-        matricula.setFechaPago(request.getFechaPago());
-        matricula.setMontoPago(request.getMontoPago());
-        matricula.setObservaciones(request.getObservaciones());
-        matricula.setAcceso(accesoRepository.findById(request.getAccesoId() == null ? AccesoConstants.ACTIVO : request.getAccesoId()).orElseThrow());
-        matricula.setFechaRegistro(LocalDate.now());
-        Matricula saved = matriculaRepository.save(matricula);
-
-        crearHistorial(saved, gradoSeccion, LocalDate.now(), null, "Matrícula inicial");
-        return toResponse(saved);
-    }
-
-    private void cerrarMatriculaAnteriorSiAplica(AlumnoApoderado alumnoApoderado, GradoSeccion nuevoGradoSeccion) {
-        Optional<Matricula> activa = matriculaRepository
-                .findByAlumnoApoderadoAndAcceso(alumnoApoderado, accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
-        if (activa.isEmpty()) {
-            return;
-        }
-        Matricula anterior = activa.get();
-        Integer idAnioAnterior = anterior.getGradoSeccion().getAnioEscolar().getIdAnio();
-        Integer idAnioNuevo = nuevoGradoSeccion.getAnioEscolar().getIdAnio();
-        if (idAnioAnterior.equals(idAnioNuevo)) {
-            throw new IllegalArgumentException("El alumno ya tiene una matrícula activa en el año " + nuevoGradoSeccion.getAnioEscolar().getAnio());
-        }
-        if (anterior.getGradoSeccion().getAnioEscolar().getEstado() != ESTADO_CERRADO) {
-            throw new IllegalArgumentException("El año " + anterior.getGradoSeccion().getAnioEscolar().getAnio()
-                    + " aún no está cerrado. Cierre el año escolar antes de matricular en el nuevo año.");
-        }
-        cerrarHistorialVigente(anterior);
-        anterior.setAcceso(accesoRepository.findById(AccesoConstants.INACTIVO).orElseThrow());
-        matriculaRepository.save(anterior);
-    }
-
+    /**
+     * Cambio de sección en un año vigente: mismo grado, con aula y cupo. Deja el
+     * historial con el motivo. En un año por comenzar se edita la matrícula.
+     */
     @Transactional
     public MatriculaResponse cambioSeccion(Integer idMatricula, Integer idGradoSeccion, String motivo) {
         Matricula matricula = findMatricula(idMatricula);
+        GradoSeccion actual = matricula.getGradoSeccion();
+        if (actual.getAnioEscolar().getEstado() != AnioEscolarService.ESTADO_VIGENTE) {
+            throw new IllegalArgumentException("El cambio de sección solo se hace en un año vigente");
+        }
         GradoSeccion nuevoGradoSeccion = findGradoSeccion(idGradoSeccion);
+        // Mismo grado aunque sea otra fila (una por turno): mismo nivel y orden.
+        boolean mismoGrado = nuevoGradoSeccion.getGrado().getNivel().getIdNivel().equals(actual.getGrado().getNivel().getIdNivel())
+                && java.util.Objects.equals(nuevoGradoSeccion.getGrado().getOrden(), actual.getGrado().getOrden());
+        if (!mismoGrado
+                || !nuevoGradoSeccion.getAnioEscolar().getIdAnio().equals(actual.getAnioEscolar().getIdAnio())) {
+            throw new IllegalArgumentException("El cambio de sección debe ser dentro del mismo grado y año");
+        }
+        if (nuevoGradoSeccion.getAula() == null) {
+            throw new IllegalArgumentException("La sección " + GradoSeccionService.nombreSeccion(nuevoGradoSeccion)
+                    + " no tiene aula asignada");
+        }
+        gradoSeccionRepository.bloquear(nuevoGradoSeccion.getIdGradoSeccion());
+        if (matriculaRepository.countByGradoSeccionIdGradoSeccionAndAccesoNot(idGradoSeccion, eliminado())
+                >= nuevoGradoSeccion.getAula().getCapacidad()) {
+            throw new IllegalArgumentException("La sección " + GradoSeccionService.nombreSeccion(nuevoGradoSeccion)
+                    + " ya no tiene cupo");
+        }
 
         cerrarHistorialVigente(matricula);
         matricula.setGradoSeccion(nuevoGradoSeccion);
         matricula = matriculaRepository.save(matricula);
 
-        crearHistorial(matricula, nuevoGradoSeccion, LocalDate.now(), null, motivo);
+        crearHistorial(matricula, nuevoGradoSeccion, motivo);
         return toResponse(matricula);
     }
 
-    @Transactional
-    public MatriculaResponse update(Integer id, MatriculaRequest request) {
-        Matricula matricula = findMatricula(id);
-        if (request.getIdGradoSeccion() != null
-                && !request.getIdGradoSeccion().equals(matricula.getGradoSeccion().getIdGradoSeccion())) {
-            throw new IllegalArgumentException("No se puede cambiar el grado-sección por este medio; use cambio de sección");
+    public List<PagoMatriculaResponse> pagos(Integer idMatricula, Integer idUsuario, List<String> roles) {
+        Matricula matricula = findMatricula(idMatricula);
+        if (!esVisible(matricula.getIdMatricula(), idUsuario, roles)) {
+            throw new ResourceNotFoundException("Matrícula no encontrada con id " + idMatricula);
         }
-        if (request.getSolicitudMatricula() != null) {
-            matricula.setSolicitudMatricula(request.getSolicitudMatricula());
-        }
-        if (request.getFechaPago() != null) {
-            matricula.setFechaPago(request.getFechaPago());
-        }
-        if (request.getMontoPago() != null) {
-            matricula.setMontoPago(request.getMontoPago());
-        }
-        if (request.getObservaciones() != null) {
-            matricula.setObservaciones(request.getObservaciones());
-        }
-        if (request.getAccesoId() != null) {
-            matricula.setAcceso(accesoRepository.findById(request.getAccesoId()).orElseThrow());
-        }
-        return toResponse(matriculaRepository.save(matricula));
+        return pagoMatriculaRepository.findByMatriculaIdMatriculaAndAccesoNotOrderByFecha(idMatricula, eliminado()).stream()
+                .map(pago -> {
+                    PagoMatriculaResponse response = new PagoMatriculaResponse();
+                    response.setIdPago(pago.getIdPagoMatricula());
+                    response.setTipo(pago.getTipo().name());
+                    response.setMonto(pago.getMonto());
+                    response.setMetodoPago(pago.getMetodoPago().getNombre());
+                    response.setCodigoTransaccion(pago.getCodigoTransaccion());
+                    response.setUrlComprobante(pago.getUrlComprobante());
+                    response.setFecha(pago.getFecha());
+                    response.setRegistradoPor(pago.getUsuario().getNombre() + " " + pago.getUsuario().getApellidoPat());
+                    return response;
+                })
+                .toList();
     }
 
-    @Transactional
-    public MatriculaResponse aprobar(Integer id, String observaciones) {
-        Matricula matricula = findMatricula(id);
-        matricula.setSolicitudMatricula((byte) 2);
-        matricula.setObservaciones(observaciones);
-        return toResponse(matriculaRepository.save(matricula));
-    }
-
-    @Transactional
-    public MatriculaResponse rechazar(Integer id, String observaciones) {
-        Matricula matricula = findMatricula(id);
-        matricula.setSolicitudMatricula((byte) 3);
-        matricula.setObservaciones(observaciones);
-        return toResponse(matriculaRepository.save(matricula));
-    }
-
-    @Transactional
-    public MatriculaResponse matricular(Integer id, LocalDate fechaPago, BigDecimal montoPago) {
-        Matricula matricula = findMatricula(id);
-        matricula.setFechaPago(fechaPago);
-        matricula.setMontoPago(montoPago);
-        matricula.setSolicitudMatricula((byte) 2);
-        return toResponse(matriculaRepository.save(matricula));
-    }
-
-    @Transactional
-    public void delete(Integer id) {
-        Matricula matricula = findMatricula(id);
-        matricula.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
-        historialMatriculaRepository.findByMatriculaIdMatriculaAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
-                .forEach(h -> h.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()));
-        matriculaRepository.save(matricula);
+    /** Pagos y diferencias menos devoluciones. */
+    public BigDecimal pagadoNeto(Integer idMatricula) {
+        return pagoMatriculaRepository.findByMatriculaIdMatriculaAndAccesoNotOrderByFecha(idMatricula, eliminado()).stream()
+                .map(p -> p.getTipo() == TipoPago.DEVOLUCION ? p.getMonto().negate() : p.getMonto())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     @Transactional(readOnly = true)
@@ -237,6 +182,8 @@ public class MatriculaService {
                     return true;
                 })
                 .map(m -> {
+                    List<PagoMatricula> pagos = pagoMatriculaRepository
+                            .findByMatriculaIdMatriculaAndAccesoNotOrderByFecha(m.getIdMatricula(), eliminado());
                     MatriculaReporteResponse r = new MatriculaReporteResponse();
                     r.setIdMatricula(m.getIdMatricula());
                     r.setAlumno(m.getAlumnoApoderado().getAlumno().getNombre() + " "
@@ -245,28 +192,26 @@ public class MatriculaService {
                     r.setGradoSeccion(m.getGradoSeccion().getGrado().getNombre() + " "
                             + (m.getGradoSeccion().getSeccion() != null ? m.getGradoSeccion().getSeccion().getNombre() : "Única"));
                     r.setFechaRegistro(m.getFechaRegistro());
-                    r.setFechaPago(m.getFechaPago());
-                    r.setMontoPago(m.getMontoPago());
+                    r.setFechaPago(pagos.isEmpty() ? null : pagos.get(0).getFecha().toLocalDate());
+                    r.setMontoPago(pagadoNeto(m.getIdMatricula()));
                     r.setRegistradoPor(m.getUsuario().getNombre() + " " + m.getUsuario().getApellidoPat());
                     return r;
                 })
                 .toList();
     }
 
-    private void crearHistorial(Matricula matricula, GradoSeccion gradoSeccion,
-                                LocalDate fechaInicio, LocalDate fechaFinal, String motivo) {
+    public void crearHistorial(Matricula matricula, GradoSeccion gradoSeccion, String motivo) {
         HistorialMatricula historial = new HistorialMatricula();
         historial.setMatricula(matricula);
         historial.setGradoSeccion(gradoSeccion);
-        historial.setFechaInicio(fechaInicio);
-        historial.setFechaFinal(fechaFinal);
+        historial.setFechaInicio(LocalDate.now());
         historial.setMotivo(motivo);
         historial.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         historialMatriculaRepository.save(historial);
     }
 
-    private void cerrarHistorialVigente(Matricula matricula) {
-        historialMatriculaRepository.findByMatriculaIdMatriculaAndAccesoNot(matricula.getIdMatricula(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
+    public void cerrarHistorialVigente(Matricula matricula) {
+        historialMatriculaRepository.findByMatriculaIdMatriculaAndAccesoNot(matricula.getIdMatricula(), eliminado())
                 .stream()
                 .filter(h -> h.getFechaFinal() == null)
                 .findFirst()
@@ -274,13 +219,6 @@ public class MatriculaService {
                     h.setFechaFinal(LocalDate.now());
                     historialMatriculaRepository.save(h);
                 });
-    }
-
-    private AlumnoApoderado resolverVinculoPrincipal(Alumno alumno) {
-        return alumnoApoderadoRepository.findByAlumno(alumno).stream()
-                .filter(v -> v.getApoPrincipal() == PRINCIPAL)
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("El alumno no tiene un apoderado principal registrado"));
     }
 
     private Set<Integer> idsMatriculasVisibles(Integer idUsuario, List<String> roles) {
@@ -302,7 +240,7 @@ public class MatriculaService {
                 return ids;
             }
             alumnoApoderadoRepository.findByApoderado(apoderado).stream()
-                    .flatMap(aa -> matriculaRepository.findByAlumnoApoderadoAndAccesoNot(aa, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream())
+                    .flatMap(aa -> matriculaRepository.findByAlumnoApoderadoAlumnoIdAlumnoAndAccesoNot(aa.getAlumno().getIdAlumno(), eliminado()).stream())
                     .forEach(m -> ids.add(m.getIdMatricula()));
             return ids;
         }
@@ -314,39 +252,33 @@ public class MatriculaService {
         return visibles == null || visibles.contains(idMatricula);
     }
 
-    private Matricula findMatricula(Integer id) {
-        return matriculaRepository.findByIdMatriculaAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
+    public Matricula findMatricula(Integer id) {
+        return matriculaRepository.findByIdMatriculaAndAccesoNot(id, eliminado())
                 .orElseThrow(() -> new ResourceNotFoundException("Matrícula no encontrada con id " + id));
     }
 
-    private Alumno findAlumno(Integer id) {
-        return alumnoRepository.findByIdAlumnoAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
-                .orElseThrow(() -> new ResourceNotFoundException("Alumno no encontrado con id " + id));
-    }
-
     private GradoSeccion findGradoSeccion(Integer id) {
-        return gradoSeccionRepository.findByIdGradoSeccionAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
+        return gradoSeccionRepository.findByIdGradoSeccionAndAccesoNot(id, eliminado())
                 .orElseThrow(() -> new ResourceNotFoundException("Grado-sección no encontrado con id " + id));
     }
 
-    private Usuario findUsuario(Integer id) {
-        if (id == null) {
-            throw new IllegalArgumentException("No se pudo identificar al usuario que realiza la matrícula");
-        }
-        return usuarioRepository.findByIdUsuarioAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
-                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con id " + id));
+    private Acceso eliminado() {
+        return accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow();
     }
 
-    private MatriculaResponse toResponse(Matricula matricula) {
+    public MatriculaResponse toResponse(Matricula matricula) {
         AlumnoApoderado vinculo = matricula.getAlumnoApoderado();
         Alumno alumno = vinculo.getAlumno();
         GradoSeccion gs = matricula.getGradoSeccion();
+        List<PagoMatricula> pagos = pagoMatriculaRepository
+                .findByMatriculaIdMatriculaAndAccesoNotOrderByFecha(matricula.getIdMatricula(), eliminado());
 
         MatriculaResponse response = new MatriculaResponse();
         response.setIdMatricula(matricula.getIdMatricula());
         response.setIdAlumno(alumno.getIdAlumno());
         response.setIdAlumnoApoderado(vinculo.getIdAlumnoApoderado());
         response.setCodigoAlumno(alumno.getCodigo());
+        response.setDocumentoAlumno(alumno.getDocumentoIdentidad());
         response.setAlumno(alumno.getNombre() + " " + alumno.getApellidoPat() + " " + alumno.getApellidoMat());
         response.setApoderado(vinculo.getApoderado().getUsuario().getNombre() + " "
                 + vinculo.getApoderado().getUsuario().getApellidoPat());
@@ -354,18 +286,30 @@ public class MatriculaService {
         response.setUsuarioRegistro(matricula.getUsuario().getNombre() + " "
                 + matricula.getUsuario().getApellidoPat());
         response.setIdGradoSeccion(gs.getIdGradoSeccion());
+        response.setIdNivel(gs.getGrado().getNivel().getIdNivel());
+        response.setNivel(gs.getGrado().getNivel().getNombre());
+        response.setIdGrado(gs.getGrado().getIdGrado());
         response.setGrado(gs.getGrado().getNombre());
         response.setSeccion(gs.getSeccion() != null ? gs.getSeccion().getNombre() : "Única");
+        response.setIdTurno(gs.getTurno().getIdTurno());
         response.setTurno(gs.getTurno().getNombre());
         response.setIdAnio(gs.getAnioEscolar().getIdAnio());
         response.setAnio(gs.getAnioEscolar().getAnio());
-        response.setSolicitudMatricula(matricula.getSolicitudMatricula());
-        response.setFechaPago(matricula.getFechaPago());
-        response.setMontoPago(matricula.getMontoPago());
+        response.setEstadoAnio(gs.getAnioEscolar().getEstado());
+        response.setMonto(matricula.getMonto());
+        response.setPagadoNeto(pagos.stream()
+                .map(p -> p.getTipo() == TipoPago.DEVOLUCION ? p.getMonto().negate() : p.getMonto())
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+        response.setMetodoPago(pagos.stream()
+                .filter(p -> p.getTipo() == TipoPago.PAGO)
+                .findFirst()
+                .map(p -> p.getMetodoPago().getNombre())
+                .orElse(null));
+        response.setFechaRegistro(matricula.getFechaRegistro());
         response.setObservaciones(matricula.getObservaciones());
         response.setAccesoId(matricula.getAcceso().getIdAcceso().longValue());
         response.setHistorial(historialMatriculaRepository
-                .findByMatriculaIdMatriculaAndAccesoNot(matricula.getIdMatricula(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
+                .findByMatriculaIdMatriculaAndAccesoNot(matricula.getIdMatricula(), eliminado()).stream()
                 .map(this::toHistorialResponse)
                 .toList());
         return response;
@@ -379,6 +323,8 @@ public class MatriculaService {
         response.setGrado(gs.getGrado().getNombre());
         response.setSeccion(gs.getSeccion() != null ? gs.getSeccion().getNombre() : "Única");
         response.setTurno(gs.getTurno().getNombre());
+        response.setAnio(gs.getAnioEscolar().getAnio());
+        response.setNivel(gs.getGrado().getNivel().getNombre());
         response.setIdAnio(gs.getAnioEscolar().getIdAnio());
         response.setFechaInicio(historial.getFechaInicio());
         response.setFechaFinal(historial.getFechaFinal());

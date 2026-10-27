@@ -54,9 +54,10 @@ public class MatriculaController {
                                           @RequestParam(required = false) Integer idSeccion,
                                           @RequestParam(required = false) Integer idTurno,
                                           @RequestParam(required = false) Integer idGradoSeccion,
-                                          @RequestParam(required = false) Integer idAnio) {
+                                          @RequestParam(required = false) Integer idAnio,
+                                          @RequestParam(required = false) Long idAcceso) {
         return matriculaService.getAll(pageable, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados(),
-                idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio);
+                idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio, idAcceso);
     }
 
     @GetMapping("/{id}")

@@ -50,7 +50,12 @@ public class MatriculaService {
 
     public Page<MatriculaResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles,
                                          Integer idNivel, Integer idGrado, Integer idSeccion,
-                                         Integer idTurno, Integer idGradoSeccion, Integer idAnio) {
+                                         Integer idTurno, Integer idGradoSeccion, Integer idAnio,
+                                         Long idAcceso) {
+        if (idAcceso != null && !AccesoConstants.ACTIVO.equals(idAcceso)
+                && !AccesoConstants.INACTIVO.equals(idAcceso)) {
+            throw new IllegalArgumentException("El estado debe ser activo o inactivo");
+        }
         boolean filtrando = idNivel != null || idGrado != null || idSeccion != null || idTurno != null || idGradoSeccion != null || idAnio != null;
         Set<Integer> visibles = idsMatriculasVisibles(idUsuario, roles);
         boolean esGestion = visibles == null;
@@ -58,11 +63,11 @@ public class MatriculaService {
         if (filtrando) {
             if (esGestion) {
                 Page<Matricula> page = matriculaRepository.findFiltradas(
-                        AccesoConstants.ELIMINADO, idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio, pageable);
+                        AccesoConstants.ELIMINADO, idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio, idAcceso, pageable);
                 return page.map(this::toResponse);
             } else {
                 List<Matricula> filtradas = matriculaRepository.findFiltradasList(
-                        AccesoConstants.ELIMINADO, idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio);
+                        AccesoConstants.ELIMINADO, idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio, idAcceso);
                 List<Matricula> visiblesList = filtradas.stream()
                         .filter(m -> visibles.contains(m.getIdMatricula()))
                         .toList();
@@ -71,15 +76,26 @@ public class MatriculaService {
         }
 
         if (esGestion) {
-            Page<Matricula> page = matriculaRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow(), pageable);
+            Page<Matricula> page = idAcceso == null
+                    ? matriculaRepository.findByAccesoNot(eliminado(), pageable)
+                    : matriculaRepository.findByAcceso(accesoRepository.findById(idAcceso).orElseThrow(), pageable);
             return page.map(this::toResponse);
         } else {
-            List<Matricula> todas = matriculaRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
+            List<Matricula> todas = idAcceso == null
+                    ? matriculaRepository.findByAccesoNot(eliminado())
+                    : matriculaRepository.findByAcceso(accesoRepository.findById(idAcceso).orElseThrow());
             List<Matricula> visiblesList = todas.stream()
                     .filter(m -> visibles.contains(m.getIdMatricula()))
                     .toList();
             return paginarMatriculasEnMemoria(visiblesList, pageable);
         }
+    }
+
+    public Page<MatriculaResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles,
+                                         Integer idNivel, Integer idGrado, Integer idSeccion,
+                                         Integer idTurno, Integer idGradoSeccion, Integer idAnio) {
+        return getAll(pageable, idUsuario, roles, idNivel, idGrado, idSeccion,
+                idTurno, idGradoSeccion, idAnio, null);
     }
 
     public Page<MatriculaResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles) {

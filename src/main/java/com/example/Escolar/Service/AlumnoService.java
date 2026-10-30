@@ -47,12 +47,23 @@ public class AlumnoService {
         boolean esGestion = visibles == null;
 
         if (filtrando) {
-            // Filtrado vigente: requiere matrícula ACTIVA. Usa query paginada en BD (vigente) y corrige totalElements.
+            // La matrícula activa que enriquece la respuesta debe cumplir el mismo contexto que la consulta.
+            java.util.function.Predicate<Matricula> contexto = m -> {
+                var gs = m.getGradoSeccion();
+                return m.getAlumnoApoderado().getApoPrincipal() == 1
+                        && !AccesoConstants.ELIMINADO.equals(gs.getAcceso().getIdAcceso())
+                        && (idAnio == null || idAnio.equals(gs.getAnioEscolar().getIdAnio()))
+                        && (idNivel == null || idNivel.equals(gs.getGrado().getNivel().getIdNivel()))
+                        && (idGrado == null || idGrado.equals(gs.getGrado().getIdGrado()))
+                        && (idSeccion == null || (gs.getSeccion() != null && idSeccion.equals(gs.getSeccion().getIdSeccion())))
+                        && (idTurno == null || idTurno.equals(gs.getTurno().getIdTurno()))
+                        && (idGradoSeccion == null || idGradoSeccion.equals(gs.getIdGradoSeccion()));
+            };
             if (esGestion) {
                 Page<Alumno> page = alumnoRepository.findFiltrados(
                         AccesoConstants.ACTIVO, AccesoConstants.ELIMINADO,
                         idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio, pageable);
-                return page.map(this::toResponseEnriquecido);
+                return new PageImpl<>(toResponseEnriquecidoBatch(page.getContent(), contexto), pageable, page.getTotalElements());
             } else {
                 // Docente/Apoderado: filtra en BD, luego por visibilidad y paginación en memoria
                 List<Alumno> filtrados = alumnoRepository.findFiltradosList(
@@ -61,7 +72,9 @@ public class AlumnoService {
                 List<Alumno> visiblesList = filtrados.stream()
                         .filter(a -> visibles.contains(a.getIdAlumno()))
                         .toList();
-                return paginarEnMemoria(visiblesList, pageable);
+                int start = (int) Math.min(pageable.getOffset(), visiblesList.size());
+                int end = Math.min(start + pageable.getPageSize(), visiblesList.size());
+                return new PageImpl<>(toResponseEnriquecidoBatch(visiblesList.subList(start, end), contexto), pageable, visiblesList.size());
             }
         }
 
@@ -95,13 +108,18 @@ public class AlumnoService {
     }
 
     private List<AlumnoResponse> toResponseEnriquecidoBatch(List<Alumno> alumnos) {
+        return toResponseEnriquecidoBatch(alumnos, m -> true);
+    }
+
+    private List<AlumnoResponse> toResponseEnriquecidoBatch(List<Alumno> alumnos, java.util.function.Predicate<Matricula> contexto) {
         if (alumnos.isEmpty()) return List.of();
         List<Integer> ids = alumnos.stream().map(Alumno::getIdAlumno).toList();
         List<Matricula> matriculas = matriculaRepository.findActivasPorAlumnoIds(ids,
                 accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
-        // Puede tener la del año vigente y la del por comenzar: se muestra la actual.
+        // Con filtros se muestra la matrícula del contexto consultado; sin filtros, la actual.
         java.util.Map<Integer, Matricula> mapa = new java.util.HashMap<>();
         matriculas.stream()
+                .filter(contexto)
                 .collect(java.util.stream.Collectors.groupingBy(m -> m.getAlumnoApoderado().getAlumno().getIdAlumno()))
                 .forEach((id, delAlumno) -> AccesoContextoService.elegirActual(delAlumno).ifPresent(m -> mapa.put(id, m)));
         return alumnos.stream().map(a -> {
@@ -109,15 +127,6 @@ public class AlumnoService {
             Matricula vigente = mapa.get(a.getIdAlumno());
             return AlumnoResponse.fromEntity(a, vinculos, vigente);
         }).toList();
-    }
-
-    private AlumnoResponse toResponseEnriquecido(Alumno alumno) {
-        List<AlumnoApoderado> vinculos = alumnoApoderadoRepository.findByAlumno(alumno);
-        // Batch de 1 para reutilizar FETCH JOIN
-        List<Matricula> vigente = matriculaRepository.findActivasPorAlumnoIds(
-                List.of(alumno.getIdAlumno()), accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
-        Matricula m = AccesoContextoService.elegirActual(vigente).orElse(null);
-        return AlumnoResponse.fromEntity(alumno, vinculos, m);
     }
 
     public AlumnoResponse getById(Integer id, Integer idUsuario, List<String> roles) {

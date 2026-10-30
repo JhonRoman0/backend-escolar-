@@ -19,6 +19,9 @@ import com.example.Escolar.Repository.NivelRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -413,6 +416,101 @@ class CursoServiceTest {
     }
 
     // ── Estado y eliminacion ───────────────────────────────────────────────
+
+    @ParameterizedTest
+    @CsvSource({"1, AREA", "1, TRANSVERSAL", "1, SUBCURSO", "2, AREA", "2, TRANSVERSAL", "2, SUBCURSO"})
+    void vigenteYCerradoNoPermitenEditarEliminarNiCambiarEstado(int estado, TipoCurso tipo) {
+        AnioEscolar anio = anio(1, "2026", (byte) estado);
+        Curso curso = curso(10, "063: MATE", "MATEMÁTICA", tipo, anio);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> cursoService.cambiarEstado(10, AccesoConstants.INACTIVO));
+        assertThrows(IllegalArgumentException.class, () -> cursoService.delete(10));
+        assertThrows(IllegalArgumentException.class,
+                () -> cursoService.actualizarSubcurso(10, subcurso("Nuevo nombre", 50)));
+
+        assertEquals(AccesoConstants.ACTIVO, curso.getAcceso().getIdAcceso());
+        assertEquals("MATEMÁTICA", curso.getNombre());
+        verify(cursoRepository, never()).save(any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2})
+    void vigenteYCerradoNoPermitenConfigurarNiCrearSubcursos(int estado) {
+        AnioEscolar anio = anio(1, "2026", (byte) estado);
+        Curso area = curso(10, "063: MATE", "MATEMÁTICA", TipoCurso.AREA, anio);
+        assertThrows(IllegalArgumentException.class, () -> cursoService.cambiarSubcursos(10, true));
+        area.setTieneSubcursos(true);
+        assertThrows(IllegalArgumentException.class, () -> cursoService.cambiarSubcursos(10, false));
+        assertThrows(IllegalArgumentException.class,
+                () -> cursoService.crearSubcurso(10, subcurso("Álgebra", 50)));
+        assertTrue(area.isTieneSubcursos());
+        verify(cursoRepository, never()).save(any());
+    }
+
+    @Test
+    void cambiarEstadoDelAreaNoCambiaElEstadoDeSusHijosNiSusDatosSiagie() {
+        AnioEscolar anio = anio(2, "2027", AnioEscolarService.ESTADO_POR_COMENZAR);
+        Curso area = curso(10, "063: MATE", "MATEMÁTICA", TipoCurso.AREA, anio);
+        area.setTieneSubcursos(true);
+        Curso hijo = curso(20, null, "Álgebra", TipoCurso.SUBCURSO, anio);
+        hijo.setCursoPadre(area);
+
+        cursoService.cambiarEstado(10, AccesoConstants.INACTIVO);
+
+        assertEquals(AccesoConstants.INACTIVO, area.getAcceso().getIdAcceso());
+        assertEquals(AccesoConstants.ACTIVO, hijo.getAcceso().getIdAcceso());
+        assertEquals("063: MATE", area.getCodigo());
+        assertEquals("MATEMÁTICA", area.getNombre());
+        assertTrue(area.isTieneSubcursos());
+        verify(cursoRepository, never()).save(hijo);
+        cursoService.cambiarEstado(10, AccesoConstants.ACTIVO);
+        assertEquals(AccesoConstants.ACTIVO, area.getAcceso().getIdAcceso());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"AREA", "TRANSVERSAL"})
+    void noSeEditanManualmenteLosDatosSiagieAunqueElAnioSeaPorComenzar(TipoCurso tipo) {
+        AnioEscolar anio = anio(2, "2027", AnioEscolarService.ESTADO_POR_COMENZAR);
+        Curso principal = curso(10, "063: MATE", "MATEMÁTICA", tipo, anio);
+        assertThrows(IllegalArgumentException.class,
+                () -> cursoService.actualizarSubcurso(10, subcurso("Otro nombre", 50)));
+        assertEquals("MATEMÁTICA", principal.getNombre());
+        verify(cursoRepository, never()).save(any());
+    }
+
+    @Test
+    void noSeHabilitanSubcursosSiElAreaTieneAsignaciones() {
+        AnioEscolar anio = anio(2, "2027", AnioEscolarService.ESTADO_POR_COMENZAR);
+        Curso area = curso(10, "063: MATE", "MATEMÁTICA", TipoCurso.AREA, anio);
+        when(asignacionRepository.existsByCursoIdCursoAndAccesoNot(eq(10), any())).thenReturn(true);
+        assertThrows(IllegalArgumentException.class, () -> cursoService.cambiarSubcursos(10, true));
+        assertTrue(!area.isTieneSubcursos());
+        verify(cursoRepository, never()).save(any());
+    }
+
+    @Test
+    void noSeDeshabilitanSubcursosSiUnHijoTieneAsignaciones() {
+        AnioEscolar anio = anio(2, "2027", AnioEscolarService.ESTADO_POR_COMENZAR);
+        Curso area = curso(10, "063: MATE", "MATEMÁTICA", TipoCurso.AREA, anio);
+        area.setTieneSubcursos(true);
+        Curso hijo = curso(20, null, "Álgebra", TipoCurso.SUBCURSO, anio);
+        when(cursoRepository.findByCursoPadreIdCursoAndAccesoNot(eq(10), any())).thenReturn(List.of(hijo));
+        when(asignacionRepository.existsByCursoIdCursoAndAccesoNot(eq(20), any())).thenReturn(true);
+        assertThrows(IllegalArgumentException.class, () -> cursoService.cambiarSubcursos(10, false));
+        assertTrue(area.isTieneSubcursos());
+        assertEquals(AccesoConstants.ACTIVO, hijo.getAcceso().getIdAcceso());
+        verify(cursoRepository, never()).save(any());
+    }
+
+    @Test
+    void unAreaDeshabilitadaNoPermiteCrearSubcursos() {
+        AnioEscolar anio = anio(2, "2027", AnioEscolarService.ESTADO_POR_COMENZAR);
+        curso(10, "063: MATE", "MATEMÁTICA", TipoCurso.AREA, anio);
+        assertThrows(IllegalArgumentException.class,
+                () -> cursoService.crearSubcurso(10, subcurso("Álgebra", 50)));
+        verify(cursoRepository, never()).save(any());
+    }
 
     @Test
     void noSeCambiaElEstadoDeUnCursoDeUnAnioVigente() {

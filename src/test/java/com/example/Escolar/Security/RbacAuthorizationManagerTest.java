@@ -3,6 +3,8 @@ package com.example.Escolar.Security;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -29,8 +31,12 @@ class RbacAuthorizationManagerTest {
 
     // Un rol "Portero" que solo tiene Docentes con editar, eliminar y reporte.
     private boolean puede(String metodo, String ruta) {
+        return puede(metodo, ruta, Map.of("DOCENTES", Set.of("ACTUALIZAR", "ELIMINAR", "IMPRIMIR_EXPORTAR")));
+    }
+
+    private boolean puede(String metodo, String ruta, Map<String, Set<String>> permisos) {
         when(concesionesService.accionesPorPermiso(9))
-                .thenReturn(Map.of("DOCENTES", Set.of("ACTUALIZAR", "ELIMINAR", "IMPRIMIR_EXPORTAR")));
+                .thenReturn(permisos);
         RbacAuthorizationManager manager = new RbacAuthorizationManager(new ApiPermisoRegistro(), concesionesService);
 
         HttpServletRequest request = mock(HttpServletRequest.class);
@@ -65,5 +71,27 @@ class RbacAuthorizationManagerTest {
     void noLeeOtrosModulos() {
         assertFalse(puede("GET", "/alumnos"));
         assertFalse(puede("GET", "/asignaciones"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "PATCH, /cursos/10/estado, ACTUALIZAR",
+            "PATCH, /cursos/10/subcursos, ACTUALIZAR",
+            "PUT, /cursos/20, ACTUALIZAR",
+            "DELETE, /cursos/10, ELIMINAR",
+            "POST, /cursos/10/subcursos, CREAR",
+            "POST, /cursos/importar, CREAR",
+            "POST, /cursos/importar/vista-previa, CREAR",
+            "POST, /cursos/copiar, CREAR"
+    })
+    void cadaOperacionDeCursosExigeSuPermiso(String metodo, String ruta, String accion) {
+        assertFalse(puede(metodo, ruta, Map.of()));
+        assertFalse(puede(metodo, ruta, Map.of("CURSOS", Set.of())));
+        assertFalse(puede(metodo, ruta, Map.of("DOCENTES", Set.of(accion))));
+        for (String candidata : List.of("CREAR", "ACTUALIZAR", "ELIMINAR")) {
+            boolean autorizado = puede(metodo, ruta, Map.of("CURSOS", Set.of(candidata)));
+            if (candidata.equals(accion)) assertTrue(autorizado);
+            else assertFalse(autorizado);
+        }
     }
 }

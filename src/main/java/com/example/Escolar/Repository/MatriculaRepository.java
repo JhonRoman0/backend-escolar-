@@ -18,6 +18,10 @@ public interface MatriculaRepository extends JpaRepository<Matricula, Integer> {
 
     Page<Matricula> findByAccesoNot(Acceso acceso, Pageable pageable);
 
+    Page<Matricula> findByAcceso(Acceso acceso, Pageable pageable);
+
+    List<Matricula> findByAcceso(Acceso acceso);
+
     Optional<Matricula> findByIdMatriculaAndAccesoNot(Integer idMatricula, Acceso acceso);
 
 
@@ -54,7 +58,8 @@ public interface MatriculaRepository extends JpaRepository<Matricula, Integer> {
             "AND (:idSeccion IS NULL OR s.idSeccion = :idSeccion) " +
             "AND (:idTurno IS NULL OR t.idTurno = :idTurno) " +
             "AND (:idGradoSeccion IS NULL OR gs.idGradoSeccion = :idGradoSeccion) " +
-            "AND (:idAnio IS NULL OR anio.idAnio = :idAnio)",
+            "AND (:idAnio IS NULL OR anio.idAnio = :idAnio) " +
+            "AND (:idAcceso IS NULL OR m.acceso.idAcceso = :idAcceso)",
             countQuery = "SELECT COUNT(m) FROM Matricula m " +
                     "JOIN m.gradoSeccion gs JOIN gs.grado g JOIN g.nivel n LEFT JOIN gs.seccion s JOIN gs.turno t JOIN gs.anioEscolar anio " +
                     "WHERE m.acceso.idAcceso <> :eliminadoId AND gs.acceso.idAcceso <> :eliminadoId " +
@@ -63,7 +68,8 @@ public interface MatriculaRepository extends JpaRepository<Matricula, Integer> {
                     "AND (:idSeccion IS NULL OR s.idSeccion = :idSeccion) " +
                     "AND (:idTurno IS NULL OR t.idTurno = :idTurno) " +
                     "AND (:idGradoSeccion IS NULL OR gs.idGradoSeccion = :idGradoSeccion) " +
-                    "AND (:idAnio IS NULL OR anio.idAnio = :idAnio)")
+                    "AND (:idAnio IS NULL OR anio.idAnio = :idAnio) " +
+                    "AND (:idAcceso IS NULL OR m.acceso.idAcceso = :idAcceso)")
     Page<Matricula> findFiltradas(
             @Param("eliminadoId") Long eliminadoId,
             @Param("idNivel") Integer idNivel,
@@ -72,6 +78,7 @@ public interface MatriculaRepository extends JpaRepository<Matricula, Integer> {
             @Param("idTurno") Integer idTurno,
             @Param("idGradoSeccion") Integer idGradoSeccion,
             @Param("idAnio") Integer idAnio,
+            @Param("idAcceso") Long idAcceso,
             Pageable pageable);
 
     @Query("SELECT m FROM Matricula m " +
@@ -82,7 +89,8 @@ public interface MatriculaRepository extends JpaRepository<Matricula, Integer> {
             "AND (:idSeccion IS NULL OR s.idSeccion = :idSeccion) " +
             "AND (:idTurno IS NULL OR t.idTurno = :idTurno) " +
             "AND (:idGradoSeccion IS NULL OR gs.idGradoSeccion = :idGradoSeccion) " +
-            "AND (:idAnio IS NULL OR anio.idAnio = :idAnio)")
+            "AND (:idAnio IS NULL OR anio.idAnio = :idAnio) " +
+            "AND (:idAcceso IS NULL OR m.acceso.idAcceso = :idAcceso)")
     List<Matricula> findFiltradasList(
             @Param("eliminadoId") Long eliminadoId,
             @Param("idNivel") Integer idNivel,
@@ -90,5 +98,6 @@ public interface MatriculaRepository extends JpaRepository<Matricula, Integer> {
             @Param("idSeccion") Integer idSeccion,
             @Param("idTurno") Integer idTurno,
             @Param("idGradoSeccion") Integer idGradoSeccion,
-            @Param("idAnio") Integer idAnio);
+            @Param("idAnio") Integer idAnio,
+            @Param("idAcceso") Long idAcceso);
 }

@@ -19,7 +19,7 @@ public interface AlumnoRepository extends JpaRepository<Alumno, Integer> {
     // Filtrado vigente vía Matricula ACTIVA -> GradoSeccion -> Grado/Nivel/Turno/Anio. Usado por GET /alumnos con 6 filtros.
     @org.springframework.data.jpa.repository.Query(
             value = "SELECT DISTINCT a FROM Alumno a " +
-                    "JOIN AlumnoApoderado aa ON aa.alumno = a AND aa.apoPrincipal = 1 " +
+                    "JOIN AlumnoApoderado aa ON aa.alumno = a " +
                     "JOIN Matricula m ON m.alumnoApoderado = aa AND m.acceso.idAcceso = :accesoActivoId " +
                     "JOIN m.gradoSeccion gs " +
                     "JOIN gs.grado g JOIN g.nivel n LEFT JOIN gs.seccion s JOIN gs.turno t JOIN gs.anioEscolar anio " +
@@ -32,7 +32,7 @@ public interface AlumnoRepository extends JpaRepository<Alumno, Integer> {
                     "AND (:idGradoSeccion IS NULL OR gs.idGradoSeccion = :idGradoSeccion) " +
                     "AND (:idAnio IS NULL OR anio.idAnio = :idAnio)",
             countQuery = "SELECT COUNT(DISTINCT a) FROM Alumno a " +
-                    "JOIN AlumnoApoderado aa ON aa.alumno = a AND aa.apoPrincipal = 1 " +
+                    "JOIN AlumnoApoderado aa ON aa.alumno = a " +
                     "JOIN Matricula m ON m.alumnoApoderado = aa AND m.acceso.idAcceso = :accesoActivoId " +
                     "JOIN m.gradoSeccion gs " +
                     "JOIN gs.grado g JOIN g.nivel n LEFT JOIN gs.seccion s JOIN gs.turno t JOIN gs.anioEscolar anio " +
@@ -58,7 +58,7 @@ public interface AlumnoRepository extends JpaRepository<Alumno, Integer> {
 
     @org.springframework.data.jpa.repository.Query(
             value = "SELECT DISTINCT a FROM Alumno a " +
-                    "JOIN AlumnoApoderado aa ON aa.alumno = a AND aa.apoPrincipal = 1 " +
+                    "JOIN AlumnoApoderado aa ON aa.alumno = a " +
                     "JOIN Matricula m ON m.alumnoApoderado = aa AND m.acceso.idAcceso = :accesoActivoId " +
                     "JOIN m.gradoSeccion gs " +
                     "JOIN gs.grado g JOIN g.nivel n LEFT JOIN gs.seccion s JOIN gs.turno t JOIN gs.anioEscolar anio " +

@@ -28,6 +28,8 @@ public class ApoderadoResponse {
     private LocalDate fechaNaci;
     private String urlFoto;
     private Long accesoId;
+    /** false: no se pudieron enviar sus accesos; null: no había nada que enviar. */
+    private Boolean credencialesEnviadas;
 
     public static ApoderadoResponse fromEntity(Apoderado apoderado) {
         ApoderadoResponse response = new ApoderadoResponse();

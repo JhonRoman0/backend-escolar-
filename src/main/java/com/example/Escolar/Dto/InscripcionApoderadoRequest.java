@@ -12,7 +12,7 @@ import java.time.LocalDate;
 
 /**
  * Apoderado del paso 2. Si el DNI ya es apoderado solo se usa el parentesco; si
- * ya es usuario con otro rol no se piden correo ni contraseña. Por eso la
+ * ya es usuario con otro rol no se pide correo. Por eso la
  * obligatoriedad de los demás campos la decide el servicio.
  */
 @Getter
@@ -33,7 +33,4 @@ public class InscripcionApoderadoRequest {
     private String celular;
     @Email(message = "El correo del apoderado no es válido")
     private String gmail;
-    @Pattern(regexp = "^(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{8,}$",
-            message = "La contraseña debe tener al menos 8 caracteres, 1 mayúscula, 1 número y 1 carácter especial")
-    private String contraseña;
 }

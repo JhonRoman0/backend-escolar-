@@ -28,13 +28,11 @@ public class DocenteRequest {
     @Size(min = 8, max = 8, message = "El DNI debe contener exactamente 8 digitos")
     @Pattern(regexp = "^[0-9]+$", message = "El DNI debe contener solo digitos")
     private String documentoIdentidad;
-    @Size(min = 8, message = "La contrasena debe tener al menos 8 caracteres")
-    @Pattern(regexp = "^(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{8,}$",
-            message = "La contrasena debe tener al menos 1 mayuscula, 1 numero y 1 caracter especial")
-    private String contraseña;
     @NotBlank(message = "El email es obligatorio")
     @Email(message = "El formato del email no es válido")
     private String gmail;
+    /** Al editar: generar una contraseña nueva y enviarla al correo. */
+    private boolean restablecerContrasena;
     @NotNull(message = "La fecha de nacimiento es obligatoria")
     private LocalDate fechaNaci;
 

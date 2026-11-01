@@ -4,6 +4,7 @@ import com.example.Escolar.Dto.DocenteReporteResponse;
 import com.example.Escolar.Dto.DocenteRequest;
 import com.example.Escolar.Dto.DocenteResponse;
 import com.example.Escolar.Service.DocenteService;
+import com.example.Escolar.Service.UsuarioService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -19,6 +20,7 @@ import java.util.List;
 public class DocenteController {
 
     private final DocenteService docenteService;
+    private final UsuarioService usuarioService;
 
     @GetMapping
     public List<DocenteResponse> getAll() {
@@ -32,7 +34,12 @@ public class DocenteController {
 
     @PutMapping("/{id}")
     public DocenteResponse update(@PathVariable Integer id, @Valid @RequestBody DocenteRequest request) {
-        return docenteService.update(id, request);
+        DocenteResponse response = docenteService.update(id, request);
+        // Va después de guardar: si el correo falla, los datos ya quedaron guardados.
+        if (request.isRestablecerContrasena()) {
+            response.setCredencialesEnviadas(usuarioService.restablecerContrasena(response.getIdUsuario()));
+        }
+        return response;
     }
 
     @DeleteMapping("/{id}")

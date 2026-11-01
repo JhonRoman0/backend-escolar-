@@ -203,13 +203,13 @@ public class InscripcionService {
 
     /** Campos que se piden según quién es: apoderado existente, usuario con otro rol o persona nueva. */
     private void validarApoderado(InscripcionApoderadoRequest apoderado, Set<String> correos) {
+        exigir(!vacio(apoderado.getDireccion()), "La dirección del apoderado es obligatoria");
+        exigir(!vacio(apoderado.getCelular()), "El celular del apoderado es obligatorio");
         String estado = estadoApoderado(apoderado.getDocumentoIdentidad());
         if (ESTADO_APODERADO.equals(estado)) {
             return;
         }
         exigir(apoderado.getSexo() != null, "El sexo del apoderado es obligatorio");
-        exigir(!vacio(apoderado.getDireccion()), "La dirección del apoderado es obligatoria");
-        exigir(!vacio(apoderado.getCelular()), "El celular del apoderado es obligatorio");
         if (ESTADO_USUARIO.equals(estado)) {
             return;
         }
@@ -217,7 +217,6 @@ public class InscripcionService {
                 "El nombre y los apellidos del apoderado son obligatorios");
         exigir(apoderado.getFechaNaci() != null, "La fecha de nacimiento del apoderado es obligatoria");
         exigir(!vacio(apoderado.getGmail()), "El correo del apoderado es obligatorio");
-        exigir(!vacio(apoderado.getContraseña()), "La contraseña del apoderado es obligatoria");
         String gmail = apoderado.getGmail().trim().toLowerCase();
         if (!correos.add(gmail)) {
             throw new IllegalArgumentException("Los dos apoderados no pueden tener el mismo correo");
@@ -252,7 +251,7 @@ public class InscripcionService {
 
         List<Credencial> credenciales = new ArrayList<>();
         Apoderado apoderado = resolverApoderado(datos, credenciales);
-        AlumnoApoderado vinculo = alumnoApoderadoRepository.findByAlumno(alumno).stream()
+        AlumnoApoderado vinculo = alumnoApoderadoRepository.findTodosByAlumno(alumno).stream()
                 .filter(v -> v.getApoderado().getIdApoderado().equals(apoderado.getIdApoderado()))
                 .findFirst()
                 .orElseGet(() -> {
@@ -262,12 +261,13 @@ public class InscripcionService {
                     return nuevo;
                 });
         vinculo.setParentesco(pagoConfigService.parentesco(datos.getIdParentesco()));
+        vinculo.setActivo(true);
         vinculo.setApoPrincipal(vinculos.isEmpty() ? PRINCIPAL : (byte) 0);
         vinculo = alumnoApoderadoRepository.save(vinculo);
 
-        alConfirmar(() -> credenciales.forEach(c ->
-                emailService.enviarCredencialesAcceso(c.gmail(), c.nombre(), c.codigo(), c.contraseña(), c.tipo())));
-        return ApoderadoResponse.fromVinculo(vinculo);
+        ApoderadoResponse response = ApoderadoResponse.fromVinculo(vinculo);
+        alConfirmar(() -> response.setCredencialesEnviadas(enviarCredenciales(credenciales)));
+        return response;
     }
 
     private String estadoApoderado(String dni) {
@@ -308,6 +308,10 @@ public class InscripcionService {
 
         List<Credencial> credenciales = new ArrayList<>();
         Alumno alumno = existente.orElseGet(() -> guardarAlumnoNuevo(request.getAlumno()));
+        if (existente.isPresent()) {
+            alumno.setDireccion(request.getAlumno().getDireccion().trim());
+            alumnoRepository.save(alumno);
+        }
         if (foto != null && !foto.isEmpty()) {
             cambiarFoto(alumno, foto);
         }
@@ -325,9 +329,9 @@ public class InscripcionService {
         matriculaService.crearHistorial(matricula, gradoSeccion, "Matrícula inicial");
         registrarPago(matricula, TipoPago.PAGO, monto, metodo, datos.getCodigoTransaccion(), comprobante, registrador);
 
-        alConfirmar(() -> credenciales.forEach(c ->
-                emailService.enviarCredencialesAcceso(c.gmail(), c.nombre(), c.codigo(), c.contraseña(), c.tipo())));
-        return matriculaService.toResponse(matricula);
+        MatriculaResponse response = matriculaService.toResponse(matricula);
+        alConfirmar(() -> response.setCredencialesEnviadas(enviarCredenciales(credenciales)));
+        return response;
     }
 
     private Alumno guardarAlumnoNuevo(InscripcionAlumnoRequest datos) {
@@ -360,10 +364,15 @@ public class InscripcionService {
         }
     }
 
-    /** Crea, reactiva o reutiliza a cada apoderado y lo vincula; el primero queda como principal. */
+    /**
+     * Crea, reactiva o reutiliza a cada apoderado y lo vincula; el primero queda
+     * como principal. Quien tenía vínculo y ya no viene en el formulario deja de
+     * ser apoderado de este alumno.
+     */
     private AlumnoApoderado vincularApoderados(Alumno alumno, List<InscripcionApoderadoRequest> datos, List<Credencial> credenciales) {
-        List<AlumnoApoderado> actuales = alumnoApoderadoRepository.findByAlumno(alumno);
+        List<AlumnoApoderado> actuales = alumnoApoderadoRepository.findTodosByAlumno(alumno);
         AlumnoApoderado principal = null;
+        Set<Integer> vigentes = new HashSet<>();
         for (int i = 0; i < datos.size(); i++) {
             Apoderado apoderado = resolverApoderado(datos.get(i), credenciales);
             AlumnoApoderado vinculo = actuales.stream()
@@ -375,28 +384,50 @@ public class InscripcionService {
                         nuevo.setApoderado(apoderado);
                         return nuevo;
                     });
-            vinculo.setParentesco(pagoConfigService.parentesco(datos.get(i).getIdParentesco()));
+            // Con un vínculo activo el parentesco no cambia aquí: se corrige desde Estudiantes.
+            if (vinculo.getIdAlumnoApoderado() == null || !vinculo.isActivo() || vinculo.getParentesco() == null) {
+                vinculo.setParentesco(pagoConfigService.parentesco(datos.get(i).getIdParentesco()));
+            }
+            vinculo.setActivo(true);
             vinculo.setApoPrincipal(i == 0 ? PRINCIPAL : (byte) 0);
             vinculo = alumnoApoderadoRepository.save(vinculo);
             if (i == 0) {
                 principal = vinculo;
             }
+            vigentes.add(vinculo.getIdAlumnoApoderado());
         }
-        Integer idPrincipal = principal.getIdAlumnoApoderado();
-        for (AlumnoApoderado otro : actuales) {
-            if (!otro.getIdAlumnoApoderado().equals(idPrincipal) && otro.getApoPrincipal() == PRINCIPAL) {
-                otro.setApoPrincipal((byte) 0);
-                alumnoApoderadoRepository.save(otro);
+        for (AlumnoApoderado anterior : actuales) {
+            if (anterior.isActivo() && !vigentes.contains(anterior.getIdAlumnoApoderado())) {
+                desvincular(anterior);
             }
         }
         return principal;
+    }
+
+    private void desvincular(AlumnoApoderado vinculo) {
+        vinculo.setActivo(false);
+        vinculo.setApoPrincipal((byte) 0);
+        alumnoApoderadoRepository.save(vinculo);
+        Apoderado apoderado = vinculo.getApoderado();
+        Integer idAlumno = vinculo.getAlumno().getIdAlumno();
+        boolean tieneOtrosHijos = alumnoApoderadoRepository.findByApoderado(apoderado).stream()
+                .anyMatch(v -> !v.getAlumno().getIdAlumno().equals(idAlumno) && esActivo(v.getAlumno().getAcceso()));
+        if (!tieneOtrosHijos && esActivo(apoderado.getAcceso())) {
+            descartarApoderado(apoderado);
+        }
     }
 
     private Apoderado resolverApoderado(InscripcionApoderadoRequest datos, List<Credencial> credenciales) {
         String dni = datos.getDocumentoIdentidad();
         Optional<Apoderado> activo = apoderadoRepository.findByUsuarioDocumentoIdentidadAndAccesoNot(dni, eliminado());
         if (activo.isPresent()) {
-            return activo.get();
+            // Ya registrado: de la matrícula solo se actualizan dirección y celular.
+            Apoderado existente = activo.get();
+            existente.setDireccion(datos.getDireccion().trim());
+            existente.setCelular(datos.getCelular());
+            existente.getUsuario().setCelular(datos.getCelular());
+            usuarioRepository.save(existente.getUsuario());
+            return apoderadoRepository.save(existente);
         }
         Optional<Usuario> usuarioActivo = usuarioRepository.findByDocumentoIdentidadAndAccesoNot(dni, eliminado());
         Usuario usuario;
@@ -413,7 +444,8 @@ public class InscripcionService {
             usuario.setFechaNaci(datos.getFechaNaci());
             usuario.setGmail(datos.getGmail().trim());
             usuario.setCelular(datos.getCelular());
-            usuario.setContraseña(passwordEncoder.encode(datos.getContraseña()));
+            String temporal = ContrasenaTemporal.generar();
+            usuario.setContraseña(passwordEncoder.encode(temporal));
             usuario.setDebeCambiarContrasena(true);
             usuario.setIntentosFallidos(0);
             usuario.setFechaBloqueo(null);
@@ -424,7 +456,7 @@ public class InscripcionService {
             usuario.setAcceso(acceso(AccesoConstants.ACTIVO));
             usuario = usuarioRepository.save(usuario);
             credenciales.add(new Credencial(usuario.getGmail(), usuario.getNombre() + " " + usuario.getApellidoPat(),
-                    usuario.getCodigo(), datos.getContraseña(),
+                    usuario.getCodigo(), temporal,
                     reactivado ? TipoEnvioCredenciales.REACTIVACION : TipoEnvioCredenciales.CREACION));
         }
         asignarRolApoderado(usuario);
@@ -585,6 +617,18 @@ public class InscripcionService {
         pago.setUsuario(usuario);
         pago.setAcceso(acceso(AccesoConstants.ACTIVO));
         pagoMatriculaRepository.save(pago);
+    }
+
+    // El envío va tras confirmar: la respuesta aún no salió del proxy transaccional y lleva el resultado.
+    private Boolean enviarCredenciales(List<Credencial> credenciales) {
+        if (credenciales.isEmpty()) {
+            return null;
+        }
+        boolean todas = true;
+        for (Credencial c : credenciales) {
+            todas &= emailService.enviarCredencialesAcceso(c.gmail(), c.nombre(), c.codigo(), c.contraseña(), c.tipo());
+        }
+        return todas;
     }
 
     /** Sube el archivo y lo borra si la transacción se deshace, para no dejar fotos sueltas. */

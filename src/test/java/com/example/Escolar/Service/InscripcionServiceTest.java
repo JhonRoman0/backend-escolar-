@@ -223,7 +223,6 @@ class InscripcionServiceTest {
         apoderado.setIdParentesco(2);
         apoderado.setCelular("987654321");
         apoderado.setGmail("ana@mail.com");
-        apoderado.setContraseña("Clave#123");
 
         InscripcionRequest request = new InscripcionRequest();
         request.setAlumno(alumno);
@@ -275,7 +274,7 @@ class InscripcionServiceTest {
     void unApoderadoNuevoRecibeSusAccesosYQuedaComoPrincipal() {
         inscripcionService.inscribir(solicitud(2, null), foto(), null, 1);
 
-        verify(emailService).enviarCredencialesAcceso(eq("ana@mail.com"), anyString(), anyString(), eq("Clave#123"),
+        verify(emailService).enviarCredencialesAcceso(eq("ana@mail.com"), anyString(), anyString(), anyString(),
                 eq(TipoEnvioCredenciales.CREACION));
         ArgumentCaptor<Matricula> matricula = ArgumentCaptor.forClass(Matricula.class);
         verify(matriculaRepository).save(matricula.capture());
@@ -287,23 +286,131 @@ class InscripcionServiceTest {
     }
 
     @Test
-    void unApoderadoExistenteSoloSeVincula() {
+    void siElCorreoFallaLaRespuestaLoAvisa() {
+        when(emailService.enviarCredencialesAcceso(any(), any(), any(), any(), any())).thenReturn(false);
+
+        assertEquals(Boolean.FALSE, inscripcionService.inscribir(solicitud(2, null), foto(), null, 1).getCredencialesEnviadas());
+    }
+
+    private Apoderado apoderadoExistente(String dni, int id) {
         Usuario usuario = new Usuario();
-        usuario.setIdUsuario(31);
+        usuario.setIdUsuario(id + 100);
+        usuario.setNombre("Ya");
+        usuario.setDocumentoIdentidad(dni);
+        usuario.setFechaNaci(LocalDate.of(1980, 1, 1));
         Apoderado existente = new Apoderado();
-        existente.setIdApoderado(41);
+        existente.setIdApoderado(id);
         existente.setUsuario(usuario);
-        when(apoderadoRepository.findByUsuarioDocumentoIdentidadAndAccesoNot(eq("40000001"), any()))
+        existente.setSexo(Sexo.FEMENINO);
+        existente.setDireccion("Dirección vieja");
+        existente.setCelular("911111111");
+        existente.setAcceso(new Acceso());
+        existente.getAcceso().setIdAcceso(AccesoConstants.ACTIVO);
+        when(apoderadoRepository.findByUsuarioDocumentoIdentidadAndAccesoNot(eq(dni), any()))
                 .thenReturn(Optional.of(existente));
+        return existente;
+    }
+
+    @Test
+    void unApoderadoExistenteSeVinculaYSoloActualizaDireccionYCelular() {
+        Apoderado existente = apoderadoExistente("40000001", 41);
 
         inscripcionService.inscribir(solicitud(2, null), foto(), null, 1);
 
-        verify(usuarioRepository, never()).save(any());
-        verify(apoderadoRepository, never()).save(any());
+        assertEquals("Av. Lima 123", existente.getDireccion());
+        assertEquals("987654321", existente.getCelular());
+        assertEquals("987654321", existente.getUsuario().getCelular());
+        // El nombre y el sexo que vengan en la petición no se tocan.
+        assertEquals("Ya", existente.getUsuario().getNombre());
+        assertEquals(Sexo.FEMENINO, existente.getSexo());
         verify(emailService, never()).enviarCredencialesAcceso(any(), any(), any(), any(), any());
         ArgumentCaptor<AlumnoApoderado> vinculo = ArgumentCaptor.forClass(AlumnoApoderado.class);
         verify(alumnoApoderadoRepository).save(vinculo.capture());
         assertEquals(41, vinculo.getValue().getApoderado().getIdApoderado());
+    }
+
+    private Alumno alumnoAntiguoCon(AlumnoApoderado... vinculos) {
+        Alumno alumno = new Alumno();
+        alumno.setIdAlumno(9);
+        alumno.setNombre("Luis");
+        alumno.setDireccion("Dirección vieja");
+        alumno.setUrlFoto("https://img/luis.jpg");
+        alumno.setAcceso(new Acceso());
+        alumno.getAcceso().setIdAcceso(AccesoConstants.ACTIVO);
+        for (AlumnoApoderado vinculo : vinculos) {
+            vinculo.setAlumno(alumno);
+        }
+        when(alumnoRepository.findByDocumentoIdentidadAndAccesoNot(eq("70000001"), any())).thenReturn(Optional.of(alumno));
+        when(alumnoApoderadoRepository.findTodosByAlumno(alumno)).thenReturn(List.of(vinculos));
+        return alumno;
+    }
+
+    private AlumnoApoderado vinculoDe(Apoderado apoderado, int id, Parentesco parentesco) {
+        AlumnoApoderado vinculo = new AlumnoApoderado();
+        vinculo.setIdAlumnoApoderado(id);
+        vinculo.setApoderado(apoderado);
+        vinculo.setParentesco(parentesco);
+        vinculo.setApoPrincipal((byte) 1);
+        return vinculo;
+    }
+
+    @Test
+    void deUnAlumnoAntiguoSoloSeActualizaLaDireccion() {
+        Alumno alumno = alumnoAntiguoCon();
+        alumno.setNombre("Nombre guardado");
+
+        inscripcionService.inscribir(solicitud(2, null), null, null, 1);
+
+        assertEquals("Av. Lima 123", alumno.getDireccion());
+        assertEquals("Nombre guardado", alumno.getNombre());
+    }
+
+    @Test
+    void conUnVinculoActivoElParentescoNoCambia() {
+        Apoderado existente = apoderadoExistente("40000001", 41);
+        Parentesco guardado = new Parentesco();
+        AlumnoApoderado vinculo = vinculoDe(existente, 60, guardado);
+        alumnoAntiguoCon(vinculo);
+
+        inscripcionService.inscribir(solicitud(2, null), null, null, 1);
+
+        assertEquals(guardado, vinculo.getParentesco());
+    }
+
+    @Test
+    void quienNoVieneEnElFormularioDejaDeSerApoderadoYSeDescartaSinOtrosHijos() {
+        Apoderado anterior = apoderadoExistente("41111111", 50);
+        AlumnoApoderado vinculoAnterior = vinculoDe(anterior, 61, new Parentesco());
+        alumnoAntiguoCon(vinculoAnterior);
+        UsuarioRol soloApoderado = new UsuarioRol();
+        soloApoderado.setRol(rolApoderado);
+        when(usuarioRolRepository.findByUsuarioIdUsuario(150)).thenReturn(List.of(soloApoderado));
+
+        inscripcionService.inscribir(solicitud(2, null), null, null, 1);
+
+        assertEquals(false, vinculoAnterior.isActivo());
+        assertEquals(0, vinculoAnterior.getApoPrincipal());
+        assertEquals(AccesoConstants.ELIMINADO, anterior.getAcceso().getIdAcceso());
+        assertEquals(AccesoConstants.ELIMINADO, anterior.getUsuario().getAcceso().getIdAcceso());
+    }
+
+    @Test
+    void siElApoderadoAnteriorTieneOtroHijoConservaSuCuenta() {
+        Apoderado anterior = apoderadoExistente("41111111", 50);
+        AlumnoApoderado vinculoAnterior = vinculoDe(anterior, 61, new Parentesco());
+        alumnoAntiguoCon(vinculoAnterior);
+        Alumno hermano = new Alumno();
+        hermano.setIdAlumno(77);
+        hermano.setAcceso(new Acceso());
+        hermano.getAcceso().setIdAcceso(AccesoConstants.ACTIVO);
+        AlumnoApoderado otroHijo = new AlumnoApoderado();
+        otroHijo.setAlumno(hermano);
+        when(alumnoApoderadoRepository.findByApoderado(anterior)).thenReturn(List.of(otroHijo));
+
+        inscripcionService.inscribir(solicitud(2, null), null, null, 1);
+
+        assertEquals(false, vinculoAnterior.isActivo());
+        assertEquals(AccesoConstants.ACTIVO, anterior.getAcceso().getIdAcceso());
     }
 
     private Matricula matriculaEn(GradoSeccion gs) {
@@ -448,7 +555,7 @@ class InscripcionServiceTest {
         ArgumentCaptor<AlumnoApoderado> vinculo = ArgumentCaptor.forClass(AlumnoApoderado.class);
         verify(alumnoApoderadoRepository).save(vinculo.capture());
         assertEquals(0, vinculo.getValue().getApoPrincipal());
-        verify(emailService).enviarCredencialesAcceso(eq("ana@mail.com"), anyString(), anyString(), eq("Clave#123"),
+        verify(emailService).enviarCredencialesAcceso(eq("ana@mail.com"), anyString(), anyString(), anyString(),
                 eq(TipoEnvioCredenciales.CREACION));
     }
 }

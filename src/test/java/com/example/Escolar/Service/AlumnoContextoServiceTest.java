@@ -41,7 +41,7 @@ class AlumnoContextoServiceTest {
         alumno.setIdAlumno(1);
         alumno.setAcceso(activo);
         when(accesoRepository.findById(AccesoConstants.ACTIVO)).thenReturn(Optional.of(activo));
-        when(alumnoApoderadoRepository.findByAlumno(alumno)).thenReturn(List.of());
+        lenient().when(alumnoApoderadoRepository.findByAlumno(alumno)).thenReturn(List.of());
     }
 
     private Matricula matricula(int anioId, byte estado, int turnoId) {
@@ -67,6 +67,34 @@ class AlumnoContextoServiceTest {
         when(alumnoRepository.findFiltrados(AccesoConstants.ACTIVO, AccesoConstants.ELIMINADO,
                 null, null, null, turno, null, anio, pagina)).thenReturn(new PageImpl<>(List.of(alumno), pagina, 1));
         when(matriculaRepository.findActivasPorAlumnoIds(List.of(1), activo)).thenReturn(matriculas);
+    }
+
+    private void conUnApoderado(boolean tienePermiso) {
+        Usuario usuario = new Usuario();
+        usuario.setNombre("Ana");
+        Apoderado apoderado = new Apoderado();
+        apoderado.setUsuario(usuario);
+        apoderado.setAcceso(activo);
+        AlumnoApoderado vinculo = new AlumnoApoderado();
+        vinculo.setApoderado(apoderado);
+        lenient().when(alumnoApoderadoRepository.findByAlumno(alumno)).thenReturn(List.of(vinculo));
+        when(accesoContextoService.idUsuarioAutenticado()).thenReturn(50);
+        when(accesoContextoService.rolesAutenticados()).thenReturn(roles);
+        when(accesoContextoService.tienePermiso("APODERADOS", 50, roles)).thenReturn(tienePermiso);
+    }
+
+    @Test void sinElPermisoDeApoderadosNoRecibeSusDatos() {
+        conUnApoderado(false);
+        gestion(6, null, List.of());
+        var resultado = service.getAll(pagina, 50, roles, null, null, null, null, null, 6);
+        assertEquals(0, resultado.getContent().get(0).getApoderados().size());
+    }
+
+    @Test void conElPermisoDeApoderadosRecibeSusDatos() {
+        conUnApoderado(true);
+        gestion(6, null, List.of());
+        var resultado = service.getAll(pagina, 50, roles, null, null, null, null, null, 6);
+        assertEquals("Ana", resultado.getContent().get(0).getApoderados().get(0).getNombre());
     }
 
     @Test void muestraElAnioHistoricoConsultadoAunqueExistaVigente() {

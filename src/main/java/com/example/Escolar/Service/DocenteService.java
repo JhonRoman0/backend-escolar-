@@ -26,7 +26,6 @@ import com.example.Escolar.Repository.TipoContratoRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,7 +46,6 @@ public class DocenteService {
     private final UsuarioRepository usuarioRepository;
     private final RolRepository rolRepository;
     private final UsuarioRolRepository usuarioRolRepository;
-    private final PasswordEncoder passwordEncoder;
     private final AccesoRepository accesoRepository;
     private final AsignacionRepository asignacionRepository;
     private final GradoAcademicoRepository gradoAcademicoRepository;
@@ -214,9 +212,6 @@ public class DocenteService {
         usuario.setApellidoMat(request.getApellidoMat());
         if (request.getDocumentoIdentidad() != null && !request.getDocumentoIdentidad().isBlank()) {
             usuario.setDocumentoIdentidad(request.getDocumentoIdentidad());
-        }
-        if (request.getContraseña() != null && !request.getContraseña().isBlank()) {
-            usuario.setContraseña(passwordEncoder.encode(request.getContraseña()));
         }
         usuario.setGmail(request.getGmail());
         usuario.setFechaNaci(request.getFechaNaci());

@@ -130,20 +130,18 @@ public class ApiPermisoRegistro {
         registrar("PUT", "/asignaciones/**", "ASIGNACIONES", "ACTUALIZAR");
         registrar("DELETE", "/asignaciones/**", "ASIGNACIONES", "ELIMINAR");
 
-        registrarLectura("GET", "/alumnos", "ALUMNOS");
+        // Los apoderados se gestionan desde la lista de alumnos.
+        registrarLectura("GET", "/alumnos", "ALUMNOS", "APODERADOS");
         registrarLectura("GET", "/alumnos/**", "ALUMNOS");
         registrar("POST", "/alumnos/{id}/foto", "ALUMNOS", "ACTUALIZAR");
         registrar("DELETE", "/alumnos/{id}/foto", "ALUMNOS", "ACTUALIZAR");
         registrar("PUT", "/alumnos/**", "ALUMNOS", "ACTUALIZAR");
-        registrar("DELETE", "/alumnos/**", "ALUMNOS", "ELIMINAR");
         registrar("GET", "/alumnos/reporte", "ALUMNOS", "IMPRIMIR_EXPORTAR");
 
         registrarLectura("GET", "/apoderados", "APODERADOS");
         registrarLectura("GET", "/apoderados/**", "APODERADOS");
-        registrar("POST", "/apoderados", "APODERADOS", "CREAR");
         registrar("POST", "/apoderados/alumno/*", "APODERADOS", "CREAR");
         registrar("PUT", "/apoderados/**", "APODERADOS", "ACTUALIZAR");
-        registrar("DELETE", "/apoderados/**", "APODERADOS", "ELIMINAR");
 
         registrarLectura("GET", "/parentescos", "MATRICULAS", "APODERADOS", "ALUMNOS");
         registrarLectura("GET", "/sexos", "MATRICULAS", "APODERADOS", "ALUMNOS");

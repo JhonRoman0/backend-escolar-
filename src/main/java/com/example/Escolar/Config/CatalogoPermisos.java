@@ -22,6 +22,7 @@ public final class CatalogoPermisos {
 
     private static final String SEGURIDAD = "Seguridad";
     private static final String ACADEMICO = "Académico";
+    private static final String ESTUDIANTES = "Estudiantes";
 
     private static final Map<String, Map<String, String>> CATALOGO = new LinkedHashMap<>();
     private static final Map<String, String> MODULOS = new LinkedHashMap<>();
@@ -73,6 +74,14 @@ public final class CatalogoPermisos {
                 "ELIMINAR", "Eliminar asignaciones");
         permiso("CONFIGURACION_ACADEMICA", ACADEMICO,
                 "ACTUALIZAR", "Editar la hora académica");
+        // Los alumnos se crean y se quitan desde Matrícula.
+        permiso("ALUMNOS", ESTUDIANTES,
+                "ACTUALIZAR", "Editar foto y discapacidad",
+                "IMPRIMIR_EXPORTAR", "Exportar reporte");
+        // Se gestionan dentro de Estudiantes, desde la fila de cada alumno.
+        permiso("APODERADOS", ESTUDIANTES,
+                "CREAR", "Agregar apoderado a un alumno",
+                "ACTUALIZAR", "Editar datos y restablecer contraseña");
         permiso("PAGOS_MATRICULA", "Pagos",
                 "CREAR", "Crear métodos de pago",
                 "ACTUALIZAR", "Editar métodos de pago y montos",

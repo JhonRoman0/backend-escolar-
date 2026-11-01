@@ -40,6 +40,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -156,7 +157,6 @@ class UsuarioServiceTest {
         r.setApellidoPat("GUEVARA");
         r.setApellidoMat("VASQUEZ");
         r.setDocumentoIdentidad("76988609");
-        r.setContraseña("NuevaClave1");
         r.setGmail("jhoanatanguevaravasquez@gmail.com");
         r.setCelular("999999999");
         r.setFechaNaci(LocalDate.of(2004, 11, 16));
@@ -184,15 +184,6 @@ class UsuarioServiceTest {
         assertEquals("Administrador", response.getNombreRol());
         assertEquals(AccesoConstants.ACTIVO, eliminado.getAcceso().getIdAcceso());
         assertEquals("hashNueva", eliminado.getContraseña());
-    }
-
-    @Test
-    void reactivarSinContrasenaLanzaIllegalArgument() {
-        UsuarioRequest request = requestSinDocente();
-        request.setContraseña(null);
-
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.reactivar(2, request));
-        assertEquals("La contraseña es obligatoria para reactivar el usuario", ex.getMessage());
     }
 
     @Test
@@ -359,7 +350,7 @@ class UsuarioServiceTest {
         assertEquals("A20260001", response.getCodigo());
         assertEquals(Boolean.TRUE, response.getCredencialesEnviadas());
         verify(emailService).enviarCredencialesAcceso(
-                eq("jhoanatanguevaravasquez@gmail.com"), eq("JHONATAN GUEVARA"), eq("A20260001"), eq("NuevaClave1"), eq(TipoEnvioCredenciales.CREACION));
+                eq("jhoanatanguevaravasquez@gmail.com"), eq("JHONATAN GUEVARA"), eq("A20260001"), anyString(), eq(TipoEnvioCredenciales.CREACION));
     }
 
     @Test
@@ -405,7 +396,7 @@ class UsuarioServiceTest {
 
         assertEquals(Boolean.TRUE, response.getCredencialesEnviadas());
         verify(emailService).enviarCredencialesAcceso(
-                eq("jhoanatanguevaravasquez@gmail.com"), eq("JHONATAN GUEVARA"), eq("A20260001"), eq("NuevaClave1"), eq(TipoEnvioCredenciales.REACTIVACION));
+                eq("jhoanatanguevaravasquez@gmail.com"), eq("JHONATAN GUEVARA"), eq("A20260001"), anyString(), eq(TipoEnvioCredenciales.REACTIVACION));
     }
 
     @Test
@@ -438,69 +429,67 @@ class UsuarioServiceTest {
     }
 
     @Test
-    void actualizarConContrasenaNuevaMarcaCambioObligatorio() {
-        stubAccesoRepository();
-        stubValidacionesUnicas();
-        when(passwordEncoder.encode(anyString())).thenReturn("hashNueva");
-        Usuario activo = usuario(1, AccesoConstants.ACTIVO);
-        stubSaveYRolesActivos(activo, rol(1, "Administrador"));
-        UsuarioRequest request = requestSinDocente();
-        request.setRolIds(null);
+    void crearGeneraLaContrasenaYLaEnviaPorCorreo() {
+        stubCreacionBasica();
+        when(passwordEncoder.encode(anyString())).thenReturn("hashGenerada");
 
-        service.update(1, request);
+        service.create(requestSinDocente());
 
-        assertEquals("hashNueva", activo.getContraseña());
-        assertEquals(Boolean.TRUE, activo.getDebeCambiarContrasena());
+        ArgumentCaptor<String> enviada = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> cifrada = ArgumentCaptor.forClass(String.class);
+        verify(passwordEncoder).encode(cifrada.capture());
+        verify(emailService).enviarCredencialesAcceso(anyString(), anyString(), anyString(), enviada.capture(), any(TipoEnvioCredenciales.class));
+        // Lo que recibe la persona es exactamente lo que se guardó, y cumple la política.
+        assertEquals(cifrada.getValue(), enviada.getValue());
+        assertTrue(enviada.getValue().matches("^(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{8,}$"));
     }
 
     @Test
-    void actualizarConContrasenaNuevaEnviaCredencialesPorCorreo() {
-        stubAccesoRepository();
-        stubValidacionesUnicas();
-        when(passwordEncoder.encode(anyString())).thenReturn("hashNueva");
-        Usuario activo = usuario(1, AccesoConstants.ACTIVO);
-        stubSaveYRolesActivos(activo, rol(1, "Administrador"));
-        when(emailService.enviarCredencialesAcceso(anyString(), anyString(), anyString(), anyString(), any(TipoEnvioCredenciales.class)))
-                .thenReturn(true);
-        UsuarioRequest request = requestSinDocente();
-        request.setRolIds(null);
-
-        UsuarioResponse response = service.update(1, request);
-
-        assertEquals(Boolean.TRUE, response.getCredencialesEnviadas());
-        verify(emailService).enviarCredencialesAcceso(
-                eq("jhoanatanguevaravasquez@gmail.com"), eq("JHONATAN GUEVARA"), eq("A20260001"), eq("NuevaClave1"),
-                eq(TipoEnvioCredenciales.RESTABLECIMIENTO));
-    }
-
-    @Test
-    void actualizarSinContrasenaNoEnviaCorreo() {
+    void editarNoTocaLaContrasenaNiEnviaCorreo() {
         stubAccesoRepository();
         stubValidacionesUnicas();
         Usuario activo = usuario(1, AccesoConstants.ACTIVO);
         stubSaveYRolesActivos(activo, rol(1, "Administrador"));
         UsuarioRequest request = requestSinDocente();
         request.setRolIds(null);
-        request.setContraseña("");
 
         UsuarioResponse response = service.update(1, request);
 
         assertEquals(null, response.getCredencialesEnviadas());
+        assertEquals("hashPrevIa", activo.getContraseña());
+        assertEquals(Boolean.FALSE, activo.getDebeCambiarContrasena());
         verify(emailService, never())
                 .enviarCredencialesAcceso(anyString(), anyString(), anyString(), anyString(), any(TipoEnvioCredenciales.class));
     }
 
     @Test
-    void actualizarSinContrasenaNoMarcaCambioObligatorio() {
+    void restablecerGeneraContrasenaEnviaCorreoYObligaACambiarla() {
         stubAccesoRepository();
-        stubValidacionesUnicas();
+        when(passwordEncoder.encode(anyString())).thenReturn("hashNueva");
         Usuario activo = usuario(1, AccesoConstants.ACTIVO);
+        activo.setGmail("ana@mail.com");
         stubSaveYRolesActivos(activo, rol(1, "Administrador"));
-        UsuarioRequest request = requestSinDocente();
-        request.setRolIds(null);
-        request.setContraseña("");
+        when(emailService.enviarCredencialesAcceso(anyString(), anyString(), anyString(), anyString(), any(TipoEnvioCredenciales.class)))
+                .thenReturn(true);
 
-        service.update(1, request);
+        assertTrue(service.restablecerContrasena(1));
+
+        assertEquals("hashNueva", activo.getContraseña());
+        assertEquals(Boolean.TRUE, activo.getDebeCambiarContrasena());
+        verify(emailService).enviarCredencialesAcceso(eq("ana@mail.com"), anyString(), anyString(), anyString(),
+                eq(TipoEnvioCredenciales.RESTABLECIMIENTO));
+    }
+
+    @Test
+    void siElCorreoNoSaleLaContrasenaNoCambia() {
+        stubAccesoRepository();
+        Usuario activo = usuario(1, AccesoConstants.ACTIVO);
+        activo.setGmail("ana@mail.com");
+        stubSaveYRolesActivos(activo, rol(1, "Administrador"));
+        when(emailService.enviarCredencialesAcceso(anyString(), anyString(), anyString(), anyString(), any(TipoEnvioCredenciales.class)))
+                .thenReturn(false);
+
+        assertEquals(false, service.restablecerContrasena(1));
 
         assertEquals("hashPrevIa", activo.getContraseña());
         assertEquals(Boolean.FALSE, activo.getDebeCambiarContrasena());

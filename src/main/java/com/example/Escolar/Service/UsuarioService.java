@@ -77,9 +77,6 @@ public class UsuarioService {
 
     @Transactional
     public UsuarioResponse create(UsuarioRequest request) {
-        if (request.getContraseña() == null || request.getContraseña().isBlank()) {
-            throw new IllegalArgumentException("La contraseña es obligatoria");
-        }
         if (request.getRolIds() == null || request.getRolIds().isEmpty()) {
             throw new IllegalArgumentException("Debe asignar al menos un rol");
         }
@@ -91,6 +88,7 @@ public class UsuarioService {
             request.setAccesoId(AccesoConstants.ACTIVO.longValue());
         }
         applyRequest(usuario, request);
+        String temporal = asignarContrasenaTemporal(usuario);
         usuario.setCodigo(generarCodigo(request.getRolIds()));
         usuario.setFechaCreacion(LocalDate.now());
         Usuario saved = usuarioRepository.save(usuario);
@@ -99,31 +97,40 @@ public class UsuarioService {
             crearDocente(saved, request);
         }
         UsuarioResponse response = toResponse(saved);
-        response.setCredencialesEnviadas(enviarCredencialesAcceso(saved, request, TipoEnvioCredenciales.CREACION));
+        response.setCredencialesEnviadas(enviarCredencialesAcceso(saved, temporal, TipoEnvioCredenciales.CREACION));
         return response;
     }
 
     @Transactional
     public UsuarioResponse update(Integer id, UsuarioRequest request) {
+        return actualizarRegistro(findUsuario(id), id, request);
+    }
+
+    /**
+     * Genera una contraseña nueva y la envía al correo guardado. Primero se envía:
+     * si el correo no sale, la anterior sigue valiendo y nadie queda sin acceso.
+     */
+    @Transactional
+    public boolean restablecerContrasena(Integer id) {
         Usuario usuario = findUsuario(id);
-        // Solo se notifica por correo cuando el admin asigna una contraseña nueva.
-        boolean cambiaContrasena = request.getContraseña() != null && !request.getContraseña().isBlank();
-        return actualizarRegistro(usuario, id, request,
-                cambiaContrasena ? TipoEnvioCredenciales.RESTABLECIMIENTO : null);
+        String temporal = ContrasenaTemporal.generar();
+        if (!enviarCredencialesAcceso(usuario, temporal, TipoEnvioCredenciales.RESTABLECIMIENTO)) {
+            return false;
+        }
+        usuario.setContraseña(passwordEncoder.encode(temporal));
+        usuario.setDebeCambiarContrasena(true);
+        usuarioRepository.save(usuario);
+        return true;
     }
 
     /**
      * Reactiva un usuario eliminado logicamente reutilizando la misma fila y su
-     * codigo. La contraseña, los datos personales y los roles pasan a ser
-     * exactamente los enviados en la peticion (no se conserva la contraseña
-     * anterior). Si no incluye rol DOCENTE, el registro Docente asociado
+     * codigo. Los datos personales y los roles pasan a ser exactamente los
+     * enviados en la peticion, y se genera una contraseña nueva. Si no incluye rol DOCENTE, el registro Docente asociado
      * permanece eliminado.
      */
     @Transactional
     public UsuarioResponse reactivar(Integer id, UsuarioRequest request) {
-        if (request.getContraseña() == null || request.getContraseña().isBlank()) {
-            throw new IllegalArgumentException("La contraseña es obligatoria para reactivar el usuario");
-        }
         Usuario usuario = usuarioRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con id " + id));
         if (!usuario.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO)) {
@@ -134,12 +141,13 @@ public class UsuarioService {
         usuario.setFechaBloqueo(null);
         usuario.setResetToken(null);
         usuario.setResetTokenExpiracion(null);
-        return actualizarRegistro(usuario, id, request, TipoEnvioCredenciales.REACTIVACION);
+        String temporal = asignarContrasenaTemporal(usuario);
+        UsuarioResponse response = actualizarRegistro(usuario, id, request);
+        response.setCredencialesEnviadas(enviarCredencialesAcceso(usuario, temporal, TipoEnvioCredenciales.REACTIVACION));
+        return response;
     }
 
-    /** {@code tipoEnvio} null: no se envían credenciales por correo. */
-    private UsuarioResponse actualizarRegistro(Usuario usuario, Integer id, UsuarioRequest request,
-                                               TipoEnvioCredenciales tipoEnvio) {
+    private UsuarioResponse actualizarRegistro(Usuario usuario, Integer id, UsuarioRequest request) {
         // Se excluye el id propio para permitir conservar su DNI/correo; si los
         // nuevos datos fueran de otra cuenta activa, aqui se detectaria el choque.
         validarDocumentoUnico(request.getDocumentoIdentidad(), id);
@@ -165,20 +173,24 @@ public class UsuarioService {
                 crearOReactivarDocente(usuario, docenteExistente.orElse(null), request);
             }
         }
-        UsuarioResponse response = toResponse(usuarioRepository.save(usuario));
-        if (tipoEnvio != null) {
-            response.setCredencialesEnviadas(enviarCredencialesAcceso(usuario, request, tipoEnvio));
-        }
-        return response;
+        return toResponse(usuarioRepository.save(usuario));
     }
 
-    private boolean enviarCredencialesAcceso(Usuario usuario, UsuarioRequest request, TipoEnvioCredenciales tipo) {
-        String gmail = request.getGmail();
+    // Toda contraseña que pone el sistema es temporal: se exige cambiarla al ingresar.
+    private String asignarContrasenaTemporal(Usuario usuario) {
+        String temporal = ContrasenaTemporal.generar();
+        usuario.setContraseña(passwordEncoder.encode(temporal));
+        usuario.setDebeCambiarContrasena(true);
+        return temporal;
+    }
+
+    private boolean enviarCredencialesAcceso(Usuario usuario, String contraseña, TipoEnvioCredenciales tipo) {
+        String gmail = usuario.getGmail();
         if (gmail == null || gmail.isBlank()) {
             return false;
         }
         String nombre = (usuario.getNombre() + " " + usuario.getApellidoPat()).trim();
-        return emailService.enviarCredencialesAcceso(gmail, nombre, usuario.getCodigo(), request.getContraseña(), tipo);
+        return emailService.enviarCredencialesAcceso(gmail, nombre, usuario.getCodigo(), contraseña, tipo);
     }
 
     @Transactional
@@ -457,11 +469,6 @@ public class UsuarioService {
         usuario.setApellidoMat(request.getApellidoMat());
         if (request.getDocumentoIdentidad() != null && !request.getDocumentoIdentidad().isBlank()) {
             usuario.setDocumentoIdentidad(request.getDocumentoIdentidad());
-        }
-        if (request.getContraseña() != null && !request.getContraseña().isBlank()) {
-            usuario.setContraseña(passwordEncoder.encode(request.getContraseña()));
-            // Aplica a crear, reactivar y editar: toda contraseña puesta por el admin es temporal.
-            usuario.setDebeCambiarContrasena(true);
         }
         if (request.getAccesoId() != null) {
             usuario.setAcceso(accesoRepository.findById(request.getAccesoId()).orElseThrow());

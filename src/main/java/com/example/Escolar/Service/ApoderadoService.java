@@ -13,15 +13,10 @@ import com.example.Escolar.Repository.AlumnoApoderadoRepository;
 import com.example.Escolar.Repository.ApoderadoRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Service.AccesoContextoService.Alcance;
-import com.example.Escolar.Service.EmailService.TipoEnvioCredenciales;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.security.SecureRandom;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -31,15 +26,12 @@ import java.util.Set;
 public class ApoderadoService {
 
     private static final String PERMISO = "APODERADOS";
-    private static final SecureRandom RANDOM = new SecureRandom();
     private final ApoderadoRepository apoderadoRepository;
     private final UsuarioRepository usuarioRepository;
     private final AccesoContextoService accesoContextoService;
     private final AccesoRepository accesoRepository;
     private final AlumnoApoderadoRepository alumnoApoderadoRepository;
     private final PagoConfigService pagoConfigService;
-    private final EmailService emailService;
-    private final PasswordEncoder passwordEncoder;
 
     @Transactional(readOnly = true)
     public List<ApoderadoResponse> getAll(Integer idUsuario, List<String> roles) {
@@ -77,10 +69,7 @@ public class ApoderadoService {
         return response;
     }
 
-    /**
-     * Edición desde Estudiantes. Si cambia el correo, la cuenta recibe una
-     * contraseña temporal en el correo nuevo (la anterior no se conoce).
-     */
+    /** Edición desde Estudiantes. */
     @Transactional
     public ApoderadoResponse actualizar(Integer id, ApoderadoEdicionRequest request) {
         Acceso eliminado = accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow();
@@ -104,7 +93,6 @@ public class ApoderadoService {
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("El apoderado no está vinculado a ese alumno"));
 
-        boolean cambiaCorreo = !gmail.equalsIgnoreCase(usuario.getGmail() == null ? "" : usuario.getGmail());
         usuario.setDocumentoIdentidad(dni);
         usuario.setNombre(request.getNombre().trim());
         usuario.setApellidoPat(request.getApellidoPat().trim());
@@ -112,12 +100,6 @@ public class ApoderadoService {
         usuario.setFechaNaci(request.getFechaNaci());
         usuario.setGmail(gmail);
         usuario.setCelular(request.getCelular());
-        String temporal = null;
-        if (cambiaCorreo) {
-            temporal = contraseñaTemporal();
-            usuario.setContraseña(passwordEncoder.encode(temporal));
-            usuario.setDebeCambiarContrasena(true);
-        }
         usuarioRepository.save(usuario);
         apoderado.setSexo(request.getSexo());
         apoderado.setDireccion(request.getDireccion().trim());
@@ -126,42 +108,7 @@ public class ApoderadoService {
         vinculo.setParentesco(pagoConfigService.parentesco(request.getIdParentesco()));
         alumnoApoderadoRepository.save(vinculo);
 
-        if (temporal != null) {
-            String contraseña = temporal;
-            String nombre = usuario.getNombre() + " " + usuario.getApellidoPat();
-            String codigo = usuario.getCodigo();
-            Runnable enviar = () -> emailService.enviarCredencialesAcceso(gmail, nombre, codigo, contraseña,
-                    TipoEnvioCredenciales.RESTABLECIMIENTO);
-            if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        enviar.run();
-                    }
-                });
-            } else {
-                enviar.run();
-            }
-        }
         return ApoderadoResponse.fromVinculo(vinculo);
-    }
-
-    // Cumple la política: mayúscula, minúscula, número y carácter especial.
-    private static String contraseñaTemporal() {
-        String mayusculas = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-        String minusculas = "abcdefghijkmnpqrstuvwxyz";
-        String numeros = "23456789";
-        String especiales = "#$%&*@";
-        String todos = mayusculas + minusculas + numeros + especiales;
-        StringBuilder sb = new StringBuilder()
-                .append(mayusculas.charAt(RANDOM.nextInt(mayusculas.length())))
-                .append(minusculas.charAt(RANDOM.nextInt(minusculas.length())))
-                .append(numeros.charAt(RANDOM.nextInt(numeros.length())))
-                .append(especiales.charAt(RANDOM.nextInt(especiales.length())));
-        for (int i = 0; i < 6; i++) {
-            sb.append(todos.charAt(RANDOM.nextInt(todos.length())));
-        }
-        return sb.toString();
     }
 
     private boolean esVisible(Integer idApoderado, Integer idUsuario, List<String> roles) {

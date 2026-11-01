@@ -40,4 +40,6 @@ public class MatriculaResponse {
     private String observaciones;
     private Long accesoId;
     private List<HistorialResponse> historial;
+    /** false: algún apoderado nuevo no recibió sus accesos; null: no había a quién enviarlos. */
+    private Boolean credencialesEnviadas;
 }

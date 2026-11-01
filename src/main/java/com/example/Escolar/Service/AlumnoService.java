@@ -122,8 +122,9 @@ public class AlumnoService {
                 .filter(contexto)
                 .collect(java.util.stream.Collectors.groupingBy(m -> m.getAlumnoApoderado().getAlumno().getIdAlumno()))
                 .forEach((id, delAlumno) -> AccesoContextoService.elegirActual(delAlumno).ifPresent(m -> mapa.put(id, m)));
+        boolean verApoderados = puedeVerApoderados();
         return alumnos.stream().map(a -> {
-            List<AlumnoApoderado> vinculos = alumnoApoderadoRepository.findByAlumno(a);
+            List<AlumnoApoderado> vinculos = verApoderados ? alumnoApoderadoRepository.findByAlumno(a) : List.of();
             Matricula vigente = mapa.get(a.getIdAlumno());
             return AlumnoResponse.fromEntity(a, vinculos, vigente);
         }).toList();
@@ -254,8 +255,14 @@ public class AlumnoService {
                 .orElseThrow(() -> new ResourceNotFoundException("Alumno no encontrado con id " + id));
     }
 
+    // Son datos personales: solo llegan a quien tiene el permiso de Apoderados.
+    private boolean puedeVerApoderados() {
+        return accesoContextoService.tienePermiso("APODERADOS",
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+    }
+
     private AlumnoResponse toResponse(Alumno alumno) {
-        List<AlumnoApoderado> vinculos = alumnoApoderadoRepository.findByAlumno(alumno);
+        List<AlumnoApoderado> vinculos = puedeVerApoderados() ? alumnoApoderadoRepository.findByAlumno(alumno) : List.of();
         List<Matricula> vigente = matriculaRepository.findActivasPorAlumnoIds(
                 List.of(alumno.getIdAlumno()), accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         Matricula m = AccesoContextoService.elegirActual(vigente).orElse(null);

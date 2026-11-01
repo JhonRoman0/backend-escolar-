@@ -86,6 +86,11 @@ public class AccesoContextoService {
                 .getOrDefault(permisoCodigo, Set.of()).contains(accionCodigo);
     }
 
+    /** Tiene el permiso, aunque sea solo para leer. */
+    public boolean tienePermiso(String permisoCodigo, Integer idUsuario, List<String> roles) {
+        return esAdmin(roles) || concesionesService.accionesPorPermiso(idUsuario).containsKey(permisoCodigo);
+    }
+
     public Optional<Docente> docenteDeUsuario(Integer idUsuario) {
         if (idUsuario == null) {
             return Optional.empty();

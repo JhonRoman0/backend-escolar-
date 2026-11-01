@@ -29,4 +29,7 @@ public class AlumnoApoderado {
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "id_parentesco")
     Parentesco parentesco;
+    // Inactivo: ya no es su apoderado, pero sus matrículas antiguas siguen apuntando aquí.
+    @Column(name = "activo", nullable = false, columnDefinition = "boolean default true")
+    boolean activo = true;
 }

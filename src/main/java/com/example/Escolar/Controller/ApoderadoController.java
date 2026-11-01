@@ -6,6 +6,7 @@ import com.example.Escolar.Dto.InscripcionApoderadoRequest;
 import com.example.Escolar.Service.AccesoContextoService;
 import com.example.Escolar.Service.ApoderadoService;
 import com.example.Escolar.Service.InscripcionService;
+import com.example.Escolar.Service.UsuarioService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,6 +28,7 @@ public class ApoderadoController {
 
     private final ApoderadoService apoderadoService;
     private final InscripcionService inscripcionService;
+    private final UsuarioService usuarioService;
     private final AccesoContextoService accesoContextoService;
 
     @GetMapping
@@ -59,6 +61,11 @@ public class ApoderadoController {
 
     @PutMapping("/{id}")
     public ApoderadoResponse actualizar(@PathVariable Integer id, @Valid @RequestBody ApoderadoEdicionRequest request) {
-        return apoderadoService.actualizar(id, request);
+        ApoderadoResponse response = apoderadoService.actualizar(id, request);
+        // Va después de guardar: si el correo falla, los datos ya quedaron guardados.
+        if (request.isRestablecerContrasena()) {
+            response.setCredencialesEnviadas(usuarioService.restablecerContrasena(response.getIdUsuario()));
+        }
+        return response;
     }
 }

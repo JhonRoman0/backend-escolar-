@@ -41,4 +41,6 @@ public class ApoderadoEdicionRequest {
     private Integer idAlumno;
     @NotNull(message = "El parentesco es obligatorio")
     private Integer idParentesco;
+    /** Al editar: generar una contraseña nueva y enviarla al correo. */
+    private boolean restablecerContrasena;
 }

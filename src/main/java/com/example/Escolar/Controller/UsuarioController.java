@@ -49,7 +49,12 @@ public class UsuarioController {
 
     @PutMapping("/{id}")
     public UsuarioResponse update(@PathVariable Integer id, @Valid @RequestBody UsuarioRequest request) {
-        return usuarioService.update(id, request);
+        UsuarioResponse response = usuarioService.update(id, request);
+        // Va después de guardar: si el correo falla, los datos ya quedaron guardados.
+        if (request.isRestablecerContrasena()) {
+            response.setCredencialesEnviadas(usuarioService.restablecerContrasena(id));
+        }
+        return response;
     }
 
     @PutMapping("/{id}/reactivar")

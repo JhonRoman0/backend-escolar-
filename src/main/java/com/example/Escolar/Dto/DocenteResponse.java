@@ -29,4 +29,6 @@ public class DocenteResponse {
     // Niveles con asignaciones en un año vigente o por comenzar: no se le pueden quitar.
     private List<Integer> nivelesConAsignaciones;
     private List<RolResponse> roles;
+    /** Solo al restablecer: false si el correo no salió y la contraseña no cambió. */
+    private Boolean credencialesEnviadas;
 }

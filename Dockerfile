@@ -14,7 +14,8 @@ COPY --from=build /app/target/*.jar app.jar
 USER spring
 
 ENV SPRING_PROFILES_ACTIVE=prod \
-    JAVA_OPTS="-Xms256m -Xmx512m -XX:+UseSerialGC"
+        JAVA_OPTS="-Xms256m -Xmx512m -XX:+UseSerialGC -Duser.timezone=America/Lima" \
+        TZ=America/Lima
 
 EXPOSE 8080
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]

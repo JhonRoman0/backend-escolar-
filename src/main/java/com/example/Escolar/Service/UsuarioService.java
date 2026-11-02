@@ -6,8 +6,11 @@ import com.example.Escolar.Dto.UsuarioReporteResponse;
 import com.example.Escolar.Dto.UsuarioRequest;
 import com.example.Escolar.Dto.UsuarioResponse;
 import com.example.Escolar.Exception.ResourceNotFoundException;
+import com.example.Escolar.Exception.UsuarioConDependenciasException;
 import com.example.Escolar.Exception.UsuarioReactivacionException;
 import com.example.Escolar.Model.Acceso;
+import com.example.Escolar.Model.AlumnoApoderado;
+import com.example.Escolar.Model.Apoderado;
 import com.example.Escolar.Model.Docente;
 import com.example.Escolar.Model.DocenteNivel;
 import com.example.Escolar.Model.GradoAcademico;
@@ -17,6 +20,8 @@ import com.example.Escolar.Model.TipoContrato;
 import com.example.Escolar.Model.Usuario;
 import com.example.Escolar.Model.UsuarioRol;
 import com.example.Escolar.Repository.AccesoRepository;
+import com.example.Escolar.Repository.AlumnoApoderadoRepository;
+import com.example.Escolar.Repository.ApoderadoRepository;
 import com.example.Escolar.Repository.DocenteNivelRepository;
 import com.example.Escolar.Repository.DocenteRepository;
 import com.example.Escolar.Repository.GradoAcademicoRepository;
@@ -46,6 +51,8 @@ import java.util.Optional;
 public class UsuarioService {
 
     public static final String ROL_DOCENTE = "DOCENTE";
+    private static final String ROL_APODERADO = "APODERADO";
+    private static final String ROL_ADMIN = "ADMIN";
 
     private final UsuarioRepository usuarioRepository;
     private final AccesoRepository accesoRepository;
@@ -60,6 +67,8 @@ public class UsuarioService {
     private final TipoContratoRepository tipoContratoRepository;
     private final EmailService emailService;
     private final DocenteService docenteService;
+    private final ApoderadoRepository apoderadoRepository;
+    private final AlumnoApoderadoRepository alumnoApoderadoRepository;
 
     public Page<UsuarioResponse> getAll(Pageable pageable) {
         return getAll(pageable, null, null, null);
@@ -94,7 +103,7 @@ public class UsuarioService {
         usuario.setFechaCreacion(LocalDate.now());
         Usuario saved = usuarioRepository.save(usuario);
         assignRoles(saved, request.getRolIds());
-        if (seleccionaDocente(request.getRolIds())) {
+        if (seleccionaRol(request.getRolIds(), ROL_DOCENTE)) {
             crearDocente(saved, request);
         }
         UsuarioResponse response = toResponse(saved);
@@ -159,14 +168,25 @@ public class UsuarioService {
             Optional<Docente> docenteExistente = docenteRepository.findByUsuarioIdUsuario(id);
             boolean eraDocenteActivo = docenteExistente.isPresent()
                     && !docenteExistente.get().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO);
-            boolean seraDocente = seleccionaDocente(request.getRolIds());
+            boolean seraDocente = seleccionaRol(request.getRolIds(), ROL_DOCENTE);
             // Se valida antes de tocar sus roles: sus cursos no pueden quedar sin docente.
             if (eraDocenteActivo && !seraDocente) {
                 docenteService.validarSinAsignacionesVigentes(docenteExistente.get(), "quitar el rol Docente a");
             }
 
+            boolean quitaApoderado = !seleccionaRol(request.getRolIds(), ROL_APODERADO);
+            if (quitaApoderado) {
+                validarSinAlumnosActivos(usuario, "quitar el rol Apoderado", " a");
+            }
+            if (!seleccionaRol(request.getRolIds(), ROL_ADMIN)) {
+                validarNoEsUltimoAdmin(usuario, "quitar el rol ADMIN a");
+            }
+
             usuarioRolRepository.deleteByUsuarioIdUsuario(id);
             assignRoles(usuario, request.getRolIds());
+            if (quitaApoderado) {
+                darDeBajaApoderado(id);
+            }
 
             if (eraDocenteActivo && !seraDocente) {
                 eliminarDocente(docenteExistente.get());
@@ -203,8 +223,13 @@ public class UsuarioService {
     }
 
     @Transactional
-    public void delete(Integer id) {
+    public void delete(Integer id, Integer idAutenticado) {
+        if (id.equals(idAutenticado)) {
+            throw new UsuarioConDependenciasException("No puedes eliminar tu propia cuenta");
+        }
         Usuario usuario = findUsuario(id);
+        validarNoEsUltimoAdmin(usuario, "eliminar a");
+        validarSinAlumnosActivos(usuario, "eliminar a", "");
         docenteRepository.findByUsuarioIdUsuario(id)
                 .filter(d -> !d.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
                 .ifPresent(d -> docenteService.validarSinAsignacionesVigentes(d, "eliminar el usuario de"));
@@ -218,6 +243,60 @@ public class UsuarioService {
                 eliminarDocente(docente);
             }
         });
+        darDeBajaApoderado(id);
+    }
+
+    /** Sus alumnos no pueden quedar con un apoderado sin cuenta. */
+    private void validarSinAlumnosActivos(Usuario usuario, String accion, String complemento) {
+        apoderadoRepository.findByUsuarioIdUsuario(usuario.getIdUsuario())
+                .filter(this::esApoderadoVigente)
+                .ifPresent(apoderado -> {
+                    List<String> alumnos = alumnoApoderadoRepository.findByApoderado(apoderado).stream()
+                            .map(AlumnoApoderado::getAlumno)
+                            .filter(a -> !AccesoConstants.ELIMINADO.equals(a.getAcceso().getIdAcceso()))
+                            .map(a -> a.getNombre() + " " + a.getApellidoPat() + " " + a.getApellidoMat())
+                            .distinct()
+                            .sorted()
+                            .toList();
+                    if (!alumnos.isEmpty()) {
+                        throw new UsuarioConDependenciasException(String.format(
+                                "No se puede %s%s %s %s: es apoderado de %s. Quítalo o reemplázalo desde Estudiantes.",
+                                accion, complemento, usuario.getNombre(), usuario.getApellidoPat(),
+                                String.join(", ", alumnos)));
+                    }
+                });
+    }
+
+    private void validarNoEsUltimoAdmin(Usuario usuario, String accion) {
+        usuarioRolRepository.findByUsuarioIdUsuario(usuario.getIdUsuario()).stream()
+                .map(UsuarioRol::getRol)
+                .filter(rol -> ROL_ADMIN.equalsIgnoreCase(rol.getNombre()))
+                .findFirst()
+                .ifPresent(rolAdmin -> {
+                    boolean hayOtro = usuarioRolRepository.findByRolIdRol(rolAdmin.getIdRol()).stream()
+                            .map(UsuarioRol::getUsuario)
+                            .anyMatch(u -> !u.getIdUsuario().equals(usuario.getIdUsuario())
+                                    && AccesoConstants.ACTIVO.equals(u.getAcceso().getIdAcceso()));
+                    if (!hayOtro) {
+                        throw new UsuarioConDependenciasException(String.format(
+                                "No se puede %s %s %s: es el único usuario activo con rol ADMIN.",
+                                accion, usuario.getNombre(), usuario.getApellidoPat()));
+                    }
+                });
+    }
+
+    private boolean esApoderadoVigente(Apoderado apoderado) {
+        return !AccesoConstants.ELIMINADO.equals(apoderado.getAcceso().getIdAcceso());
+    }
+
+    /** Sin alumnos, el registro no debe quedar activo con una cuenta eliminada. */
+    private void darDeBajaApoderado(Integer idUsuario) {
+        apoderadoRepository.findByUsuarioIdUsuario(idUsuario)
+                .filter(this::esApoderadoVigente)
+                .ifPresent(apoderado -> {
+                    apoderado.setAcceso(accesoEliminado());
+                    apoderadoRepository.save(apoderado);
+                });
     }
 
     @Transactional(readOnly = true)
@@ -319,13 +398,13 @@ public class UsuarioService {
         }
     }
 
-    private boolean seleccionaDocente(List<Integer> rolIds) {
+    private boolean seleccionaRol(List<Integer> rolIds, String nombre) {
         if (rolIds == null) {
             return false;
         }
         for (Integer rolId : rolIds) {
             Rol rol = rolRepository.findByIdRolAndAccesoNot(rolId, accesoEliminado()).orElse(null);
-            if (rol != null && ROL_DOCENTE.equalsIgnoreCase(rol.getNombre())) {
+            if (rol != null && nombre.equalsIgnoreCase(rol.getNombre())) {
                 return true;
             }
         }

@@ -209,7 +209,7 @@ class MatriculaReglasServiceTest {
         when(matriculaRepository.countByGradoSeccionIdGradoSeccionAndAccesoNot(eq(202), any())).thenReturn(2L);
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> reglas.validarSeccion(llena, null, null));
-        assertEquals("La sección 4to A ya no tiene cupo", ex.getMessage());
+        assertEquals("La sección 4to A de Primaria ya no tiene cupo", ex.getMessage());
 
         when(matriculaRepository.countByGradoSeccionIdGradoSeccionAndAccesoNot(eq(202), any())).thenReturn(1L);
         assertDoesNotThrow(() -> reglas.validarSeccion(llena, null, null));

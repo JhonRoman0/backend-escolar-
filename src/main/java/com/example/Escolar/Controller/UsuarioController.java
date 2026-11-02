@@ -97,11 +97,10 @@ public class UsuarioController {
 
     @GetMapping("/reporte")
     public List<UsuarioReporteResponse> reporte(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin,
-            @RequestParam(required = false) String q,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin,
             @RequestParam(required = false) Integer idRol,
             @RequestParam(required = false) Long idAcceso) {
-        return usuarioService.reporte(inicio, fin, q, idRol, idAcceso);
+        return usuarioService.reporte(inicio, fin, idRol, idAcceso);
     }
 }

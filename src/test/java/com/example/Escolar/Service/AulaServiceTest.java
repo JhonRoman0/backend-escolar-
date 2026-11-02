@@ -1,11 +1,13 @@
 package com.example.Escolar.Service;
 
 import com.example.Escolar.Dto.AulaRequest;
+import com.example.Escolar.Dto.AulaResponse;
 import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.Aula;
 import com.example.Escolar.Model.AnioEscolar;
 import com.example.Escolar.Model.Grado;
 import com.example.Escolar.Model.GradoSeccion;
+import com.example.Escolar.Model.Nivel;
 import com.example.Escolar.Model.Seccion;
 import com.example.Escolar.Model.TipoAula;
 import com.example.Escolar.Model.Turno;
@@ -171,11 +173,15 @@ class AulaServiceTest {
     private void esSalonDeTercerA() {
         Grado grado = new Grado();
         grado.setNombre("3.° grado");
+        Nivel primaria = new Nivel();
+        primaria.setNombre("Primaria");
+        grado.setNivel(primaria);
         Seccion a = new Seccion();
         a.setNombre("A");
         Turno manana = new Turno();
         manana.setNombre("Mañana");
         AnioEscolar anio = new AnioEscolar();
+        anio.setIdAnio(2);
         anio.setAnio("2027");
         GradoSeccion tercerA = new GradoSeccion();
         tercerA.setGrado(grado);
@@ -203,6 +209,7 @@ class AulaServiceTest {
     @Test
     void laRespuestaDiceDeQueSeccionEsSalon() {
         esSalonDeTercerA();
-        assertEquals(List.of("3.° grado A – Mañana 2027"), aulaService.getById(1).getSecciones());
+        assertEquals(List.of(new AulaResponse.SeccionDelAula(2, "2027", "Primaria", "3.° grado", "A", "Mañana")),
+                aulaService.getById(1).getSecciones());
     }
 }

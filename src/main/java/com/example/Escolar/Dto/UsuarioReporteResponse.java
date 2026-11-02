@@ -14,6 +14,8 @@ public class UsuarioReporteResponse {
     private String codigo;
     private String documentoIdentidad;
     private String gmail;
+    private String celular;
+    private String estado;
     private LocalDate fechaCreacion;
     private List<String> roles;
 }

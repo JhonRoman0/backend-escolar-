@@ -125,10 +125,14 @@ public class MatriculaController {
 
     @GetMapping("/reporte")
     public List<MatriculaReporteResponse> reporte(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin,
             @RequestParam(required = false) Integer idAnio,
-            @RequestParam(required = false) Integer idGradoSeccion) {
-        return matriculaService.reporte(inicio, fin, idAnio, idGradoSeccion);
+            @RequestParam(required = false) Integer idNivel,
+            @RequestParam(required = false) Integer idGrado,
+            @RequestParam(required = false) Integer idGradoSeccion,
+            @RequestParam(required = false) Long idAcceso) {
+        return matriculaService.reporte(inicio, fin, idAnio, idNivel, idGrado, idGradoSeccion, idAcceso,
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
     }
 }

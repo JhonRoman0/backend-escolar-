@@ -30,9 +30,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
@@ -169,16 +171,21 @@ public class DocenteService {
     }
 
     @Transactional(readOnly = true)
-    public List<DocenteReporteResponse> reporte(LocalDate inicio, LocalDate fin, Integer tipoContratoId) {
-        return docenteRepository.findByFechaContratacionBetweenAndAccesoNot(inicio, fin, accesoNoEliminado()).stream()
-                .filter(d -> {
-                    if (tipoContratoId == null) {
-                        return true;
-                    }
-                    return d.getTipoContrato() != null
-                            && tipoContratoId.equals(d.getTipoContrato().getIdTipoContrato());
-                })
+    public List<DocenteReporteResponse> reporte(LocalDate inicio, LocalDate fin, Integer tipoContratoId,
+            Integer idNivel, Long idAcceso) {
+        return docenteRepository.findByAccesoNot(accesoNoEliminado()).stream()
+                .filter(d -> RangoFechas.contiene(d.getFechaContratacion(), inicio, fin))
+                .filter(d -> tipoContratoId == null || (d.getTipoContrato() != null
+                        && tipoContratoId.equals(d.getTipoContrato().getIdTipoContrato())))
+                .filter(d -> idAcceso == null || idAcceso.equals(d.getAcceso().getIdAcceso()))
+                .sorted(Comparator.comparing(d -> d.getUsuario().getApellidoPat() + " "
+                        + d.getUsuario().getApellidoMat() + " " + d.getUsuario().getNombre(),
+                        String.CASE_INSENSITIVE_ORDER))
                 .map(d -> {
+                    List<NivelResponse> niveles = nivelesDe(d);
+                    if (idNivel != null && niveles.stream().noneMatch(n -> idNivel.equals(n.getIdNivel()))) {
+                        return null;
+                    }
                     DocenteReporteResponse r = new DocenteReporteResponse();
                     r.setIdDocente(d.getIdDocente());
                     r.setNombre(d.getUsuario().getNombre() + " " + d.getUsuario().getApellidoPat()
@@ -186,11 +193,15 @@ public class DocenteService {
                     r.setCodigo(d.getUsuario().getCodigo());
                     r.setGradoAcademico(d.getGradoAcademico() != null ? d.getGradoAcademico().getNombre() : null);
                     r.setTipoContrato(d.getTipoContrato() != null ? d.getTipoContrato().getNombre() : null);
-                    r.setNiveles(nivelesDe(d).stream().map(NivelResponse::getNombre).toList());
+                    r.setNiveles(niveles.stream().map(NivelResponse::getNombre).toList());
                     r.setFechaContratacion(d.getFechaContratacion());
                     r.setDocumentoIdentidad(d.getUsuario().getDocumentoIdentidad());
+                    r.setGmail(d.getUsuario().getGmail());
+                    r.setCelular(d.getUsuario().getCelular());
+                    r.setEstado(d.getAcceso().getNombre());
                     return r;
                 })
+                .filter(Objects::nonNull)
                 .toList();
     }
 

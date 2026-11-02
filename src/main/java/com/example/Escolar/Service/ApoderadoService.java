@@ -69,7 +69,7 @@ public class ApoderadoService {
         return response;
     }
 
-    /** Edición desde Estudiantes. */
+    /** Edición de la misma persona desde Estudiantes; otro DNI es un reemplazo, no una edición. */
     @Transactional
     public ApoderadoResponse actualizar(Integer id, ApoderadoEdicionRequest request) {
         Acceso eliminado = accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow();
@@ -78,11 +78,9 @@ public class ApoderadoService {
         Usuario usuario = apoderado.getUsuario();
         String dni = request.getDocumentoIdentidad().trim();
         String gmail = request.getGmail().trim();
-        usuarioRepository.findByDocumentoIdentidadAndAccesoNot(dni, eliminado)
-                .filter(u -> !u.getIdUsuario().equals(usuario.getIdUsuario()))
-                .ifPresent(u -> {
-                    throw new IllegalArgumentException("Ya existe un usuario con el DNI " + dni);
-                });
+        if (usuario.getDocumentoIdentidad() != null && !usuario.getDocumentoIdentidad().equals(dni)) {
+            throw new IllegalArgumentException("Para poner a otra persona hay que reemplazar al apoderado");
+        }
         usuarioRepository.findByGmailAndAccesoNot(gmail, eliminado)
                 .filter(u -> !u.getIdUsuario().equals(usuario.getIdUsuario()))
                 .ifPresent(u -> {

@@ -36,6 +36,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -220,11 +221,12 @@ public class UsuarioService {
     }
 
     @Transactional(readOnly = true)
-    public List<UsuarioReporteResponse> reporte(LocalDate inicio, LocalDate fin, String q, Integer idRol, Long idAcceso) {
-        String patron = (q == null || q.isBlank()) ? null : "%" + q.trim().toLowerCase() + "%";
+    public List<UsuarioReporteResponse> reporte(LocalDate inicio, LocalDate fin, Integer idRol, Long idAcceso) {
         return usuarioRepository
-                .buscarFiltrados(AccesoConstants.ELIMINADO, inicio, fin, patron, idRol, idAcceso, Pageable.unpaged())
+                .buscarFiltrados(AccesoConstants.ELIMINADO, inicio, fin, null, idRol, idAcceso, Pageable.unpaged())
                 .getContent().stream()
+                .sorted(Comparator.comparing(u -> u.getApellidoPat() + " " + u.getApellidoMat() + " " + u.getNombre(),
+                        String.CASE_INSENSITIVE_ORDER))
                 .map(u -> {
                     UsuarioReporteResponse r = new UsuarioReporteResponse();
                     r.setIdUsuario(u.getIdUsuario());
@@ -232,6 +234,8 @@ public class UsuarioService {
                     r.setCodigo(u.getCodigo());
                     r.setDocumentoIdentidad(u.getDocumentoIdentidad());
                     r.setGmail(u.getGmail());
+                    r.setCelular(u.getCelular());
+                    r.setEstado(u.getAcceso().getNombre());
                     r.setFechaCreacion(u.getFechaCreacion());
                     r.setRoles(usuarioRolRepository.findByUsuarioIdUsuario(u.getIdUsuario()).stream()
                             .map(UsuarioRol::getRol)

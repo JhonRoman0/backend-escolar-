@@ -31,6 +31,8 @@ public class ApiPermisoRegistro {
     private final AntPathMatcher matcher = new AntPathMatcher();
 
     public ApiPermisoRegistro() {
+        // Los reportes van antes que la lectura general: gana la primera ruta que coincide.
+        registrar("GET", "/usuarios/reporte", "USUARIOS", "IMPRIMIR_EXPORTAR");
         registrarLectura("GET", "/usuarios", "USUARIOS");
         registrarLectura("GET", "/usuarios/**", "USUARIOS");
         registrar("POST", "/usuarios/{id}/foto", "USUARIOS", "ACTUALIZAR");
@@ -39,7 +41,6 @@ public class ApiPermisoRegistro {
         registrar("POST", "/usuarios/**", "USUARIOS", "CREAR");
         registrar("PUT", "/usuarios/**", "USUARIOS", "ACTUALIZAR");
         registrar("DELETE", "/usuarios/**", "USUARIOS", "ELIMINAR");
-        registrar("GET", "/usuarios/reporte", "USUARIOS", "IMPRIMIR_EXPORTAR");
 
         registrarLectura("GET", "/roles", "ROLES");
         registrarLectura("GET", "/roles/**", "ROLES");
@@ -71,13 +72,13 @@ public class ApiPermisoRegistro {
         registrar("PUT", "/roles-permiso/**", "ROLES_PERMISOS", "ACTUALIZAR");
         registrar("DELETE", "/roles-permiso/**", "ROLES_PERMISOS", "ELIMINAR");
 
+        registrar("GET", "/docentes/reporte", "DOCENTES", "IMPRIMIR_EXPORTAR");
         registrarLectura("GET", "/docentes", "DOCENTES", "ASIGNACIONES", "SUSPENSIONES_DOCENTE", "HORARIOS", "NOTAS");
         registrarLectura("GET", "/docentes/**", "DOCENTES");
         registrarLectura("GET", "/grados-academicos", "DOCENTES", "USUARIOS");
         registrarLectura("GET", "/tipos-contrato", "DOCENTES", "USUARIOS");
         registrar("PUT", "/docentes/**", "DOCENTES", "ACTUALIZAR");
         registrar("DELETE", "/docentes/**", "DOCENTES", "ELIMINAR");
-        registrar("GET", "/docentes/reporte", "DOCENTES", "IMPRIMIR_EXPORTAR");
 
         registrarLectura("GET", "/cursos", "CURSOS", "COMPETENCIAS", "ASIGNACIONES");
         registrarLectura("GET", "/cursos/**", "CURSOS", "COMPETENCIAS", "ASIGNACIONES");
@@ -131,17 +132,18 @@ public class ApiPermisoRegistro {
         registrar("DELETE", "/asignaciones/**", "ASIGNACIONES", "ELIMINAR");
 
         // Los apoderados se gestionan desde la lista de alumnos.
+        registrar("GET", "/alumnos/reporte", "ALUMNOS", "IMPRIMIR_EXPORTAR");
         registrarLectura("GET", "/alumnos", "ALUMNOS", "APODERADOS");
         registrarLectura("GET", "/alumnos/**", "ALUMNOS");
         registrar("POST", "/alumnos/{id}/foto", "ALUMNOS", "ACTUALIZAR");
         registrar("DELETE", "/alumnos/{id}/foto", "ALUMNOS", "ACTUALIZAR");
         registrar("PUT", "/alumnos/**", "ALUMNOS", "ACTUALIZAR");
-        registrar("GET", "/alumnos/reporte", "ALUMNOS", "IMPRIMIR_EXPORTAR");
 
         registrarLectura("GET", "/apoderados", "APODERADOS");
         registrarLectura("GET", "/apoderados/**", "APODERADOS");
         registrar("POST", "/apoderados/alumno/*", "APODERADOS", "CREAR");
         registrar("PUT", "/apoderados/**", "APODERADOS", "ACTUALIZAR");
+        registrar("DELETE", "/apoderados/*", "APODERADOS", "ELIMINAR");
 
         registrarLectura("GET", "/parentescos", "MATRICULAS", "APODERADOS", "ALUMNOS");
         registrarLectura("GET", "/sexos", "MATRICULAS", "APODERADOS", "ALUMNOS");
@@ -155,6 +157,7 @@ public class ApiPermisoRegistro {
 
         // Estudiantes también busca apoderados por DNI al agregar uno.
         registrarLectura("GET", "/matriculas/inscripcion/apoderado/*", "MATRICULAS", "APODERADOS");
+        registrar("GET", "/matriculas/reporte", "MATRICULAS", "IMPRIMIR_EXPORTAR");
         registrarLectura("GET", "/matriculas", "MATRICULAS");
         registrarLectura("GET", "/matriculas/**", "MATRICULAS");
         registrar("POST", "/matriculas/inscripcion", "MATRICULAS", "CREAR");
@@ -162,7 +165,6 @@ public class ApiPermisoRegistro {
         registrar("POST", "/matriculas/**", "MATRICULAS", "ACTUALIZAR");
         registrar("PUT", "/matriculas/**", "MATRICULAS", "ACTUALIZAR");
         registrar("DELETE", "/matriculas/**", "MATRICULAS", "ELIMINAR");
-        registrar("GET", "/matriculas/reporte", "MATRICULAS", "IMPRIMIR_EXPORTAR");
 
         registrarLectura("GET", "/competencias", "COMPETENCIAS", "CURSOS", "NOTAS", "CONSOLIDADOS");
         registrarLectura("GET", "/competencias/**", "COMPETENCIAS", "CURSOS", "NOTAS", "CONSOLIDADOS");

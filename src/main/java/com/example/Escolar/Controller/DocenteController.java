@@ -50,9 +50,11 @@ public class DocenteController {
 
     @GetMapping("/reporte")
     public List<DocenteReporteResponse> reporte(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin,
-            @RequestParam(required = false) Integer tipoContratoId) {
-        return docenteService.reporte(inicio, fin, tipoContratoId);
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin,
+            @RequestParam(required = false) Integer tipoContratoId,
+            @RequestParam(required = false) Integer idNivel,
+            @RequestParam(required = false) Long idAcceso) {
+        return docenteService.reporte(inicio, fin, tipoContratoId, idNivel, idAcceso);
     }
 }

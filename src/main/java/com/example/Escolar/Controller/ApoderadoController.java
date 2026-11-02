@@ -8,6 +8,8 @@ import com.example.Escolar.Service.ApoderadoService;
 import com.example.Escolar.Service.InscripcionService;
 import com.example.Escolar.Service.UsuarioService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -57,6 +60,19 @@ public class ApoderadoController {
     @ResponseStatus(HttpStatus.CREATED)
     public ApoderadoResponse agregar(@PathVariable Integer idAlumno, @Valid @RequestBody InscripcionApoderadoRequest request) {
         return inscripcionService.agregarApoderado(idAlumno, request);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> quitar(@PathVariable Integer id, @RequestParam Integer idAlumno) {
+        inscripcionService.quitarApoderado(id, idAlumno);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Otra persona ocupa su lugar con este alumno; el backend comprueba quién es ese DNI. */
+    @PutMapping("/{id}/reemplazar")
+    public ApoderadoResponse reemplazar(@PathVariable Integer id, @RequestParam Integer idAlumno,
+                                        @Valid @RequestBody InscripcionApoderadoRequest request) {
+        return inscripcionService.reemplazarApoderado(id, idAlumno, request);
     }
 
     @PutMapping("/{id}")

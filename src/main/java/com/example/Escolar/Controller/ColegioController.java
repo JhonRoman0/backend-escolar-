@@ -35,10 +35,12 @@ public class ColegioController {
         return colegioService.getById(id);
     }
 
-    @PostMapping
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
-    public ColegioResponse create(@Valid @RequestBody ColegioRequest request) {
-        return colegioService.create(request);
+    public ColegioResponse create(@Valid @RequestPart("datos") ColegioRequest request,
+                                  @RequestPart(value = "foto", required = false) MultipartFile foto,
+                                  @RequestPart(value = "portada", required = false) MultipartFile portada) {
+        return colegioService.create(request, foto, portada);
     }
 
     @PutMapping("/{id}")
@@ -55,12 +57,6 @@ public class ColegioController {
     @PostMapping(value = "/{id}/foto", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ColegioResponse subirFoto(@PathVariable Integer id, @RequestPart("imagen") MultipartFile imagen) {
         return colegioService.subirFoto(id, imagen);
-    }
-
-    @DeleteMapping("/{id}/foto")
-    public ResponseEntity<Void> eliminarFoto(@PathVariable Integer id) {
-        colegioService.eliminarFoto(id);
-        return ResponseEntity.noContent().build();
     }
 
     @PostMapping(value = "/{id}/portada", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

@@ -375,6 +375,7 @@ public class DataSeeder implements CommandLineRunner {
         crearAccionSiFalta("ELIMINAR", "Eliminar");
         crearAccionSiFalta("IMPRIMIR_EXPORTAR", "Imprimir/Exportar");
         crearAccionSiFalta("AUTORIZAR", "Autorizar");
+        crearAccionSiFalta("IMPRIMIR_FICHA", "Imprimir ficha");
     }
 
     private void crearAccionSiFalta(String codigo, String nombre) {

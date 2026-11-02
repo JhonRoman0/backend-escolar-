@@ -158,6 +158,7 @@ public class ApiPermisoRegistro {
         // Estudiantes también busca apoderados por DNI al agregar uno.
         registrarLectura("GET", "/matriculas/inscripcion/apoderado/*", "MATRICULAS", "APODERADOS");
         registrar("GET", "/matriculas/reporte", "MATRICULAS", "IMPRIMIR_EXPORTAR");
+        registrar("GET", "/matriculas/{id}/ficha", "MATRICULAS", "IMPRIMIR_FICHA");
         registrarLectura("GET", "/matriculas", "MATRICULAS");
         registrarLectura("GET", "/matriculas/**", "MATRICULAS");
         registrar("POST", "/matriculas/inscripcion", "MATRICULAS", "CREAR");
@@ -219,7 +220,6 @@ public class ApiPermisoRegistro {
         registrarLectura("GET", "/colegios", "COLEGIOS");
         registrarLectura("GET", "/colegios/**", "COLEGIOS");
         registrar("POST", "/colegios/*/foto", "COLEGIOS", "ACTUALIZAR");
-        registrar("DELETE", "/colegios/*/foto", "COLEGIOS", "ACTUALIZAR");
         registrar("POST", "/colegios/*/portada", "COLEGIOS", "ACTUALIZAR");
         registrar("DELETE", "/colegios/*/portada", "COLEGIOS", "ACTUALIZAR");
         registrar("POST", "/colegios", "COLEGIOS", "CREAR");

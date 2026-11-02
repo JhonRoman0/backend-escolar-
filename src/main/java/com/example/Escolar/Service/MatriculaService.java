@@ -1,5 +1,6 @@
 package com.example.Escolar.Service;
 
+import com.example.Escolar.Dto.FichaMatriculaResponse;
 import com.example.Escolar.Dto.HistorialResponse;
 import com.example.Escolar.Dto.MatriculaReporteResponse;
 import com.example.Escolar.Dto.PagoMatriculaResponse;
@@ -212,6 +213,51 @@ public class MatriculaService {
                 .sorted(ORDEN_REPORTE)
                 .map(this::aReporte)
                 .toList();
+    }
+
+    public FichaMatriculaResponse ficha(Integer id, Integer idUsuario, List<String> roles) {
+        Matricula matricula = findMatricula(id);
+        if (!esVisible(matricula.getIdMatricula(), idUsuario, roles)) {
+            throw new ResourceNotFoundException("Matrícula no encontrada con id " + id);
+        }
+        Alumno alumno = matricula.getAlumnoApoderado().getAlumno();
+        return new FichaMatriculaResponse(
+                new FichaMatriculaResponse.AlumnoFicha(alumno.getCodigo(), alumno.getDocumentoIdentidad(),
+                        alumno.getNombre() + " " + alumno.getApellidoPat() + " " + alumno.getApellidoMat(),
+                        alumno.getSexo() != null ? alumno.getSexo().name() : null,
+                        alumno.getFechaNacimiento(), alumno.getDireccion(),
+                        Boolean.TRUE.equals(alumno.getTieneDiscapacidad()) ? alumno.getDiscapacidad() : null,
+                        alumno.getUrlFoto()),
+                aTrayectoria(matricula),
+                matricula.getFechaRegistro(),
+                matricula.getUsuario().getNombre() + " " + matricula.getUsuario().getApellidoPat(),
+                alumnoApoderadoRepository.findByAlumno(alumno).stream()
+                        .sorted(Comparator.comparing(AlumnoApoderado::getApoPrincipal).reversed())
+                        .map(MatriculaService::aApoderadoFicha)
+                        .toList(),
+                matriculaRepository.findByAlumnoApoderadoAlumnoIdAlumnoAndAccesoNot(alumno.getIdAlumno(), eliminado())
+                        .stream()
+                        .sorted(Comparator.comparing((Matricula m) -> m.getGradoSeccion().getAnioEscolar().getAnio()))
+                        .map(MatriculaService::aTrayectoria)
+                        .toList());
+    }
+
+    private static FichaMatriculaResponse.TrayectoriaFicha aTrayectoria(Matricula m) {
+        GradoSeccion gs = m.getGradoSeccion();
+        return new FichaMatriculaResponse.TrayectoriaFicha(m.getIdMatricula(), gs.getAnioEscolar().getAnio(),
+                gs.getGrado().getNivel().getNombre(), gradoYSeccion(gs), gs.getTurno().getNombre(),
+                m.getAcceso().getNombre());
+    }
+
+    private static FichaMatriculaResponse.ApoderadoFicha aApoderadoFicha(AlumnoApoderado vinculo) {
+        Apoderado apoderado = vinculo.getApoderado();
+        var usuario = apoderado.getUsuario();
+        return new FichaMatriculaResponse.ApoderadoFicha(
+                usuario.getNombre() + " " + usuario.getApellidoPat() + " " + usuario.getApellidoMat(),
+                usuario.getDocumentoIdentidad(),
+                vinculo.getParentesco() != null ? vinculo.getParentesco().getNombre() : null,
+                apoderado.getCelular(), usuario.getGmail(), apoderado.getDireccion(),
+                vinculo.getApoPrincipal() == 1);
     }
 
     private MatriculaReporteResponse aReporte(Matricula m) {

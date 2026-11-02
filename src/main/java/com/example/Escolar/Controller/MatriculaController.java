@@ -1,6 +1,7 @@
 package com.example.Escolar.Controller;
 
 import com.example.Escolar.Dto.ApoderadoBusquedaResponse;
+import com.example.Escolar.Dto.FichaMatriculaResponse;
 import com.example.Escolar.Dto.InscripcionAlumnoResponse;
 import com.example.Escolar.Dto.InscripcionRequest;
 import com.example.Escolar.Dto.MatriculaEdicionRequest;
@@ -63,6 +64,11 @@ public class MatriculaController {
     @GetMapping("/{id}")
     public MatriculaResponse getById(@PathVariable Integer id) {
         return matriculaService.getById(id, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+    }
+
+    @GetMapping("/{id}/ficha")
+    public FichaMatriculaResponse ficha(@PathVariable Integer id) {
+        return matriculaService.ficha(id, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
     }
 
     @GetMapping("/{id}/pagos")

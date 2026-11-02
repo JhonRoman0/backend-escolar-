@@ -13,4 +13,10 @@ class ApiPermisoRegistroReportesTest {
     void exportarExigeSuPropiaAccion(String ruta) {
         assertEquals("IMPRIMIR_EXPORTAR", new ApiPermisoRegistro().buscar("GET", ruta).orElseThrow().accionCodigo());
     }
+
+    @org.junit.jupiter.api.Test
+    void laFichaExigeSuPropiaAccion() {
+        assertEquals("IMPRIMIR_FICHA",
+                new ApiPermisoRegistro().buscar("GET", "/matriculas/5/ficha").orElseThrow().accionCodigo());
+    }
 }

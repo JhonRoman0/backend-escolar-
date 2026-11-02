@@ -83,6 +83,12 @@ public final class CatalogoPermisos {
                 "CREAR", "Agregar apoderado a un alumno",
                 "ACTUALIZAR", "Editar datos y restablecer contraseña",
                 "ELIMINAR", "Quitar apoderado de un alumno");
+        permiso("MATRICULAS", "Matricula",
+                "CREAR", "Crear matrículas",
+                "ACTUALIZAR", "Editar, cambiar de sección y registrar pagos",
+                "ELIMINAR", "Eliminar matrículas",
+                "IMPRIMIR_EXPORTAR", "Exportar reporte",
+                "IMPRIMIR_FICHA", "Imprimir ficha");
         permiso("PAGOS_MATRICULA", "Pagos",
                 "CREAR", "Crear métodos de pago",
                 "ACTUALIZAR", "Editar métodos de pago y montos",

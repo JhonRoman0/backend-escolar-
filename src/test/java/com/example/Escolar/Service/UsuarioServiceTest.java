@@ -3,8 +3,12 @@ package com.example.Escolar.Service;
 import com.example.Escolar.Dto.UsuarioRequest;
 import com.example.Escolar.Dto.UsuarioResponse;
 import com.example.Escolar.Exception.DocenteConAsignacionesException;
+import com.example.Escolar.Exception.UsuarioConDependenciasException;
 import com.example.Escolar.Exception.UsuarioReactivacionException;
 import com.example.Escolar.Model.Acceso;
+import com.example.Escolar.Model.Alumno;
+import com.example.Escolar.Model.AlumnoApoderado;
+import com.example.Escolar.Model.Apoderado;
 import com.example.Escolar.Model.Docente;
 import com.example.Escolar.Model.DocenteNivel;
 import com.example.Escolar.Model.GradoAcademico;
@@ -14,6 +18,8 @@ import com.example.Escolar.Model.TipoContrato;
 import com.example.Escolar.Model.Usuario;
 import com.example.Escolar.Model.UsuarioRol;
 import com.example.Escolar.Repository.AccesoRepository;
+import com.example.Escolar.Repository.AlumnoApoderadoRepository;
+import com.example.Escolar.Repository.ApoderadoRepository;
 import com.example.Escolar.Repository.DocenteNivelRepository;
 import com.example.Escolar.Repository.DocenteRepository;
 import com.example.Escolar.Repository.GradoAcademicoRepository;
@@ -80,6 +86,12 @@ class UsuarioServiceTest {
     private EmailService emailService;
     @Mock
     private DocenteService docenteService;
+
+    @Mock
+    private ApoderadoRepository apoderadoRepository;
+
+    @Mock
+    private AlumnoApoderadoRepository alumnoApoderadoRepository;
 
     @InjectMocks
     private UsuarioService service;
@@ -525,9 +537,163 @@ class UsuarioServiceTest {
     void noEliminaElUsuarioDeUnDocenteConAsignacionesVigentes() {
         Docente docente = docenteConAsignaciones("eliminar el usuario de");
 
-        assertThrows(DocenteConAsignacionesException.class, () -> service.delete(1));
+        assertThrows(DocenteConAsignacionesException.class, () -> service.delete(1, 99));
 
         verify(usuarioRepository, never()).save(any(Usuario.class));
         assertEquals(AccesoConstants.ACTIVO, docente.getAcceso().getIdAcceso());
+    }
+
+    // ── Dependencias al eliminar o quitar un rol ──
+
+    private Apoderado apoderadoCon(Usuario usuario, Long... accesoAlumnos) {
+        Apoderado apoderado = new Apoderado();
+        apoderado.setUsuario(usuario);
+        apoderado.setAcceso(acceso(AccesoConstants.ACTIVO));
+        when(apoderadoRepository.findByUsuarioIdUsuario(usuario.getIdUsuario())).thenReturn(Optional.of(apoderado));
+        List<AlumnoApoderado> vinculos = new java.util.ArrayList<>();
+        for (Long accesoAlumno : accesoAlumnos) {
+            Alumno alumno = new Alumno();
+            alumno.setNombre("ANA");
+            alumno.setApellidoPat("PEREZ");
+            alumno.setApellidoMat("RUIZ" + vinculos.size());
+            alumno.setAcceso(acceso(accesoAlumno));
+            AlumnoApoderado vinculo = new AlumnoApoderado();
+            vinculo.setAlumno(alumno);
+            vinculos.add(vinculo);
+        }
+        when(alumnoApoderadoRepository.findByApoderado(apoderado)).thenReturn(vinculos);
+        return apoderado;
+    }
+
+    private Usuario usuarioConRol(String nombreRol) {
+        stubAccesoRepository();
+        stubValidacionesUnicas();
+        Usuario activo = usuario(1, AccesoConstants.ACTIVO);
+        stubSaveYRolesActivos(activo, rol(4, nombreRol));
+        return activo;
+    }
+
+    @Test
+    void noEliminaAlApoderadoConAlumnosYLosNombra() {
+        Usuario activo = usuarioConRol("Apoderado");
+        Apoderado apoderado = apoderadoCon(activo, AccesoConstants.ACTIVO, AccesoConstants.ACTIVO);
+
+        var error = assertThrows(UsuarioConDependenciasException.class, () -> service.delete(1, 99));
+
+        assertTrue(error.getMessage().contains("ANA PEREZ RUIZ0, ANA PEREZ RUIZ1"), error.getMessage());
+        verify(usuarioRepository, never()).save(any(Usuario.class));
+        assertEquals(AccesoConstants.ACTIVO, apoderado.getAcceso().getIdAcceso());
+        assertEquals(AccesoConstants.ACTIVO, activo.getAcceso().getIdAcceso());
+    }
+
+    @Test
+    void eliminaAlApoderadoSinAlumnosYLoDaDeBaja() {
+        Usuario activo = usuarioConRol("Apoderado");
+        Apoderado apoderado = apoderadoCon(activo);
+
+        service.delete(1, 99);
+
+        assertEquals(AccesoConstants.ELIMINADO, activo.getAcceso().getIdAcceso());
+        assertEquals(AccesoConstants.ELIMINADO, apoderado.getAcceso().getIdAcceso());
+    }
+
+    @Test
+    void unAlumnoEliminadoNoImpideEliminarAlApoderado() {
+        Usuario activo = usuarioConRol("Apoderado");
+        apoderadoCon(activo, AccesoConstants.ELIMINADO);
+
+        service.delete(1, 99);
+
+        assertEquals(AccesoConstants.ELIMINADO, activo.getAcceso().getIdAcceso());
+    }
+
+    @Test
+    void unDocenteQueTambienEsApoderadoDebeCumplirAmbasReglas() {
+        Usuario activo = usuarioConRol("Docente");
+        Docente docente = new Docente();
+        docente.setUsuario(activo);
+        docente.setAcceso(acceso(AccesoConstants.ACTIVO));
+        when(docenteRepository.findByUsuarioIdUsuario(1)).thenReturn(Optional.of(docente));
+        apoderadoCon(activo, AccesoConstants.ACTIVO);
+
+        assertThrows(UsuarioConDependenciasException.class, () -> service.delete(1, 99));
+
+        assertEquals(AccesoConstants.ACTIVO, docente.getAcceso().getIdAcceso());
+    }
+
+    @Test
+    void noPermiteEliminarLaPropiaCuenta() {
+        var error = assertThrows(UsuarioConDependenciasException.class, () -> service.delete(1, 1));
+
+        assertEquals("No puedes eliminar tu propia cuenta", error.getMessage());
+        verify(usuarioRepository, never()).save(any(Usuario.class));
+    }
+
+    @Test
+    void noEliminaAlUltimoAdmin() {
+        Usuario activo = usuarioConRol("ADMIN");
+        when(usuarioRolRepository.findByRolIdRol(4)).thenReturn(List.of(usuarioRol(activo, rol(4, "ADMIN"))));
+
+        assertThrows(UsuarioConDependenciasException.class, () -> service.delete(1, 99));
+
+        assertEquals(AccesoConstants.ACTIVO, activo.getAcceso().getIdAcceso());
+    }
+
+    @Test
+    void unAdminInactivoNoCuentaComoOtroAdmin() {
+        Usuario activo = usuarioConRol("ADMIN");
+        when(usuarioRolRepository.findByRolIdRol(4)).thenReturn(List.of(
+                usuarioRol(activo, rol(4, "ADMIN")),
+                usuarioRol(usuario(2, AccesoConstants.INACTIVO), rol(4, "ADMIN"))));
+
+        assertThrows(UsuarioConDependenciasException.class, () -> service.delete(1, 99));
+    }
+
+    @Test
+    void eliminaAUnAdminSiQuedaOtroActivo() {
+        Usuario activo = usuarioConRol("ADMIN");
+        when(usuarioRolRepository.findByRolIdRol(4)).thenReturn(List.of(
+                usuarioRol(activo, rol(4, "ADMIN")),
+                usuarioRol(usuario(2, AccesoConstants.ACTIVO), rol(4, "ADMIN"))));
+
+        service.delete(1, 99);
+
+        assertEquals(AccesoConstants.ELIMINADO, activo.getAcceso().getIdAcceso());
+    }
+
+    @Test
+    void noQuitaElRolApoderadoSiTieneAlumnos() {
+        Usuario activo = usuarioConRol("Apoderado");
+        Apoderado apoderado = apoderadoCon(activo, AccesoConstants.ACTIVO);
+
+        var error = assertThrows(UsuarioConDependenciasException.class, () -> service.update(1, requestSinDocente()));
+
+        assertTrue(error.getMessage().startsWith("No se puede quitar el rol Apoderado a"), error.getMessage());
+        verify(usuarioRolRepository, never()).deleteByUsuarioIdUsuario(1);
+        assertEquals(AccesoConstants.ACTIVO, apoderado.getAcceso().getIdAcceso());
+    }
+
+    @Test
+    void quitaElRolApoderadoSinAlumnosYLoDaDeBaja() {
+        Usuario activo = usuarioConRol("Apoderado");
+        Apoderado apoderado = apoderadoCon(activo);
+        when(rolRepository.findByIdRolAndAccesoNot(any(Integer.class), any(Acceso.class)))
+                .thenReturn(Optional.of(rol(1, "Portero")));
+
+        service.update(1, requestSinDocente());
+
+        verify(usuarioRolRepository).deleteByUsuarioIdUsuario(1);
+        assertEquals(AccesoConstants.ELIMINADO, apoderado.getAcceso().getIdAcceso());
+    }
+
+    @Test
+    void noLeQuitaElRolAdminAlUltimo() {
+        Usuario activo = usuarioConRol("ADMIN");
+        when(usuarioRolRepository.findByRolIdRol(4)).thenReturn(List.of(usuarioRol(activo, rol(4, "ADMIN"))));
+
+        var error = assertThrows(UsuarioConDependenciasException.class, () -> service.update(1, requestSinDocente()));
+
+        assertTrue(error.getMessage().startsWith("No se puede quitar el rol ADMIN a"), error.getMessage());
+        verify(usuarioRolRepository, never()).deleteByUsuarioIdUsuario(1);
     }
 }

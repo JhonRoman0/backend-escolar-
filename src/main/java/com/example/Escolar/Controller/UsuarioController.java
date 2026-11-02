@@ -4,6 +4,7 @@ import com.example.Escolar.Dto.RolResponse;
 import com.example.Escolar.Dto.UsuarioReporteResponse;
 import com.example.Escolar.Dto.UsuarioRequest;
 import com.example.Escolar.Dto.UsuarioResponse;
+import com.example.Escolar.Service.AccesoContextoService;
 import com.example.Escolar.Service.UsuarioService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,7 @@ import java.util.List;
 public class UsuarioController {
 
     private final UsuarioService usuarioService;
+    private final AccesoContextoService accesoContextoService;
 
     @GetMapping
     public Page<UsuarioResponse> getAll(
@@ -64,7 +66,7 @@ public class UsuarioController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Integer id) {
-        usuarioService.delete(id);
+        usuarioService.delete(id, accesoContextoService.idUsuarioAutenticado());
         return ResponseEntity.noContent().build();
     }
 

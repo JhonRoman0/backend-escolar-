@@ -68,9 +68,11 @@ public class AlumnoController {
 
     @GetMapping("/reporte")
     public List<AlumnoReporteResponse> reporte(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin,
+            @RequestParam Integer idAnio,
+            @RequestParam(required = false) Integer idNivel,
+            @RequestParam(required = false) Integer idGrado,
             @RequestParam(required = false) Integer idGradoSeccion) {
-        return alumnoService.reporte(inicio, fin, idGradoSeccion);
+        return alumnoService.reporte(idAnio, idNivel, idGrado, idGradoSeccion,
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
     }
 }

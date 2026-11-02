@@ -17,4 +17,7 @@ public class DocenteReporteResponse {
     private List<String> niveles;
     private LocalDate fechaContratacion;
     private String documentoIdentidad;
+    private String gmail;
+    private String celular;
+    private String estado;
 }

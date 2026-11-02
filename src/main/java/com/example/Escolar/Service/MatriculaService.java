@@ -30,15 +30,31 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class MatriculaService {
 
     private static final String PERMISO = "MATRICULAS";
+
+    private static final Comparator<Integer> ORDEN_NUMERO = Comparator.nullsLast(Comparator.naturalOrder());
+
+    /** Orden de los reportes: año, nivel, grado, sección y apellidos. */
+    public static final Comparator<Matricula> ORDEN_REPORTE = Comparator
+            .comparing((Matricula m) -> m.getGradoSeccion().getAnioEscolar().getAnio())
+            .thenComparing(m -> m.getGradoSeccion().getGrado().getNivel().getOrden(), ORDEN_NUMERO)
+            .thenComparing(m -> m.getGradoSeccion().getGrado().getOrden(), ORDEN_NUMERO)
+            .thenComparing(m -> m.getGradoSeccion().getSeccion() != null
+                    ? m.getGradoSeccion().getSeccion().getNombre() : "")
+            .thenComparing(m -> {
+                Alumno a = m.getAlumnoApoderado().getAlumno();
+                return a.getApellidoPat() + " " + a.getApellidoMat() + " " + a.getNombre();
+            }, String.CASE_INSENSITIVE_ORDER);
 
     private final MatriculaRepository matriculaRepository;
     private final HistorialMatriculaRepository historialMatriculaRepository;
@@ -186,34 +202,51 @@ public class MatriculaService {
     }
 
     @Transactional(readOnly = true)
-    public List<MatriculaReporteResponse> reporte(LocalDate inicio, LocalDate fin, Integer idAnio, Integer idGradoSeccion) {
-        return matriculaRepository.findByFechaRegistroBetweenAndAccesoNot(inicio, fin, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
-                .filter(m -> {
-                    if (idAnio != null) {
-                        if (!idAnio.equals(m.getGradoSeccion().getAnioEscolar().getIdAnio())) return false;
-                    }
-                    if (idGradoSeccion != null) {
-                        if (!idGradoSeccion.equals(m.getGradoSeccion().getIdGradoSeccion())) return false;
-                    }
-                    return true;
-                })
-                .map(m -> {
-                    List<PagoMatricula> pagos = pagoMatriculaRepository
-                            .findByMatriculaIdMatriculaAndAccesoNotOrderByFecha(m.getIdMatricula(), eliminado());
-                    MatriculaReporteResponse r = new MatriculaReporteResponse();
-                    r.setIdMatricula(m.getIdMatricula());
-                    r.setAlumno(m.getAlumnoApoderado().getAlumno().getNombre() + " "
-                            + m.getAlumnoApoderado().getAlumno().getApellidoPat());
-                    r.setCodigo(m.getAlumnoApoderado().getAlumno().getCodigo());
-                    r.setGradoSeccion(m.getGradoSeccion().getGrado().getNombre() + " "
-                            + (m.getGradoSeccion().getSeccion() != null ? m.getGradoSeccion().getSeccion().getNombre() : "Única"));
-                    r.setFechaRegistro(m.getFechaRegistro());
-                    r.setFechaPago(pagos.isEmpty() ? null : pagos.get(0).getFecha().toLocalDate());
-                    r.setMontoPago(pagadoNeto(m.getIdMatricula()));
-                    r.setRegistradoPor(m.getUsuario().getNombre() + " " + m.getUsuario().getApellidoPat());
-                    return r;
-                })
+    public List<MatriculaReporteResponse> reporte(LocalDate inicio, LocalDate fin, Integer idAnio, Integer idNivel,
+            Integer idGrado, Integer idGradoSeccion, Long idAcceso, Integer idUsuario, List<String> roles) {
+        Set<Integer> visibles = idsMatriculasVisibles(idUsuario, roles);
+        return matriculaRepository.findFiltradasList(AccesoConstants.ELIMINADO, idNivel, idGrado, null, null,
+                        idGradoSeccion, idAnio, idAcceso).stream()
+                .filter(m -> visibles == null || visibles.contains(m.getIdMatricula()))
+                .filter(m -> RangoFechas.contiene(m.getFechaRegistro(), inicio, fin))
+                .sorted(ORDEN_REPORTE)
+                .map(this::aReporte)
                 .toList();
+    }
+
+    private MatriculaReporteResponse aReporte(Matricula m) {
+        List<PagoMatricula> pagos = pagoMatriculaRepository
+                .findByMatriculaIdMatriculaAndAccesoNotOrderByFecha(m.getIdMatricula(), eliminado());
+        BigDecimal pagado = pagadoNeto(m.getIdMatricula());
+        Alumno alumno = m.getAlumnoApoderado().getAlumno();
+        GradoSeccion gs = m.getGradoSeccion();
+        MatriculaReporteResponse r = new MatriculaReporteResponse();
+        r.setIdMatricula(m.getIdMatricula());
+        r.setAlumno(alumno.getNombre() + " " + alumno.getApellidoPat() + " " + alumno.getApellidoMat());
+        r.setCodigo(alumno.getCodigo());
+        r.setDocumentoIdentidad(alumno.getDocumentoIdentidad());
+        r.setAnio(gs.getAnioEscolar().getAnio());
+        r.setNivel(gs.getGrado().getNivel().getNombre());
+        r.setGradoSeccion(gradoYSeccion(gs));
+        r.setTurno(gs.getTurno().getNombre());
+        r.setFechaRegistro(m.getFechaRegistro());
+        r.setFechaPago(pagos.isEmpty() ? null : pagos.get(0).getFecha().toLocalDate());
+        r.setMetodoPago(pagos.stream()
+                .filter(p -> p.getTipo() != TipoPago.DEVOLUCION)
+                .map(p -> p.getMetodoPago().getNombre())
+                .distinct()
+                .collect(Collectors.joining(", ")));
+        r.setMonto(m.getMonto());
+        r.setMontoPago(pagado);
+        r.setSaldo(m.getMonto() != null ? m.getMonto().subtract(pagado) : null);
+        r.setRegistradoPor(m.getUsuario().getNombre() + " " + m.getUsuario().getApellidoPat());
+        r.setEstado(m.getAcceso().getNombre());
+        return r;
+    }
+
+    /** "1ro B", o solo el grado si no tiene letra. El nivel va en su propia columna. */
+    public static String gradoYSeccion(GradoSeccion gs) {
+        return gs.getGrado().getNombre() + (gs.getSeccion() != null ? " " + gs.getSeccion().getNombre() : "");
     }
 
     public void crearHistorial(Matricula matricula, GradoSeccion gradoSeccion, String motivo) {

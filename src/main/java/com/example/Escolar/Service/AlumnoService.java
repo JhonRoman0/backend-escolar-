@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -186,37 +187,52 @@ public class AlumnoService {
     }
 
     @Transactional(readOnly = true)
-    public List<AlumnoReporteResponse> reporte(LocalDate inicio, LocalDate fin, Integer idGradoSeccion) {
-        return alumnoRepository.findByFechaIngresoBetweenAndAccesoNot(inicio, fin, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
-                .filter(alumno -> {
-                    if (idGradoSeccion == null) return true;
-                    return alumnoApoderadoRepository.findByAlumno(alumno).stream()
-                            .flatMap(aa -> matriculaRepository.findByAlumnoApoderadoAlumnoIdAlumnoAndAccesoNot(aa.getAlumno().getIdAlumno(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream())
-                            .anyMatch(m -> idGradoSeccion.equals(m.getGradoSeccion().getIdGradoSeccion()));
-                })
-                .map(alumno -> {
-                    AlumnoReporteResponse r = new AlumnoReporteResponse();
-                    r.setIdAlumno(alumno.getIdAlumno());
-                    r.setNombre(alumno.getNombre() + " " + alumno.getApellidoPat() + " " + alumno.getApellidoMat());
-                    r.setCodigo(alumno.getCodigo());
-                    r.setDocumentoIdentidad(alumno.getDocumentoIdentidad());
-                    r.setFechaNacimiento(alumno.getFechaNacimiento());
-                    r.setFechaIngreso(alumno.getFechaIngreso());
-                    String gs = alumnoApoderadoRepository.findByAlumno(alumno).stream()
-                            .flatMap(aa -> matriculaRepository.findByAlumnoApoderadoAlumnoIdAlumnoAndAccesoNot(aa.getAlumno().getIdAlumno(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream())
-                            .map(m -> m.getGradoSeccion().getGrado().getNombre() + " "
-                                    + (m.getGradoSeccion().getSeccion() != null ? m.getGradoSeccion().getSeccion().getNombre() : "Única"))
-                            .findFirst().orElse("Sin matrícula");
-                    r.setGradoSeccion(gs);
-                    String apo = alumnoApoderadoRepository.findByAlumno(alumno).stream()
-                            .filter(aa -> aa.getApoPrincipal() == 1)
-                            .map(aa -> aa.getApoderado().getUsuario().getNombre() + " "
-                                    + aa.getApoderado().getUsuario().getApellidoPat())
-                            .findFirst().orElse("Sin apoderado");
-                    r.setApoderado(apo);
-                    return r;
-                })
+    /** Padrón de un año: una fila por matrícula activa de ese año. */
+    public List<AlumnoReporteResponse> reporte(Integer idAnio, Integer idNivel, Integer idGrado,
+            Integer idGradoSeccion, Integer idUsuario, List<String> roles) {
+        Set<Integer> visibles = idsAlumnosVisibles(idUsuario, roles);
+        boolean verApoderados = puedeVerApoderados();
+        return matriculaRepository.findFiltradasList(AccesoConstants.ELIMINADO, idNivel, idGrado, null, null,
+                        idGradoSeccion, idAnio, AccesoConstants.ACTIVO).stream()
+                .filter(m -> !AccesoConstants.ELIMINADO.equals(
+                        m.getAlumnoApoderado().getAlumno().getAcceso().getIdAcceso()))
+                .filter(m -> visibles == null || visibles.contains(m.getAlumnoApoderado().getAlumno().getIdAlumno()))
+                .sorted(MatriculaService.ORDEN_REPORTE)
+                .map(m -> aReporte(m, verApoderados))
                 .toList();
+    }
+
+    private AlumnoReporteResponse aReporte(Matricula m, boolean verApoderados) {
+        Alumno alumno = m.getAlumnoApoderado().getAlumno();
+        AlumnoReporteResponse r = new AlumnoReporteResponse();
+        r.setIdAlumno(alumno.getIdAlumno());
+        r.setNombre(alumno.getNombre() + " " + alumno.getApellidoPat() + " " + alumno.getApellidoMat());
+        r.setCodigo(alumno.getCodigo());
+        r.setDocumentoIdentidad(alumno.getDocumentoIdentidad());
+        r.setFechaNacimiento(alumno.getFechaNacimiento());
+        r.setFechaIngreso(alumno.getFechaIngreso());
+        r.setAnio(m.getGradoSeccion().getAnioEscolar().getAnio());
+        r.setNivel(m.getGradoSeccion().getGrado().getNivel().getNombre());
+        r.setGradoSeccion(MatriculaService.gradoYSeccion(m.getGradoSeccion()));
+        r.setTurno(m.getGradoSeccion().getTurno().getNombre());
+        if (verApoderados) {
+            r.setApoderados(alumnoApoderadoRepository.findByAlumno(alumno).stream()
+                    .sorted(Comparator.comparing(AlumnoApoderado::getApoPrincipal).reversed())
+                    .map(AlumnoService::textoApoderado)
+                    .toList());
+        }
+        return r;
+    }
+
+    /** "BETTY CASTILLO RODRIGUEZ (Madre) 987654321" */
+    private static String textoApoderado(AlumnoApoderado vinculo) {
+        var usuario = vinculo.getApoderado().getUsuario();
+        String nombre = usuario.getNombre() + " " + usuario.getApellidoPat() + " " + usuario.getApellidoMat();
+        if (vinculo.getParentesco() != null) {
+            nombre += " (" + vinculo.getParentesco().getNombre() + ")";
+        }
+        String celular = vinculo.getApoderado().getCelular();
+        return celular != null && !celular.isBlank() ? nombre + " " + celular : nombre;
     }
 
     private Set<Integer> idsAlumnosVisibles(Integer idUsuario, List<String> roles) {

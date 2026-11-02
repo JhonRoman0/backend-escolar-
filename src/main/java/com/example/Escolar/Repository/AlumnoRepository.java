@@ -94,6 +94,4 @@ public interface AlumnoRepository extends JpaRepository<Alumno, Integer> {
     Optional<Alumno> findByDocumentoIdentidad(String documentoIdentidad);
 
     long countByCodigoStartingWith(String prefijo);
-
-    List<Alumno> findByFechaIngresoBetweenAndAccesoNot(LocalDate inicio, LocalDate fin, Acceso acceso);
 }

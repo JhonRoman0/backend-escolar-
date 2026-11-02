@@ -15,6 +15,4 @@ public interface DocenteRepository extends JpaRepository<Docente, Integer> {
     Optional<Docente> findByIdDocenteAndAccesoNot(Integer idDocente, Acceso acceso);
 
     Optional<Docente> findByUsuarioIdUsuario(Integer idUsuario);
-
-    List<Docente> findByFechaContratacionBetweenAndAccesoNot(LocalDate inicio, LocalDate fin, Acceso acceso);
 }

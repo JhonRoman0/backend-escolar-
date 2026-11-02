@@ -33,8 +33,6 @@ public interface MatriculaRepository extends JpaRepository<Matricula, Integer> {
 
     List<Matricula> findByAlumnoApoderadoAlumnoIdAlumnoAndAccesoNot(Integer idAlumno, Acceso acceso);
 
-    List<Matricula> findByFechaRegistroBetweenAndAccesoNot(LocalDate inicio, LocalDate fin, Acceso acceso);
-
     @Query("SELECT m FROM Matricula m " +
             "JOIN FETCH m.alumnoApoderado aa " +
             "JOIN FETCH aa.alumno a " +

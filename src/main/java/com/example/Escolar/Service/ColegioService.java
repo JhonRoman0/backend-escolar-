@@ -12,11 +12,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 public class ColegioService {
+
+    private static final String CARPETA_FOTO = "portal/colegio/foto";
+    private static final String CARPETA_PORTADA = "portal/colegio/portada";
 
     private final ColegioRepository colegioRepository;
     private final AccesoRepository accesoRepository;
@@ -38,16 +42,34 @@ public class ColegioService {
                 .orElseThrow(() -> new ResourceNotFoundException("No existe un colegio registrado"));
     }
 
+    /** Todo o nada: el colegio no existe sin su foto, y si algo falla no quedan imágenes sueltas. */
     @Transactional
-    public ColegioResponse create(ColegioRequest request) {
+    public ColegioResponse create(ColegioRequest request, MultipartFile foto, MultipartFile portada) {
         colegioRepository.findFirstByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .ifPresent(c -> {
                     throw new IllegalArgumentException("Ya existe un colegio registrado; actualícelo en lugar de crear otro");
                 });
+        exigirFoto(foto);
         Colegio colegio = new Colegio();
         aplicarDatos(colegio, request);
         colegio.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
-        return toResponse(colegioRepository.save(colegio));
+        List<String> subidas = new ArrayList<>();
+        try {
+            UploadResponse subidaFoto = cloudinaryService.upload(foto, CARPETA_FOTO);
+            subidas.add(subidaFoto.getPublicId());
+            colegio.setUrlFoto(subidaFoto.getUrl());
+            colegio.setPkUrlFoto(subidaFoto.getPublicId());
+            if (portada != null && !portada.isEmpty()) {
+                UploadResponse subidaPortada = cloudinaryService.upload(portada, CARPETA_PORTADA);
+                subidas.add(subidaPortada.getPublicId());
+                colegio.setUrlPortal(subidaPortada.getUrl());
+                colegio.setPkUrlPortada(subidaPortada.getPublicId());
+            }
+            return toResponse(colegioRepository.save(colegio));
+        } catch (RuntimeException e) {
+            subidas.forEach(cloudinaryService::delete);
+            throw e;
+        }
     }
 
     @Transactional
@@ -67,39 +89,42 @@ public class ColegioService {
         colegioRepository.save(colegio);
     }
 
+    /** Primero sube la nueva: si falla, la anterior sigue en su sitio. */
     @Transactional
     public ColegioResponse subirFoto(Integer id, MultipartFile file) {
         Colegio colegio = findColegio(id);
-        if (colegio.getPkUrlFoto() != null && !colegio.getPkUrlFoto().isBlank()) {
-            cloudinaryService.delete(colegio.getPkUrlFoto());
-        }
-        UploadResponse upload = cloudinaryService.upload(file, "portal/colegio/foto");
+        exigirFoto(file);
+        UploadResponse upload = cloudinaryService.upload(file, CARPETA_FOTO);
+        String anterior = colegio.getPkUrlFoto();
         colegio.setUrlFoto(upload.getUrl());
         colegio.setPkUrlFoto(upload.getPublicId());
-        return toResponse(colegioRepository.save(colegio));
-    }
-
-    @Transactional
-    public void eliminarFoto(Integer id) {
-        Colegio colegio = findColegio(id);
-        if (colegio.getPkUrlFoto() != null && !colegio.getPkUrlFoto().isBlank()) {
-            cloudinaryService.delete(colegio.getPkUrlFoto());
-            colegio.setUrlFoto(null);
-            colegio.setPkUrlFoto(null);
-            colegioRepository.save(colegio);
-        }
+        ColegioResponse response = toResponse(colegioRepository.save(colegio));
+        borrarDeCloudinary(anterior);
+        return response;
     }
 
     @Transactional
     public ColegioResponse subirPortada(Integer id, MultipartFile file) {
         Colegio colegio = findColegio(id);
-        if (colegio.getPkUrlPortada() != null && !colegio.getPkUrlPortada().isBlank()) {
-            cloudinaryService.delete(colegio.getPkUrlPortada());
-        }
-        UploadResponse upload = cloudinaryService.upload(file, "portal/colegio/portada");
+        UploadResponse upload = cloudinaryService.upload(file, CARPETA_PORTADA);
+        String anterior = colegio.getPkUrlPortada();
         colegio.setUrlPortal(upload.getUrl());
         colegio.setPkUrlPortada(upload.getPublicId());
-        return toResponse(colegioRepository.save(colegio));
+        ColegioResponse response = toResponse(colegioRepository.save(colegio));
+        borrarDeCloudinary(anterior);
+        return response;
+    }
+
+    private void exigirFoto(MultipartFile foto) {
+        if (foto == null || foto.isEmpty()) {
+            throw new IllegalArgumentException("La foto del colegio es obligatoria");
+        }
+    }
+
+    private void borrarDeCloudinary(String publicId) {
+        if (publicId != null && !publicId.isBlank()) {
+            cloudinaryService.delete(publicId);
+        }
     }
 
     @Transactional
@@ -118,9 +143,9 @@ public class ColegioService {
         colegio.setCelular(request.getCelular());
         colegio.setTelefono(request.getTelefono());
         colegio.setDireccion(request.getDireccion());
-        colegio.setCodigoColegio(request.getCodigoColegio());
-        colegio.setUrlFoto(request.getUrlFoto());
-        colegio.setUrlPortal(request.getUrlPortal());
+        // Opcional: vacío se guarda como sin código.
+        String codigo = request.getCodigoColegio();
+        colegio.setCodigoColegio(codigo == null || codigo.isBlank() ? null : codigo.trim());
     }
 
     private Colegio findColegio(Integer id) {

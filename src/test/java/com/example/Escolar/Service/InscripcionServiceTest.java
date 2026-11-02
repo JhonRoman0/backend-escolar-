@@ -354,6 +354,186 @@ class InscripcionServiceTest {
         return vinculo;
     }
 
+    private InscripcionApoderadoRequest datosDeReemplazo() {
+        return solicitud(null, null).getApoderados().get(0);
+    }
+
+    private Apoderado conApoderadoActual(Alumno[] alumnoCreado) {
+        Apoderado actual = apoderadoExistente("41111111", 50);
+        AlumnoApoderado vinculo = vinculoDe(actual, 61, new Parentesco());
+        Alumno alumno = alumnoAntiguoCon(vinculo);
+        alumno.setDocumentoIdentidad("70000001");
+        when(alumnoRepository.findByIdAlumnoAndAccesoNot(eq(9), any())).thenReturn(Optional.of(alumno));
+        when(alumnoApoderadoRepository.findByAlumno(alumno)).thenReturn(List.of(vinculo));
+        UsuarioRol soloApoderado = new UsuarioRol();
+        soloApoderado.setRol(rolApoderado);
+        when(usuarioRolRepository.findByUsuarioIdUsuario(150)).thenReturn(List.of(soloApoderado));
+        alumnoCreado[0] = alumno;
+        return actual;
+    }
+
+    @Test
+    void reemplazarPorAlguienQueYaExisteOcupaSuLugarYSoloActualizaContacto() {
+        Apoderado actual = conApoderadoActual(new Alumno[1]);
+        Apoderado entra = apoderadoExistente("40000001", 41);
+        Parentesco elegido = new Parentesco();
+        when(pagoConfigService.parentesco(2)).thenReturn(elegido);
+
+        inscripcionService.reemplazarApoderado(50, 9, datosDeReemplazo());
+
+        ArgumentCaptor<AlumnoApoderado> guardados = ArgumentCaptor.forClass(AlumnoApoderado.class);
+        verify(alumnoApoderadoRepository, org.mockito.Mockito.times(2)).save(guardados.capture());
+        AlumnoApoderado nuevo = guardados.getAllValues().get(0);
+        AlumnoApoderado saliente = guardados.getAllValues().get(1);
+        assertEquals(41, nuevo.getApoderado().getIdApoderado());
+        assertEquals(1, nuevo.getApoPrincipal());
+        assertEquals(elegido, nuevo.getParentesco());
+        assertEquals(false, saliente.isActivo());
+        // De quien ya existe solo cambian dirección y celular; no recibe contraseña nueva.
+        assertEquals("Ya", entra.getUsuario().getNombre());
+        assertEquals("Av. Lima 123", entra.getDireccion());
+        verify(emailService, never()).enviarCredencialesAcceso(any(), any(), any(), any(), any());
+        assertEquals(AccesoConstants.ELIMINADO, actual.getAcceso().getIdAcceso());
+    }
+
+    @Test
+    void reemplazarPorAlguienNuevoCreaSuCuentaYEnviaSusAccesos() {
+        conApoderadoActual(new Alumno[1]);
+
+        inscripcionService.reemplazarApoderado(50, 9, datosDeReemplazo());
+
+        verify(usuarioRepository).save(org.mockito.ArgumentMatchers.argThat(u -> "40000001".equals(u.getDocumentoIdentidad())));
+        verify(emailService).enviarCredencialesAcceso(eq("ana@mail.com"), anyString(), anyString(), anyString(),
+                eq(TipoEnvioCredenciales.CREACION));
+    }
+
+    @Test
+    void siQuienSaleTieneOtroHijoConservaSuCuentaAlReemplazarlo() {
+        Apoderado actual = conApoderadoActual(new Alumno[1]);
+        Alumno hermano = new Alumno();
+        hermano.setIdAlumno(77);
+        hermano.setAcceso(new Acceso());
+        hermano.getAcceso().setIdAcceso(AccesoConstants.ACTIVO);
+        AlumnoApoderado otroHijo = new AlumnoApoderado();
+        otroHijo.setAlumno(hermano);
+        when(alumnoApoderadoRepository.findByApoderado(actual)).thenReturn(List.of(otroHijo));
+
+        inscripcionService.reemplazarApoderado(50, 9, datosDeReemplazo());
+
+        assertEquals(AccesoConstants.ACTIVO, actual.getAcceso().getIdAcceso());
+    }
+
+    @Test
+    void noSeReemplazaPorElAlumnoNiPorQuienYaEsSuApoderado() {
+        conApoderadoActual(new Alumno[1]);
+        InscripcionApoderadoRequest elAlumno = datosDeReemplazo();
+        elAlumno.setDocumentoIdentidad("70000001");
+        InscripcionApoderadoRequest elMismo = datosDeReemplazo();
+        elMismo.setDocumentoIdentidad("41111111");
+
+        assertThrows(IllegalArgumentException.class, () -> inscripcionService.reemplazarApoderado(50, 9, elAlumno));
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> inscripcionService.reemplazarApoderado(50, 9, elMismo));
+        assertEquals("Ese DNI ya es apoderado de este alumno", ex.getMessage());
+        verify(alumnoApoderadoRepository, never()).save(any());
+    }
+
+    private AlumnoApoderado[] alumnoConDosApoderados() {
+        Apoderado principal = apoderadoExistente("41111111", 50);
+        Apoderado secundario = apoderadoExistente("42222222", 51);
+        AlumnoApoderado vinculoPrincipal = vinculoDe(principal, 61, new Parentesco());
+        AlumnoApoderado vinculoSecundario = vinculoDe(secundario, 62, new Parentesco());
+        vinculoSecundario.setApoPrincipal((byte) 0);
+        Alumno alumno = alumnoAntiguoCon(vinculoPrincipal, vinculoSecundario);
+        when(alumnoRepository.findByIdAlumnoAndAccesoNot(eq(9), any())).thenReturn(Optional.of(alumno));
+        when(alumnoApoderadoRepository.findByAlumno(alumno)).thenReturn(List.of(vinculoPrincipal, vinculoSecundario));
+        return new AlumnoApoderado[]{vinculoPrincipal, vinculoSecundario};
+    }
+
+    private void soloEsApoderado(int idUsuario) {
+        UsuarioRol rol = new UsuarioRol();
+        rol.setRol(rolApoderado);
+        when(usuarioRolRepository.findByUsuarioIdUsuario(idUsuario)).thenReturn(List.of(rol));
+    }
+
+    @Test
+    void noSeQuitaAlUnicoApoderado() {
+        conApoderadoActual(new Alumno[1]);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> inscripcionService.quitarApoderado(50, 9));
+
+        assertEquals("El alumno debe tener al menos un apoderado", ex.getMessage());
+        verify(alumnoApoderadoRepository, never()).save(any());
+    }
+
+    @Test
+    void alQuitarAlPrincipalElOtroPasaASerPrincipalYSinOtrosHijosSeDescarta() {
+        AlumnoApoderado[] vinculos = alumnoConDosApoderados();
+        soloEsApoderado(150);
+
+        inscripcionService.quitarApoderado(50, 9);
+
+        assertEquals(false, vinculos[0].isActivo());
+        assertEquals(0, vinculos[0].getApoPrincipal());
+        assertEquals(1, vinculos[1].getApoPrincipal());
+        Apoderado saliente = vinculos[0].getApoderado();
+        assertEquals(AccesoConstants.ELIMINADO, saliente.getAcceso().getIdAcceso());
+        assertEquals(AccesoConstants.ELIMINADO, saliente.getUsuario().getAcceso().getIdAcceso());
+    }
+
+    @Test
+    void alQuitarAlSecundarioElPrincipalNoCambia() {
+        AlumnoApoderado[] vinculos = alumnoConDosApoderados();
+        soloEsApoderado(151);
+
+        inscripcionService.quitarApoderado(51, 9);
+
+        assertEquals(1, vinculos[0].getApoPrincipal());
+        assertEquals(true, vinculos[0].isActivo());
+        assertEquals(false, vinculos[1].isActivo());
+    }
+
+    @Test
+    void conOtrosHijosSoloSeRompeElVinculo() {
+        AlumnoApoderado[] vinculos = alumnoConDosApoderados();
+        Apoderado saliente = vinculos[0].getApoderado();
+        Alumno hermano = new Alumno();
+        hermano.setIdAlumno(77);
+        hermano.setAcceso(new Acceso());
+        hermano.getAcceso().setIdAcceso(AccesoConstants.ACTIVO);
+        AlumnoApoderado otroHijo = new AlumnoApoderado();
+        otroHijo.setAlumno(hermano);
+        when(alumnoApoderadoRepository.findByApoderado(saliente)).thenReturn(List.of(otroHijo));
+
+        inscripcionService.quitarApoderado(50, 9);
+
+        assertEquals(false, vinculos[0].isActivo());
+        assertEquals(AccesoConstants.ACTIVO, saliente.getAcceso().getIdAcceso());
+    }
+
+    @Test
+    void conOtroRolConservaSuCuentaYSoloPierdeElDeApoderado() {
+        AlumnoApoderado[] vinculos = alumnoConDosApoderados();
+        Apoderado saliente = vinculos[0].getApoderado();
+        saliente.getUsuario().setAcceso(new Acceso());
+        saliente.getUsuario().getAcceso().setIdAcceso(AccesoConstants.ACTIVO);
+        Rol docente = new Rol();
+        docente.setNombre("Docente");
+        UsuarioRol comoDocente = new UsuarioRol();
+        comoDocente.setRol(docente);
+        UsuarioRol comoApoderado = new UsuarioRol();
+        comoApoderado.setRol(rolApoderado);
+        when(usuarioRolRepository.findByUsuarioIdUsuario(150)).thenReturn(List.of(comoApoderado, comoDocente));
+
+        inscripcionService.quitarApoderado(50, 9);
+
+        assertEquals(AccesoConstants.ELIMINADO, saliente.getAcceso().getIdAcceso());
+        assertEquals(AccesoConstants.ACTIVO, saliente.getUsuario().getAcceso().getIdAcceso());
+        verify(usuarioRolRepository).delete(comoApoderado);
+        verify(usuarioRolRepository, never()).delete(comoDocente);
+    }
+
     @Test
     void deUnAlumnoAntiguoSoloSeActualizaLaDireccion() {
         Alumno alumno = alumnoAntiguoCon();

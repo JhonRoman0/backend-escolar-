@@ -483,7 +483,7 @@ public class DataSeeder implements CommandLineRunner {
         asignarPermiso("Administrador", "SUSPENSIONES_DOCENTE", List.of("CREAR"));
         asignarPermiso("Administrador", "CAMBIOS_DOCENTE", List.of());
         asignarPermiso("Administrador", "ALUMNOS", crudWithExport());
-        asignarPermiso("Administrador", "APODERADOS", crud());
+        asignarPermiso("Administrador", "APODERADOS", List.of("CREAR", "ACTUALIZAR"));
         asignarPermiso("Administrador", "MATRICULAS", crudWithExport());
         asignarPermiso("Administrador", "PAGOS_MATRICULA", crud());
         asignarPermiso("Administrador", "CONSOLIDADOS", List.of("CREAR", "ACTUALIZAR", "IMPRIMIR_EXPORTAR"));

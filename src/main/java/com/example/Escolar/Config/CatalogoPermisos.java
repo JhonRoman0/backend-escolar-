@@ -81,7 +81,8 @@ public final class CatalogoPermisos {
         // Se gestionan dentro de Estudiantes, desde la fila de cada alumno.
         permiso("APODERADOS", ESTUDIANTES,
                 "CREAR", "Agregar apoderado a un alumno",
-                "ACTUALIZAR", "Editar datos y restablecer contraseña");
+                "ACTUALIZAR", "Editar datos y restablecer contraseña",
+                "ELIMINAR", "Quitar apoderado de un alumno");
         permiso("PAGOS_MATRICULA", "Pagos",
                 "CREAR", "Crear métodos de pago",
                 "ACTUALIZAR", "Editar métodos de pago y montos",

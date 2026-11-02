@@ -249,6 +249,70 @@ public class InscripcionService {
         pagoConfigService.parentesco(datos.getIdParentesco());
         validarApoderado(datos, new HashSet<>());
 
+        return vincularUno(alumno, datos, vinculos.isEmpty() ? PRINCIPAL : (byte) 0);
+    }
+
+    /**
+     * Otra persona ocupa el lugar del apoderado con este alumno. Quien sale pierde
+     * el acceso y, si no tiene otros hijos, se descarta como apoderado.
+     */
+    @Transactional
+    public ApoderadoResponse reemplazarApoderado(Integer idApoderado, Integer idAlumno, InscripcionApoderadoRequest datos) {
+        Alumno alumno = alumnoRepository.findByIdAlumnoAndAccesoNot(idAlumno, eliminado())
+                .orElseThrow(() -> new ResourceNotFoundException("Alumno no encontrado con id " + idAlumno));
+        List<AlumnoApoderado> vinculos = alumnoApoderadoRepository.findByAlumno(alumno);
+        AlumnoApoderado anterior = vinculos.stream()
+                .filter(v -> v.getApoderado().getIdApoderado().equals(idApoderado))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("El apoderado no está vinculado a ese alumno"));
+        String dni = datos.getDocumentoIdentidad();
+        if (dni.equals(alumno.getDocumentoIdentidad())) {
+            throw new IllegalArgumentException("El apoderado no puede tener el mismo DNI que el alumno");
+        }
+        if (vinculos.stream().anyMatch(v -> dni.equals(v.getApoderado().getUsuario().getDocumentoIdentidad()))) {
+            throw new IllegalArgumentException("Ese DNI ya es apoderado de este alumno");
+        }
+        pagoConfigService.parentesco(datos.getIdParentesco());
+        validarApoderado(datos, new HashSet<>());
+
+        ApoderadoResponse response = vincularUno(alumno, datos, anterior.getApoPrincipal());
+        desvincular(anterior);
+        return response;
+    }
+
+    /**
+     * Quita a uno de los dos apoderados del alumno; nunca al único. Quien sale se
+     * descarta si no tiene otros hijos, y si era el principal lo pasa a ser el otro.
+     */
+    @Transactional
+    public void quitarApoderado(Integer idApoderado, Integer idAlumno) {
+        Alumno alumno = alumnoRepository.findByIdAlumnoAndAccesoNot(idAlumno, eliminado())
+                .orElseThrow(() -> new ResourceNotFoundException("Alumno no encontrado con id " + idAlumno));
+        List<AlumnoApoderado> vinculos = alumnoApoderadoRepository.findByAlumno(alumno).stream()
+                .filter(v -> esActivo(v.getApoderado().getAcceso()))
+                .toList();
+        AlumnoApoderado saliente = vinculos.stream()
+                .filter(v -> v.getApoderado().getIdApoderado().equals(idApoderado))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("El apoderado no está vinculado a ese alumno"));
+        if (vinculos.size() < 2) {
+            throw new IllegalArgumentException("El alumno debe tener al menos un apoderado");
+        }
+        boolean eraPrincipal = saliente.getApoPrincipal() == PRINCIPAL;
+        desvincular(saliente);
+        if (eraPrincipal) {
+            vinculos.stream()
+                    .filter(v -> v != saliente)
+                    .findFirst()
+                    .ifPresent(otro -> {
+                        otro.setApoPrincipal(PRINCIPAL);
+                        alumnoApoderadoRepository.save(otro);
+                    });
+        }
+    }
+
+    /** Crea o reutiliza a la persona, la vincula al alumno y programa el envío de sus accesos. */
+    private ApoderadoResponse vincularUno(Alumno alumno, InscripcionApoderadoRequest datos, byte apoPrincipal) {
         List<Credencial> credenciales = new ArrayList<>();
         Apoderado apoderado = resolverApoderado(datos, credenciales);
         AlumnoApoderado vinculo = alumnoApoderadoRepository.findTodosByAlumno(alumno).stream()
@@ -262,7 +326,7 @@ public class InscripcionService {
                 });
         vinculo.setParentesco(pagoConfigService.parentesco(datos.getIdParentesco()));
         vinculo.setActivo(true);
-        vinculo.setApoPrincipal(vinculos.isEmpty() ? PRINCIPAL : (byte) 0);
+        vinculo.setApoPrincipal(apoPrincipal);
         vinculo = alumnoApoderadoRepository.save(vinculo);
 
         ApoderadoResponse response = ApoderadoResponse.fromVinculo(vinculo);

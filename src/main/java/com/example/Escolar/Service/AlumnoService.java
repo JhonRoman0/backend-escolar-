@@ -50,8 +50,8 @@ public class AlumnoService {
             // La matrícula activa que enriquece la respuesta debe cumplir el mismo contexto que la consulta.
             java.util.function.Predicate<Matricula> contexto = m -> {
                 var gs = m.getGradoSeccion();
-                return m.getAlumnoApoderado().getApoPrincipal() == 1
-                        && !AccesoConstants.ELIMINADO.equals(gs.getAcceso().getIdAcceso())
+                // No depende del apoderado: una matrícula antigua sigue apuntando a quien la hizo.
+                return !AccesoConstants.ELIMINADO.equals(gs.getAcceso().getIdAcceso())
                         && (idAnio == null || idAnio.equals(gs.getAnioEscolar().getIdAnio()))
                         && (idNivel == null || idNivel.equals(gs.getGrado().getNivel().getIdNivel()))
                         && (idGrado == null || idGrado.equals(gs.getGrado().getIdGrado()))

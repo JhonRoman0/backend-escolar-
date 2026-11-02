@@ -142,6 +142,7 @@ public class ApiPermisoRegistro {
         registrarLectura("GET", "/apoderados/**", "APODERADOS");
         registrar("POST", "/apoderados/alumno/*", "APODERADOS", "CREAR");
         registrar("PUT", "/apoderados/**", "APODERADOS", "ACTUALIZAR");
+        registrar("DELETE", "/apoderados/*", "APODERADOS", "ELIMINAR");
 
         registrarLectura("GET", "/parentescos", "MATRICULAS", "APODERADOS", "ALUMNOS");
         registrarLectura("GET", "/sexos", "MATRICULAS", "APODERADOS", "ALUMNOS");

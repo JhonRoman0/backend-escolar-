@@ -138,8 +138,13 @@ public class AulaService {
         response.setCapacidad(aula.getCapacidad());
         response.setTipo(aula.getTipo().name());
         response.setSecciones(seccionesDelSalon(aula).stream()
-                .map(gs -> GradoSeccionService.nombreSeccion(gs) + " – " + gs.getTurno().getNombre()
-                        + " " + gs.getAnioEscolar().getAnio())
+                .map(gs -> new AulaResponse.SeccionDelAula(
+                        gs.getAnioEscolar().getIdAnio(),
+                        gs.getAnioEscolar().getAnio(),
+                        gs.getGrado().getNivel().getNombre(),
+                        gs.getGrado().getNombre(),
+                        gs.getSeccion() != null ? gs.getSeccion().getNombre() : "Única",
+                        gs.getTurno().getNombre()))
                 .toList());
         response.setAccesoId(aula.getAcceso().getIdAcceso());
         return response;

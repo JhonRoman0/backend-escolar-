@@ -97,6 +97,18 @@ class AlumnoContextoServiceTest {
         assertEquals("Ana", resultado.getContent().get(0).getApoderados().get(0).getNombre());
     }
 
+    @Test void unaMatriculaAntiguaSeMuestraAunqueSuApoderadoHayaSidoReemplazado() {
+        Matricula antigua = matricula(6, (byte) 2, 1);
+        antigua.getAlumnoApoderado().setApoPrincipal((byte) 0);
+        antigua.getAlumnoApoderado().setActivo(false);
+        gestion(6, null, List.of(antigua, matricula(7, (byte) 3, 1)));
+        var alumnoDelAnio = service.getAll(pagina, 50, roles, null, null, null, null, null, 6).getContent().get(0);
+        assertEquals(6, alumnoDelAnio.getIdAnio());
+        assertEquals("Primaria", alumnoDelAnio.getNivel());
+        assertEquals("3do", alumnoDelAnio.getGrado());
+        assertEquals("A", alumnoDelAnio.getSeccion());
+    }
+
     @Test void muestraElAnioHistoricoConsultadoAunqueExistaVigente() {
         gestion(6, null, List.of(matricula(7, (byte) 1, 1), matricula(6, (byte) 2, 1)));
         var resultado = service.getAll(pagina, 50, roles, null, null, null, null, null, 6);
@@ -116,7 +128,7 @@ class AlumnoContextoServiceTest {
                 .getContent().get(0).getIdTurno());
     }
 
-    @Test void ignoraRelacionesEliminadasYVinculosNoPrincipales() {
+    @Test void ignoraSeccionesEliminadasYEnElMismoAnioPrefiereElVinculoPrincipal() {
         Matricula eliminada = matricula(6, (byte) 2, 1);
         Acceso eliminado = new Acceso(); eliminado.setIdAcceso(AccesoConstants.ELIMINADO);
         eliminada.getGradoSeccion().setAcceso(eliminado);

@@ -11,7 +11,10 @@ public class AulaResponse {
     private String nombre;
     private Integer capacidad;
     private String tipo;
-    /** Secciones de las que es salon ("3.° A – Mañana 2027"). */
-    private List<String> secciones;
+    /** Secciones de las que es salon, de todos los años. */
+    private List<SeccionDelAula> secciones;
     private Long accesoId;
+
+    public record SeccionDelAula(Integer idAnio, String anio, String nivel, String grado, String seccion, String turno) {
+    }
 }

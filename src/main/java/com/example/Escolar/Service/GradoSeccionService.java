@@ -328,9 +328,10 @@ public class GradoSeccionService {
         return aula;
     }
 
-    /** "3.° grado A", o solo el grado si no tiene letra. */
+    /** "1ro A de Primaria": "1ro A" existe en varios niveles. Sin letra, solo el grado. */
     public static String nombreSeccion(GradoSeccion gs) {
-        return gs.getGrado().getNombre() + (gs.getSeccion() != null ? " " + gs.getSeccion().getNombre() : "");
+        return gs.getGrado().getNombre() + (gs.getSeccion() != null ? " " + gs.getSeccion().getNombre() : "")
+                + (gs.getGrado().getNivel() != null ? " de " + gs.getGrado().getNivel().getNombre() : "");
     }
 
     /** Escribe una seccion y su fila de grado_seccion para la combinacion dada. */

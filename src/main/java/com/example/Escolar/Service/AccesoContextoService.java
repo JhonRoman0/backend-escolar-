@@ -169,6 +169,8 @@ public class AccesoContextoService {
     public static Optional<Matricula> elegirActual(List<Matricula> matriculas) {
         return matriculas.stream()
                 .max(Comparator.comparing((Matricula m) -> m.getGradoSeccion().getAnioEscolar().getEstado() == AnioEscolarService.ESTADO_VIGENTE)
-                        .thenComparing(m -> m.getGradoSeccion().getAnioEscolar().getAnio()));
+                        .thenComparing(m -> m.getGradoSeccion().getAnioEscolar().getAnio())
+                        // Solo desempata: una matrícula antigua puede apuntar a quien ya no es principal.
+                        .thenComparing(m -> m.getAlumnoApoderado().getApoPrincipal()));
     }
 }

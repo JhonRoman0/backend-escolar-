@@ -15,6 +15,9 @@ class ApiPermisoExclusividadDniTest {
         assertEquals(Set.of("DOCENTES"), docente.permisosCodigo());
         var alumno = registro.buscar("GET", "/matriculas/inscripcion/alumno/12345678").orElseThrow();
         assertEquals(Set.of("MATRICULAS"), alumno.permisosCodigo());
+        var comprobacion = registro.buscar("GET", "/matriculas/inscripcion/alumno/validar-dni/12345678").orElseThrow();
+        assertEquals(Set.of("MATRICULAS"), comprobacion.permisosCodigo());
+        assertNull(comprobacion.accionCodigo());
         var apoderado = registro.buscar("GET", "/matriculas/inscripcion/apoderado/12345678").orElseThrow();
         assertEquals(Set.of("MATRICULAS", "APODERADOS"), apoderado.permisosCodigo());
     }

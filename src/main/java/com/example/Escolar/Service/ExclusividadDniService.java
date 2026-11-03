@@ -23,8 +23,16 @@ public class ExclusividadDniService {
 
     public void validarAlumno(String dni) {
         validarFormato(dni);
-        if (usuarioRepository.findByDocumentoIdentidad(dni).isPresent()) {
+        if (usuarioRepository.existsByDocumentoIdentidad(dni)) {
             throw new IllegalArgumentException("Este DNI ya está registrado como usuario y no puede registrarse como alumno");
+        }
+    }
+
+    /** Solo existencia: conserva la reutilización histórica sin cargar fichas personales. */
+    public void validarAlumnoInscripcion(String dni) {
+        validarFormato(dni);
+        if (!alumnoRepository.existsByDocumentoIdentidadAndAccesoIdAccesoNot(dni, AccesoConstants.ELIMINADO)) {
+            validarAlumno(dni);
         }
     }
 

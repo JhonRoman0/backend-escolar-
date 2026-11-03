@@ -38,16 +38,12 @@ class ExclusividadDniServiceTest {
     }
 
     @Test
-    void usuarioReservaSuDniEnCualquierEstadoSinDependerDeSuRol() {
-        for (Long estado : List.of(AccesoConstants.ACTIVO, AccesoConstants.INACTIVO, AccesoConstants.ELIMINADO)) {
-            Usuario usuario = new Usuario();
-            Acceso acceso = new Acceso();
-            acceso.setIdAcceso(estado);
-            usuario.setAcceso(acceso);
-            when(usuarios.findByDocumentoIdentidad("12345678")).thenReturn(Optional.of(usuario));
-            assertTrue(assertThrows(IllegalArgumentException.class,
-                    () -> service.validarAlumno("12345678")).getMessage().contains("como usuario"));
-        }
+    void usuarioReservaSuDniSinFiltrarPorEstadoNiCargarSuFicha() {
+        when(usuarios.existsByDocumentoIdentidad("12345678")).thenReturn(true);
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> service.validarAlumno("12345678")).getMessage().contains("como usuario"));
+        verify(usuarios).existsByDocumentoIdentidad("12345678");
+        verifyNoMoreInteractions(usuarios);
     }
 
     @Test
@@ -72,6 +68,7 @@ class ExclusividadDniServiceTest {
         for (String dni : List.of("", "123", "1234567A", " 12345678")) {
             assertThrows(IllegalArgumentException.class, () -> service.validarUsuario(dni));
             assertThrows(IllegalArgumentException.class, () -> service.validarAlumno(dni));
+            assertThrows(IllegalArgumentException.class, () -> service.validarAlumnoInscripcion(dni));
         }
         assertThrows(IllegalArgumentException.class, () -> service.validarUsuario(null));
         verifyNoInteractions(alumnos, usuarios);
@@ -93,5 +90,44 @@ class ExclusividadDniServiceTest {
                 assertEquals(Isolation.SERIALIZABLE, transaccion.isolation());
             }
         });
+    }
+
+    @Test
+    void alumnoRegistradoSeReutilizaSinConsultarNiCargarPersonas() {
+        when(alumnos.existsByDocumentoIdentidadAndAccesoIdAccesoNot("12345678", AccesoConstants.ELIMINADO)).thenReturn(true);
+        assertDoesNotThrow(() -> service.validarAlumnoInscripcion("12345678"));
+        verify(alumnos).existsByDocumentoIdentidadAndAccesoIdAccesoNot("12345678", AccesoConstants.ELIMINADO);
+        verifyNoMoreInteractions(alumnos);
+        verifyNoInteractions(usuarios);
+    }
+
+    @Test
+    void alumnoNuevoOEliminadoNoPuedeOmitirElConflictoConUsuario() {
+        when(usuarios.existsByDocumentoIdentidad("12345678")).thenReturn(true);
+        assertThrows(IllegalArgumentException.class, () -> service.validarAlumnoInscripcion("12345678"));
+        verify(alumnos).existsByDocumentoIdentidadAndAccesoIdAccesoNot("12345678", AccesoConstants.ELIMINADO);
+        verify(usuarios).existsByDocumentoIdentidad("12345678");
+        verifyNoMoreInteractions(alumnos, usuarios);
+    }
+
+    @Test
+    void comprobacionMinimaPermiteDniDisponibleSinCargarFichas() {
+        assertDoesNotThrow(() -> service.validarAlumnoInscripcion("12345678"));
+        verify(alumnos).existsByDocumentoIdentidadAndAccesoIdAccesoNot("12345678", AccesoConstants.ELIMINADO);
+        verify(usuarios).existsByDocumentoIdentidad("12345678");
+        verifyNoMoreInteractions(alumnos, usuarios);
+    }
+
+    @Test
+    void consultasMinimasSonProyeccionesDeExistenciaConElContextoActual() {
+        var alumno = new org.springframework.data.repository.query.parser.PartTree(
+                "existsByDocumentoIdentidadAndAccesoIdAccesoNot", Alumno.class);
+        var usuario = new org.springframework.data.repository.query.parser.PartTree("existsByDocumentoIdentidad", Usuario.class);
+        assertTrue(alumno.isExistsProjection());
+        assertTrue(usuario.isExistsProjection());
+        assertEquals(List.of("documentoIdentidad", "acceso.idAcceso"),
+                alumno.getParts().stream().map(parte -> parte.getProperty().toDotPath()).toList());
+        assertEquals(List.of("documentoIdentidad"),
+                usuario.getParts().stream().map(parte -> parte.getProperty().toDotPath()).toList());
     }
 }

@@ -10,6 +10,7 @@ import com.example.Escolar.Dto.MatriculaReporteResponse;
 import com.example.Escolar.Dto.MatriculaResponse;
 import com.example.Escolar.Dto.PagoMatriculaResponse;
 import com.example.Escolar.Service.AccesoContextoService;
+import com.example.Escolar.Service.ExclusividadDniService;
 import com.example.Escolar.Service.InscripcionService;
 import com.example.Escolar.Service.MatriculaReglasService;
 import com.example.Escolar.Service.MatriculaService;
@@ -44,6 +45,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class MatriculaController {
 
+    private final ExclusividadDniService exclusividadDni;
     private final MatriculaService matriculaService;
     private final InscripcionService inscripcionService;
     private final MatriculaReglasService matriculaReglasService;
@@ -75,6 +77,12 @@ public class MatriculaController {
     @GetMapping("/{id}/pagos")
     public List<PagoMatriculaResponse> pagos(@PathVariable Integer id) {
         return matriculaService.pagos(id, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+    }
+
+    @GetMapping("/inscripcion/alumno/validar-dni/{dni}")
+    public ResponseEntity<Void> validarDniAlumno(@PathVariable String dni) {
+        exclusividadDni.validarAlumnoInscripcion(dni);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/inscripcion/alumno/{dni}")

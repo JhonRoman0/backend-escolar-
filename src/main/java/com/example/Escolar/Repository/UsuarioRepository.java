@@ -64,6 +64,8 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Integer> {
 
     Optional<Usuario> findByDocumentoIdentidad(String documentoIdentidad);
 
+    boolean existsByDocumentoIdentidad(String documentoIdentidad);
+
     long countByCodigoStartingWith(String prefijo);
 
     Optional<Usuario> findByResetToken(String resetToken);

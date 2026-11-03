@@ -7,6 +7,8 @@ import com.example.Escolar.Dto.UsuarioResponse;
 import com.example.Escolar.Service.AccesoContextoService;
 import com.example.Escolar.Service.UsuarioService;
 import jakarta.validation.Valid;
+import org.springframework.dao.ConcurrencyFailureException;
+import com.example.Escolar.Service.ExclusividadDniService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -26,8 +28,15 @@ import java.util.List;
 @RequiredArgsConstructor
 public class UsuarioController {
 
+    private final ExclusividadDniService exclusividadDni;
     private final UsuarioService usuarioService;
     private final AccesoContextoService accesoContextoService;
+
+    @GetMapping("/validar-dni/{dni}")
+    public ResponseEntity<Void> validarDni(@PathVariable String dni) {
+        exclusividadDni.validarUsuario(dni);
+        return ResponseEntity.noContent().build();
+    }
 
     @GetMapping
     public Page<UsuarioResponse> getAll(
@@ -46,12 +55,21 @@ public class UsuarioController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public UsuarioResponse create(@Valid @RequestBody UsuarioRequest request) {
-        return usuarioService.create(request);
+        try {
+            return usuarioService.create(request);
+        } catch (ConcurrencyFailureException ex) {
+            throw new IllegalArgumentException("No se pudo completar el guardado porque hubo cambios concurrentes. Reintenta.", ex);
+        }
     }
 
     @PutMapping("/{id}")
     public UsuarioResponse update(@PathVariable Integer id, @Valid @RequestBody UsuarioRequest request) {
-        UsuarioResponse response = usuarioService.update(id, request);
+        UsuarioResponse response;
+        try {
+            response = usuarioService.update(id, request);
+        } catch (ConcurrencyFailureException ex) {
+            throw new IllegalArgumentException("No se pudo completar el guardado porque hubo cambios concurrentes. Reintenta.", ex);
+        }
         // Va después de guardar: si el correo falla, los datos ya quedaron guardados.
         if (request.isRestablecerContrasena()) {
             response.setCredencialesEnviadas(usuarioService.restablecerContrasena(id));
@@ -61,7 +79,11 @@ public class UsuarioController {
 
     @PutMapping("/{id}/reactivar")
     public UsuarioResponse reactivar(@PathVariable Integer id, @Valid @RequestBody UsuarioRequest request) {
-        return usuarioService.reactivar(id, request);
+        try {
+            return usuarioService.reactivar(id, request);
+        } catch (ConcurrencyFailureException ex) {
+            throw new IllegalArgumentException("No se pudo completar el guardado porque hubo cambios concurrentes. Reintenta.", ex);
+        }
     }
 
     @DeleteMapping("/{id}")

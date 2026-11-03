@@ -67,6 +67,8 @@ import static org.mockito.Mockito.when;
 class InscripcionServiceTest {
 
     @Mock
+    private ExclusividadDniService exclusividadDni;
+    @Mock
     private AlumnoRepository alumnoRepository;
     @Mock
     private ApoderadoRepository apoderadoRepository;
@@ -737,5 +739,78 @@ class InscripcionServiceTest {
         assertEquals(0, vinculo.getValue().getApoPrincipal());
         verify(emailService).enviarCredencialesAcceso(eq("ana@mail.com"), anyString(), anyString(), anyString(),
                 eq(TipoEnvioCredenciales.CREACION));
+    }
+
+    @Test
+    void rechazaFechaDeAlumnoNuevoAntesDeSubirFotosOGuardar() {
+        InscripcionRequest request = solicitud(2, null);
+        request.getAlumno().setFechaNacimiento(LocalDate.of(1999, 12, 31));
+        assertThrows(IllegalArgumentException.class, () -> inscripcionService.inscribir(request, foto(), null, 1));
+        verify(alumnoRepository, never()).save(any());
+        verify(usuarioRepository, never()).save(any());
+        verify(cloudinaryService, never()).upload(any(), anyString());
+    }
+
+    @Test
+    void alumnoHistoricoYApoderadoReutilizadoConservanSusFechas() {
+        Alumno alumno = alumnoAntiguoCon();
+        alumno.setFechaNacimiento(LocalDate.of(1990, 1, 1));
+        Apoderado apoderado = apoderadoExistente("40000001", 41);
+        apoderado.getUsuario().setFechaNaci(FechaNacimiento.hoy());
+        InscripcionRequest request = solicitud(null, null);
+        request.getAlumno().setFechaNacimiento(LocalDate.of(1990, 1, 1));
+        request.getApoderados().get(0).setFechaNaci(FechaNacimiento.hoy());
+        inscripcionService.validar(request);
+        assertEquals(LocalDate.of(1990, 1, 1), alumno.getFechaNacimiento());
+        verify(alumnoRepository, never()).save(any());
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    void apoderadoNuevoMenorNoPuedePasarLaValidacionNiGuardar() {
+        InscripcionRequest request = solicitud(2, null);
+        request.getApoderados().get(0).setFechaNaci(FechaNacimiento.hoy().minusYears(18).plusDays(1));
+        assertThrows(IllegalArgumentException.class, () -> inscripcionService.validar(request));
+        assertThrows(IllegalArgumentException.class, () -> inscripcionService.inscribir(request, foto(), null, 1));
+        verify(usuarioRepository, never()).save(any());
+        verify(apoderadoRepository, never()).save(any());
+        verify(matriculaRepository, never()).save(any());
+    }
+
+    @Test
+    void dniDeUsuarioImpideAlumnoNuevoAntesDeFotosYGuardados() {
+        org.mockito.Mockito.doThrow(new IllegalArgumentException("DNI de usuario"))
+                .when(exclusividadDni).validarAlumno("70000001");
+        assertThrows(IllegalArgumentException.class, () -> inscripcionService.inscribir(solicitud(2, null), foto(), null, 1));
+        verify(cloudinaryService, never()).upload(any(), anyString());
+        verify(alumnoRepository, never()).save(any());
+        verify(matriculaRepository, never()).save(any());
+    }
+
+    @Test
+    void apoderadoNuevoNoPuedeCrearCuentaConElDniDeOtroAlumno() {
+        org.mockito.Mockito.doThrow(new IllegalArgumentException("DNI de alumno"))
+                .when(exclusividadDni).validarUsuario("40000001");
+        assertThrows(IllegalArgumentException.class, () -> inscripcionService.validar(solicitud(null, null)));
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    void reutilizarAlumnoYApoderadoHistoricosNoExigeResolverConflictosPrevios() {
+        alumnoAntiguoCon();
+        apoderadoExistente("40000001", 41);
+        inscripcionService.validar(solicitud(null, null));
+        verify(exclusividadDni, never()).validarAlumno(anyString());
+        verify(exclusividadDni, never()).validarUsuario(anyString());
+    }
+
+    @Test
+    void busquedasInternasRechazanDniIncompatibleSinConsultarReniec() {
+        org.mockito.Mockito.doThrow(new IllegalArgumentException("DNI de usuario"))
+                .when(exclusividadDni).validarAlumno("70000001");
+        org.mockito.Mockito.doThrow(new IllegalArgumentException("DNI de alumno"))
+                .when(exclusividadDni).validarUsuario("40000001");
+        assertThrows(IllegalArgumentException.class, () -> inscripcionService.buscarAlumno("70000001"));
+        assertThrows(IllegalArgumentException.class, () -> inscripcionService.buscarApoderado("40000001", null));
     }
 }

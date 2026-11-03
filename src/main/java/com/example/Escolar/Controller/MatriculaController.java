@@ -10,10 +10,12 @@ import com.example.Escolar.Dto.MatriculaReporteResponse;
 import com.example.Escolar.Dto.MatriculaResponse;
 import com.example.Escolar.Dto.PagoMatriculaResponse;
 import com.example.Escolar.Service.AccesoContextoService;
+import com.example.Escolar.Service.ExclusividadDniService;
 import com.example.Escolar.Service.InscripcionService;
 import com.example.Escolar.Service.MatriculaReglasService;
 import com.example.Escolar.Service.MatriculaService;
 import jakarta.validation.Valid;
+import org.springframework.dao.ConcurrencyFailureException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -43,6 +45,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class MatriculaController {
 
+    private final ExclusividadDniService exclusividadDni;
     private final MatriculaService matriculaService;
     private final InscripcionService inscripcionService;
     private final MatriculaReglasService matriculaReglasService;
@@ -76,6 +79,12 @@ public class MatriculaController {
         return matriculaService.pagos(id, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
     }
 
+    @GetMapping("/inscripcion/alumno/validar-dni/{dni}")
+    public ResponseEntity<Void> validarDniAlumno(@PathVariable String dni) {
+        exclusividadDni.validarAlumnoInscripcion(dni);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/inscripcion/alumno/{dni}")
     public InscripcionAlumnoResponse buscarAlumno(@PathVariable String dni) {
         return inscripcionService.buscarAlumno(dni);
@@ -106,7 +115,11 @@ public class MatriculaController {
     public MatriculaResponse inscribir(@Valid @RequestPart("datos") InscripcionRequest request,
                                        @RequestPart(value = "foto", required = false) MultipartFile foto,
                                        @RequestPart(value = "comprobante", required = false) MultipartFile comprobante) {
-        return inscripcionService.inscribir(request, foto, comprobante, accesoContextoService.idUsuarioAutenticado());
+        try {
+            return inscripcionService.inscribir(request, foto, comprobante, accesoContextoService.idUsuarioAutenticado());
+        } catch (ConcurrencyFailureException ex) {
+            throw new IllegalArgumentException("No se pudo completar el guardado porque hubo cambios concurrentes. Reintenta.", ex);
+        }
     }
 
     @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

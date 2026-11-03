@@ -61,6 +61,8 @@ import static org.mockito.Mockito.when;
 class UsuarioServiceTest {
 
     @Mock
+    private ExclusividadDniService exclusividadDni;
+    @Mock
     private UsuarioRepository usuarioRepository;
     @Mock
     private AccesoRepository accesoRepository;
@@ -695,5 +697,81 @@ class UsuarioServiceTest {
 
         assertTrue(error.getMessage().startsWith("No se puede quitar el rol ADMIN a"), error.getMessage());
         verify(usuarioRolRepository, never()).deleteByUsuarioIdUsuario(1);
+    }
+
+    @Test
+    void altaYEdicionRechazanMenoresAntesDeModificarLaPersona() {
+        stubAccesoRepository();
+        stubValidacionesUnicas();
+        UsuarioRequest request = requestSinDocente();
+        request.setFechaNaci(FechaNacimiento.hoy());
+        assertThrows(IllegalArgumentException.class, () -> service.create(request));
+        Usuario original = usuario(1, AccesoConstants.ACTIVO);
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(eq(1), any())).thenReturn(Optional.of(original));
+        assertThrows(IllegalArgumentException.class, () -> service.update(1, request));
+        assertEquals(LocalDate.of(2004, 11, 16), original.getFechaNaci());
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    void reactivacionInvalidaNoCambiaEstadoNiContrasena() {
+        stubAccesoRepository();
+        Usuario original = usuario(2, AccesoConstants.ELIMINADO);
+        when(usuarioRepository.findById(2)).thenReturn(Optional.of(original));
+        UsuarioRequest request = requestSinDocente();
+        request.setFechaNaci(FechaNacimiento.hoy());
+        assertThrows(IllegalArgumentException.class, () -> service.reactivar(2, request));
+        assertEquals(AccesoConstants.ELIMINADO, original.getAcceso().getIdAcceso());
+        assertEquals("hashPrevIa", original.getContraseña());
+        verify(usuarioRepository, never()).save(any());
+        verify(passwordEncoder, never()).encode(anyString());
+    }
+
+    @Test
+    void edicionPermiteConservarFechaHistoricaSinCambiarLosOtrosControles() {
+        stubAccesoRepository();
+        stubValidacionesUnicas();
+        Usuario original = usuario(1, AccesoConstants.ACTIVO);
+        original.setFechaNaci(FechaNacimiento.hoy());
+        stubSaveYRolesActivos(original, rol(1, "Administrador"));
+        UsuarioRequest request = requestSinDocente();
+        request.setFechaNaci(original.getFechaNaci());
+        request.setRolIds(null);
+        service.update(1, request);
+        assertEquals(request.getFechaNaci(), original.getFechaNaci());
+        verify(usuarioRepository).save(original);
+    }
+
+    @Test
+    void dniDeAlumnoBloqueaAltaAntesDeCredenciales() {
+        doThrow(new IllegalArgumentException("DNI de alumno")).when(exclusividadDni).validarUsuario("76988609");
+        assertThrows(IllegalArgumentException.class, () -> service.create(requestSinDocente()));
+        verify(usuarioRepository, never()).save(any());
+        verify(passwordEncoder, never()).encode(anyString());
+    }
+
+    @Test
+    void dniDeAlumnoBloqueaReactivacionAntesDeCambiarElAcceso() {
+        Usuario eliminado = usuario(2, AccesoConstants.ELIMINADO);
+        when(usuarioRepository.findById(2)).thenReturn(Optional.of(eliminado));
+        doThrow(new IllegalArgumentException("DNI de alumno")).when(exclusividadDni).validarUsuario("76988609");
+        assertThrows(IllegalArgumentException.class, () -> service.reactivar(2, requestSinDocente()));
+        assertEquals(AccesoConstants.ELIMINADO, eliminado.getAcceso().getIdAcceso());
+        verify(usuarioRepository, never()).save(any());
+        verify(passwordEncoder, never()).encode(anyString());
+    }
+
+    @Test
+    void activarInactivoCompruebaExclusividadInclusoSinCambiarDni() {
+        stubAccesoRepository();
+        Usuario inactivo = usuario(1, AccesoConstants.INACTIVO);
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(eq(1), any())).thenReturn(Optional.of(inactivo));
+        UsuarioRequest request = requestSinDocente();
+        request.setAccesoId(AccesoConstants.ACTIVO);
+        doThrow(new IllegalArgumentException("DNI de alumno")).when(exclusividadDni)
+                .validarCambioUsuario("76988609", "76988609", true);
+        assertThrows(IllegalArgumentException.class, () -> service.update(1, request));
+        assertEquals(AccesoConstants.INACTIVO, inactivo.getAcceso().getIdAcceso());
+        verify(usuarioRepository, never()).save(any());
     }
 }

@@ -39,6 +39,7 @@ import com.example.Escolar.Repository.TurnoRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
 import com.example.Escolar.Service.AccesoConstants;
+import com.example.Escolar.Service.ExclusividadDniService;
 import com.example.Escolar.Service.OrdenAcademicoService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -46,7 +47,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import org.springframework.dao.ConcurrencyFailureException;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -59,6 +64,8 @@ import java.util.Optional;
 @Slf4j
 public class DataSeeder implements CommandLineRunner {
 
+    private final ExclusividadDniService exclusividadDni;
+    private final PlatformTransactionManager transactionManager;
     private final AccionRepository accionRepository;
     private final AccesoRepository accesoRepository;
     private final EstadoAsistenciaRepository estadoAsistenciaRepository;
@@ -660,8 +667,19 @@ public class DataSeeder implements CommandLineRunner {
         rolPermisoAccionRepository.save(rpa);
     }
 
-    @Transactional
     public void seedAdmin() {
+        // run() llama al mismo bean: una anotación @Transactional aquí se omitiría.
+        TransactionTemplate transaccion = new TransactionTemplate(transactionManager);
+        transaccion.setIsolationLevel(TransactionDefinition.ISOLATION_SERIALIZABLE);
+        transaccion.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        try {
+            transaccion.executeWithoutResult(status -> seedAdminEnTransaccion());
+        } catch (ConcurrencyFailureException ex) {
+            log.warn("Se omitió la inicialización de la cuenta inicial por cambios concurrentes");
+        }
+    }
+
+    private void seedAdminEnTransaccion() {
         Rol rolAdmin = rolRepository.findByNombre(adminRol)
                 .orElseGet(this::crearRolAdmin);
 
@@ -674,6 +692,15 @@ public class DataSeeder implements CommandLineRunner {
         Optional<Usuario> eliminado = usuarioRepository.findByCodigo(adminCodigo);
         if (eliminado.isPresent() && eliminado.get().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO)) {
             Usuario usuario = eliminado.get();
+            // Una cuenta inicial antigua puede tener DNI aunque el alta inicial no lo asigne.
+            if (usuario.getDocumentoIdentidad() != null && !usuario.getDocumentoIdentidad().isBlank()) {
+                try {
+                    exclusividadDni.validarUsuario(usuario.getDocumentoIdentidad());
+                } catch (IllegalArgumentException ex) {
+                    log.warn("Se omitió la reactivación de la cuenta inicial: {}", ex.getMessage());
+                    return;
+                }
+            }
             usuario.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
             usuario.setContraseña(passwordEncoder.encode(adminPassword));
             if (usuario.getFechaCreacion() == null) {

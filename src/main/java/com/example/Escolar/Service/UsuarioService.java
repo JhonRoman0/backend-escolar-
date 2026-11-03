@@ -37,6 +37,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
@@ -54,6 +55,7 @@ public class UsuarioService {
     private static final String ROL_APODERADO = "APODERADO";
     private static final String ROL_ADMIN = "ADMIN";
 
+    private final ExclusividadDniService exclusividadDni;
     private final UsuarioRepository usuarioRepository;
     private final AccesoRepository accesoRepository;
     private final RolRepository rolRepository;
@@ -85,11 +87,12 @@ public class UsuarioService {
         return toResponse(findUsuario(id));
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE)
     public UsuarioResponse create(UsuarioRequest request) {
         if (request.getRolIds() == null || request.getRolIds().isEmpty()) {
             throw new IllegalArgumentException("Debe asignar al menos un rol");
         }
+        exclusividadDni.validarUsuario(request.getDocumentoIdentidad());
         validarDocumentoUnico(request.getDocumentoIdentidad(), null);
         validarGmailUnico(request.getGmail(), null);
         detectarEliminadoParaReactivar(request.getDocumentoIdentidad());
@@ -107,11 +110,12 @@ public class UsuarioService {
             crearDocente(saved, request);
         }
         UsuarioResponse response = toResponse(saved);
+        usuarioRepository.flush();
         response.setCredencialesEnviadas(enviarCredencialesAcceso(saved, temporal, TipoEnvioCredenciales.CREACION));
         return response;
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE)
     public UsuarioResponse update(Integer id, UsuarioRequest request) {
         return actualizarRegistro(findUsuario(id), id, request);
     }
@@ -139,13 +143,15 @@ public class UsuarioService {
      * enviados en la peticion, y se genera una contraseña nueva. Si no incluye rol DOCENTE, el registro Docente asociado
      * permanece eliminado.
      */
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE)
     public UsuarioResponse reactivar(Integer id, UsuarioRequest request) {
         Usuario usuario = usuarioRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con id " + id));
         if (!usuario.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO)) {
             throw new IllegalArgumentException("El usuario no esta eliminado y no requiere reactivacion");
         }
+        exclusividadDni.validarUsuario(request.getDocumentoIdentidad());
+        FechaNacimiento.validarAdulto(request.getFechaNaci(), usuario.getFechaNaci(), FechaNacimiento.hoy());
         usuario.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         usuario.setIntentosFallidos(0);
         usuario.setFechaBloqueo(null);
@@ -153,11 +159,15 @@ public class UsuarioService {
         usuario.setResetTokenExpiracion(null);
         String temporal = asignarContrasenaTemporal(usuario);
         UsuarioResponse response = actualizarRegistro(usuario, id, request);
+        usuarioRepository.flush();
         response.setCredencialesEnviadas(enviarCredencialesAcceso(usuario, temporal, TipoEnvioCredenciales.REACTIVACION));
         return response;
     }
 
     private UsuarioResponse actualizarRegistro(Usuario usuario, Integer id, UsuarioRequest request) {
+        boolean reactivando = AccesoConstants.ACTIVO.equals(request.getAccesoId())
+                && !AccesoConstants.ACTIVO.equals(usuario.getAcceso().getIdAcceso());
+        exclusividadDni.validarCambioUsuario(request.getDocumentoIdentidad(), usuario.getDocumentoIdentidad(), reactivando);
         // Se excluye el id propio para permitir conservar su DNI/correo; si los
         // nuevos datos fueran de otra cuenta activa, aqui se detectaria el choque.
         validarDocumentoUnico(request.getDocumentoIdentidad(), id);
@@ -547,6 +557,7 @@ public class UsuarioService {
     }
 
     private void applyRequest(Usuario usuario, UsuarioRequest request) {
+        FechaNacimiento.validarAdulto(request.getFechaNaci(), usuario.getFechaNaci(), FechaNacimiento.hoy());
         usuario.setNombre(request.getNombre());
         usuario.setApellidoPat(request.getApellidoPat());
         usuario.setApellidoMat(request.getApellidoMat());

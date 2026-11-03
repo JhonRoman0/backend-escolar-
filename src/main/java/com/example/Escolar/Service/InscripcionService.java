@@ -40,6 +40,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
@@ -77,6 +78,7 @@ public class InscripcionService {
     private record Credencial(String gmail, String nombre, String codigo, String contraseña, TipoEnvioCredenciales tipo) {
     }
 
+    private final ExclusividadDniService exclusividadDni;
     private final AlumnoRepository alumnoRepository;
     private final ApoderadoRepository apoderadoRepository;
     private final AlumnoApoderadoRepository alumnoApoderadoRepository;
@@ -102,6 +104,7 @@ public class InscripcionService {
         response.setDocumentoIdentidad(dni);
         Optional<Alumno> encontrado = alumnoRepository.findByDocumentoIdentidadAndAccesoNot(dni, eliminado());
         if (encontrado.isEmpty()) {
+            exclusividadDni.validarAlumno(dni);
             return response;
         }
         Alumno alumno = encontrado.get();
@@ -139,6 +142,7 @@ public class InscripcionService {
         response.setHijos(List.of());
         Optional<Usuario> usuario = usuarioRepository.findByDocumentoIdentidadAndAccesoNot(dni, eliminado());
         if (usuario.isEmpty()) {
+            exclusividadDni.validarUsuario(dni);
             response.setEstado(ESTADO_NUEVO);
             return response;
         }
@@ -184,6 +188,12 @@ public class InscripcionService {
     /** Revisa alumno y apoderados como lo haría el guardado, sin escribir nada. */
     public void validar(InscripcionRequest request) {
         InscripcionAlumnoRequest alumno = request.getAlumno();
+        boolean existente = alumnoRepository.findByDocumentoIdentidadAndAccesoNot(
+                alumno.getDocumentoIdentidad(), eliminado()).isPresent();
+        if (!existente) {
+            exclusividadDni.validarAlumno(alumno.getDocumentoIdentidad());
+            FechaNacimiento.validarAlumno(alumno.getFechaNacimiento(), FechaNacimiento.hoy());
+        }
         if (alumno.isTieneDiscapacidad() && vacio(alumno.getDiscapacidad())) {
             throw new IllegalArgumentException("Describe la discapacidad del alumno");
         }
@@ -213,9 +223,10 @@ public class InscripcionService {
         if (ESTADO_USUARIO.equals(estado)) {
             return;
         }
+        exclusividadDni.validarUsuario(apoderado.getDocumentoIdentidad());
         exigir(!vacio(apoderado.getNombre()) && !vacio(apoderado.getApellidoPat()) && !vacio(apoderado.getApellidoMat()),
                 "El nombre y los apellidos del apoderado son obligatorios");
-        exigir(apoderado.getFechaNaci() != null, "La fecha de nacimiento del apoderado es obligatoria");
+        FechaNacimiento.validarAdulto(apoderado.getFechaNaci(), null, FechaNacimiento.hoy());
         exigir(!vacio(apoderado.getGmail()), "El correo del apoderado es obligatorio");
         String gmail = apoderado.getGmail().trim().toLowerCase();
         if (!correos.add(gmail)) {
@@ -230,7 +241,7 @@ public class InscripcionService {
     // ---------- Estudiantes: agregar un apoderado ----------
 
     /** Agrega el segundo apoderado a un alumno ya matriculado, con la misma lógica del asistente. */
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE)
     public ApoderadoResponse agregarApoderado(Integer idAlumno, InscripcionApoderadoRequest datos) {
         Alumno alumno = alumnoRepository.findByIdAlumnoAndAccesoNot(idAlumno, eliminado())
                 .orElseThrow(() -> new ResourceNotFoundException("Alumno no encontrado con id " + idAlumno));
@@ -256,7 +267,7 @@ public class InscripcionService {
      * Otra persona ocupa el lugar del apoderado con este alumno. Quien sale pierde
      * el acceso y, si no tiene otros hijos, se descarta como apoderado.
      */
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE)
     public ApoderadoResponse reemplazarApoderado(Integer idApoderado, Integer idAlumno, InscripcionApoderadoRequest datos) {
         Alumno alumno = alumnoRepository.findByIdAlumnoAndAccesoNot(idAlumno, eliminado())
                 .orElseThrow(() -> new ResourceNotFoundException("Alumno no encontrado con id " + idAlumno));
@@ -346,7 +357,7 @@ public class InscripcionService {
 
     // ---------- Paso 3: crear ----------
 
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE)
     public MatriculaResponse inscribir(InscripcionRequest request, MultipartFile foto, MultipartFile comprobante, Integer idUsuarioRegistro) {
         if (request.getMatricula() == null) {
             throw new IllegalArgumentException("Faltan los datos de la matrícula");

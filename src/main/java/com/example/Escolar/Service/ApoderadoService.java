@@ -16,6 +16,7 @@ import com.example.Escolar.Service.AccesoContextoService.Alcance;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 
 import java.util.HashSet;
 import java.util.List;
@@ -26,6 +27,7 @@ import java.util.Set;
 public class ApoderadoService {
 
     private static final String PERMISO = "APODERADOS";
+    private final ExclusividadDniService exclusividadDni;
     private final ApoderadoRepository apoderadoRepository;
     private final UsuarioRepository usuarioRepository;
     private final AccesoContextoService accesoContextoService;
@@ -70,7 +72,7 @@ public class ApoderadoService {
     }
 
     /** Edición de la misma persona desde Estudiantes; otro DNI es un reemplazo, no una edición. */
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE)
     public ApoderadoResponse actualizar(Integer id, ApoderadoEdicionRequest request) {
         Acceso eliminado = accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow();
         Apoderado apoderado = apoderadoRepository.findByIdApoderadoAndAccesoNot(id, eliminado)
@@ -81,6 +83,7 @@ public class ApoderadoService {
         if (usuario.getDocumentoIdentidad() != null && !usuario.getDocumentoIdentidad().equals(dni)) {
             throw new IllegalArgumentException("Para poner a otra persona hay que reemplazar al apoderado");
         }
+        exclusividadDni.validarCambioUsuario(dni, usuario.getDocumentoIdentidad(), false);
         usuarioRepository.findByGmailAndAccesoNot(gmail, eliminado)
                 .filter(u -> !u.getIdUsuario().equals(usuario.getIdUsuario()))
                 .ifPresent(u -> {
@@ -91,6 +94,7 @@ public class ApoderadoService {
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("El apoderado no está vinculado a ese alumno"));
 
+        FechaNacimiento.validarAdulto(request.getFechaNaci(), usuario.getFechaNaci(), FechaNacimiento.hoy());
         usuario.setDocumentoIdentidad(dni);
         usuario.setNombre(request.getNombre().trim());
         usuario.setApellidoPat(request.getApellidoPat().trim());

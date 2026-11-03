@@ -49,6 +49,8 @@ import static org.mockito.Mockito.when;
 class DocenteServiceTest {
 
     @Mock
+    private ExclusividadDniService exclusividadDni;
+    @Mock
     private DocenteRepository docenteRepository;
     @Mock
     private UsuarioRepository usuarioRepository;
@@ -98,6 +100,9 @@ class DocenteServiceTest {
         when(accesoRepository.findById(AccesoConstants.ELIMINADO)).thenReturn(Optional.of(eliminado));
 
         Usuario usuario = new Usuario();
+        Acceso accesoUsuario = new Acceso();
+        accesoUsuario.setIdAcceso(AccesoConstants.ACTIVO);
+        usuario.setAcceso(accesoUsuario);
         usuario.setNombre("Ana");
         usuario.setApellidoPat("Ruiz");
         docente = new Docente();
@@ -193,5 +198,31 @@ class DocenteServiceTest {
                 asignacionEn("2027", AnioEscolarService.ESTADO_POR_COMENZAR, primaria));
 
         assertEquals(List.of(2), docenteService.getById(7).getNivelesConAsignaciones());
+    }
+
+    @Test
+    void editarDocenteNoPermiteEludirLaEdadDelUsuario() {
+        docente.getUsuario().setFechaNaci(java.time.LocalDate.of(1980, 1, 1));
+        DocenteRequest request = new DocenteRequest();
+        request.setFechaNaci(FechaNacimiento.hoy());
+        assertThrows(IllegalArgumentException.class, () -> docenteService.update(7, request));
+        assertEquals(java.time.LocalDate.of(1980, 1, 1), docente.getUsuario().getFechaNaci());
+        verify(usuarioRepository, never()).save(any());
+        verify(docenteRepository, never()).save(any());
+    }
+
+    @Test
+    void cambioDeDniDesdeDocentesCompruebaAlumnoAntesDeModificarUsuario() {
+        Usuario usuario = docente.getUsuario();
+        usuario.setDocumentoIdentidad("11111111");
+        usuario.setAcceso(new Acceso());
+        usuario.getAcceso().setIdAcceso(AccesoConstants.ACTIVO);
+        DocenteRequest request = new DocenteRequest();
+        request.setDocumentoIdentidad("22222222");
+        org.mockito.Mockito.doThrow(new IllegalArgumentException("DNI de alumno"))
+                .when(exclusividadDni).validarCambioUsuario("22222222", "11111111", false);
+        assertThrows(IllegalArgumentException.class, () -> docenteService.update(7, request));
+        assertEquals("11111111", usuario.getDocumentoIdentidad());
+        verify(usuarioRepository, never()).save(any());
     }
 }

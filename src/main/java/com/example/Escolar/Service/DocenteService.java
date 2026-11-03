@@ -28,6 +28,7 @@ import com.example.Escolar.Repository.UsuarioRolRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 
 import java.time.LocalDate;
 import java.util.Comparator;
@@ -44,6 +45,7 @@ public class DocenteService {
 
     public static final String ROL_DOCENTE = "DOCENTE";
 
+    private final ExclusividadDniService exclusividadDni;
     private final DocenteRepository docenteRepository;
     private final UsuarioRepository usuarioRepository;
     private final RolRepository rolRepository;
@@ -65,13 +67,17 @@ public class DocenteService {
         return toResponse(findDocente(id));
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE)
     public DocenteResponse update(Integer id, DocenteRequest request) {
         Docente docente = findDocente(id);
         if (request.getNiveles() != null) {
             validarNivelesQueQuita(docente, request.getNiveles());
         }
         Usuario usuario = docente.getUsuario();
+        boolean reactivando = AccesoConstants.ELIMINADO.equals(usuario.getAcceso().getIdAcceso())
+                || (AccesoConstants.ACTIVO.equals(request.getAccesoId()) && !AccesoConstants.ACTIVO.equals(usuario.getAcceso().getIdAcceso()));
+        String dni = request.getDocumentoIdentidad() != null ? request.getDocumentoIdentidad() : usuario.getDocumentoIdentidad();
+        exclusividadDni.validarCambioUsuario(dni, usuario.getDocumentoIdentidad(), reactivando);
         validarDocumentoUnico(request.getDocumentoIdentidad(), usuario.getIdUsuario());
         validarGmailUnico(request.getGmail(), usuario.getIdUsuario());
         construirUsuario(usuario, request, false);
@@ -218,6 +224,7 @@ public class DocenteService {
     }
 
     private void construirUsuario(Usuario usuario, DocenteRequest request, boolean esCreacion) {
+        FechaNacimiento.validarAdulto(request.getFechaNaci(), usuario.getFechaNaci(), FechaNacimiento.hoy());
         usuario.setNombre(request.getNombre());
         usuario.setApellidoPat(request.getApellidoPat());
         usuario.setApellidoMat(request.getApellidoMat());

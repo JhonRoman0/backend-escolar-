@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import jakarta.validation.Valid;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -59,7 +60,11 @@ public class ApoderadoController {
     @PostMapping("/alumno/{idAlumno}")
     @ResponseStatus(HttpStatus.CREATED)
     public ApoderadoResponse agregar(@PathVariable Integer idAlumno, @Valid @RequestBody InscripcionApoderadoRequest request) {
-        return inscripcionService.agregarApoderado(idAlumno, request);
+        try {
+            return inscripcionService.agregarApoderado(idAlumno, request);
+        } catch (ConcurrencyFailureException ex) {
+            throw new IllegalArgumentException("No se pudo completar el guardado porque hubo cambios concurrentes. Reintenta.", ex);
+        }
     }
 
     @DeleteMapping("/{id}")
@@ -72,12 +77,21 @@ public class ApoderadoController {
     @PutMapping("/{id}/reemplazar")
     public ApoderadoResponse reemplazar(@PathVariable Integer id, @RequestParam Integer idAlumno,
                                         @Valid @RequestBody InscripcionApoderadoRequest request) {
-        return inscripcionService.reemplazarApoderado(id, idAlumno, request);
+        try {
+            return inscripcionService.reemplazarApoderado(id, idAlumno, request);
+        } catch (ConcurrencyFailureException ex) {
+            throw new IllegalArgumentException("No se pudo completar el guardado porque hubo cambios concurrentes. Reintenta.", ex);
+        }
     }
 
     @PutMapping("/{id}")
     public ApoderadoResponse actualizar(@PathVariable Integer id, @Valid @RequestBody ApoderadoEdicionRequest request) {
-        ApoderadoResponse response = apoderadoService.actualizar(id, request);
+        ApoderadoResponse response;
+        try {
+            response = apoderadoService.actualizar(id, request);
+        } catch (ConcurrencyFailureException ex) {
+            throw new IllegalArgumentException("No se pudo completar el guardado porque hubo cambios concurrentes. Reintenta.", ex);
+        }
         // Va después de guardar: si el correo falla, los datos ya quedaron guardados.
         if (request.isRestablecerContrasena()) {
             response.setCredencialesEnviadas(usuarioService.restablecerContrasena(response.getIdUsuario()));

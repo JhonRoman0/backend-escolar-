@@ -41,6 +41,7 @@ import java.util.Set;
 public class RecreoService {
 
     private static final String QUE = "recreos";
+    private static final int MAX_RECREOS = 2;
 
     private final RecreoRepository recreoRepository;
     private final AnioEscolarRepository anioEscolarRepository;
@@ -90,7 +91,8 @@ public class RecreoService {
         }
 
         List<Recreo> nuevos = new ArrayList<>();
-        for (Integer idGrado : new LinkedHashSet<>(request.getIdGrados())) {
+        for (Integer idGrado : request.getIdGrados().stream().distinct().sorted().toList()) {
+            gradoRepository.bloquearPorId(idGrado);
             Grado grado = findGrado(idGrado);
             if (!grado.getNivel().getIdNivel().equals(nivel.getIdNivel())) {
                 throw new IllegalArgumentException("El grado " + grado.getNombre() + " no es del nivel " + nivel.getNombre());
@@ -105,6 +107,7 @@ public class RecreoService {
             List<HorarioClase> clases = clasesDelGrado(anio, turno, grado);
 
             for (Byte dia : dias) {
+                validarCupo(grado, dia, existentes, franjas.size(), null);
                 for (RecreoRequest.Franja franja : franjas) {
                     validarSinCruces(grado, dia, franja.getHoraInicio(), franja.getHoraFin(), existentes, clases, null);
                     Recreo recreo = new Recreo();
@@ -130,12 +133,14 @@ public class RecreoService {
         HorarioUtil.validarDia(request.getDiaSemana());
         HorarioUtil.validarDentroDelTurno(request.getHoraInicio(), request.getHoraFin(), recreo.getTurno());
 
+        gradoRepository.bloquearPorId(recreo.getGrado().getIdGrado());
         List<Recreo> existentes = recreosDelGrado(recreo.getAnioEscolar(), recreo.getTurno(), recreo.getGrado());
         List<HorarioClase> clases = clasesDelGrado(recreo.getAnioEscolar(), recreo.getTurno(), recreo.getGrado());
         validarSinCruces(recreo.getGrado(), request.getDiaSemana(), request.getHoraInicio(), request.getHoraFin(),
                 existentes, clases, id);
         // Moverlo de dia es quitarlo del dia anterior.
         if (!request.getDiaSemana().equals(recreo.getDiaSemana())) {
+            validarCupo(recreo.getGrado(), request.getDiaSemana(), existentes, 1, id);
             validarNoDejaDiaSinRecreo(recreo, existentes, clases);
         }
 
@@ -170,6 +175,14 @@ public class RecreoService {
         List<Recreo> recreos = recreosDelGrado(anio, turno, grado);
         recreos.forEach(r -> r.setAcceso(accesoEliminado()));
         recreoRepository.saveAll(recreos);
+    }
+
+    private void validarCupo(Grado grado, Byte dia, List<Recreo> existentes, int nuevos, Integer excluir) {
+        long cantidad = existentes.stream()
+                .filter(r -> r.getDiaSemana().equals(dia) && !r.getIdRecreo().equals(excluir)).count();
+        if (cantidad + nuevos > MAX_RECREOS) {
+            throw new IllegalArgumentException("Máximo dos recreos para " + grado.getNombre() + " el " + HorarioUtil.dia(dia));
+        }
     }
 
     private void validarSinCruces(Grado grado, Byte dia, LocalTime inicio, LocalTime fin,

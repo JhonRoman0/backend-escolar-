@@ -20,7 +20,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Spy;
+import com.example.Escolar.Model.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -49,7 +49,7 @@ class MatriculaServiceTest {
     @Mock private PagoMatriculaRepository pagoMatriculaRepository;
     @Mock private AccesoRepository accesoRepository;
     @Mock private AccesoContextoService accesoContextoService;
-    @Spy @InjectMocks private MatriculaService service;
+    @InjectMocks private MatriculaService service;
 
     private final List<String> roles = List.of("Administrador");
     private final Acceso activo = new Acceso(AccesoConstants.ACTIVO, "Activo");
@@ -58,14 +58,7 @@ class MatriculaServiceTest {
 
     @BeforeEach
     void prepararMapeo() {
-        // Estas pruebas aislan seleccion, alcance y paginacion del mapeo de pagos/historial.
-        lenient().doAnswer(invocation -> {
-            Matricula matricula = invocation.getArgument(0);
-            MatriculaResponse response = new MatriculaResponse();
-            response.setIdMatricula(matricula.getIdMatricula());
-            response.setAccesoId(matricula.getAcceso().getIdAcceso());
-            return response;
-        }).when(service).toResponse(any(Matricula.class));
+        lenient().when(accesoRepository.findById(AccesoConstants.ELIMINADO)).thenReturn(Optional.of(eliminado));
     }
 
     @Test
@@ -182,6 +175,44 @@ class MatriculaServiceTest {
         assertEquals(List.of(2), resultado.map(MatriculaResponse::getIdMatricula).getContent());
     }
 
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"2026,2026,NUEVO_INGRESO", "2025,2026,CONTINUANTE", "2018,2026,CONTINUANTE", "2026,2024,NUEVO_INGRESO"})
+    void clasificaSegunElAnioDeLaMatricula(String primero, String actual, MatriculaResponse.TipoIngreso esperado) {
+        var m = matricula(1, activo); m.getGradoSeccion().getAnioEscolar().setAnio(actual);
+        var resumen = org.mockito.Mockito.mock(MatriculaRepository.PrimerAnioAlumno.class);
+        when(resumen.getIdAlumno()).thenReturn(1); when(resumen.getPrimerAnio()).thenReturn(primero);
+        when(matriculaRepository.primerosAniosPorAlumno(List.of(1), AccesoConstants.ELIMINADO)).thenReturn(List.of(resumen));
+        assertEquals(esperado, service.toResponse(m).getTipoIngreso());
+        verify(matriculaRepository).primerosAniosPorAlumno(List.of(1), AccesoConstants.ELIMINADO);
+    }
+
+    @Test
+    void detalleDevuelveClasificacion() {
+        var m = matricula(1, activo);
+        when(matriculaRepository.findByIdMatriculaAndAccesoNot(1, eliminado)).thenReturn(Optional.of(m));
+        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.TODO);
+        assertEquals(MatriculaResponse.TipoIngreso.NUEVO_INGRESO, service.getById(1, 7, roles).getTipoIngreso());
+        verify(matriculaRepository).primerosAniosPorAlumno(List.of(1), AccesoConstants.ELIMINADO);
+    }
+
+    @Test
+    void paginaVaciaNoConsultaAntecedentes() {
+        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.TODO);
+        var pagina = PageRequest.of(0, 10);
+        when(matriculaRepository.findByAccesoNot(eliminado, pagina)).thenReturn(Page.empty(pagina));
+        assertTrue(listar(pagina, null).isEmpty());
+        verify(matriculaRepository, never()).primerosAniosPorAlumno(any(), any());
+    }
+
+    @Test
+    void paginaConsultaAntecedentesUnaSolaVez() {
+        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.TODO);
+        var pagina = PageRequest.of(0, 10);
+        when(matriculaRepository.findByAccesoNot(eliminado, pagina)).thenReturn(new PageImpl<>(List.of(matricula(1, activo), matricula(2, inactivo))));
+        var resultado = listar(pagina, null);
+        assertTrue(resultado.stream().allMatch(m -> m.getTipoIngreso() == MatriculaResponse.TipoIngreso.NUEVO_INGRESO));
+        verify(matriculaRepository).primerosAniosPorAlumno(List.of(1, 2), AccesoConstants.ELIMINADO);
+    }
     private Page<MatriculaResponse> listar(PageRequest pagina, Long idAcceso) {
         return service.getAll(pagina, 7, roles, null, null, null, null, null, null, idAcceso);
     }
@@ -190,6 +221,16 @@ class MatriculaServiceTest {
         var matricula = new Matricula();
         matricula.setIdMatricula(id);
         matricula.setAcceso(acceso);
+        var alumno = new Alumno(); alumno.setIdAlumno(id); alumno.setNombre("Alumno"); alumno.setApellidoPat("Prueba"); alumno.setApellidoMat("Prueba");
+        var usuario = new Usuario(); usuario.setIdUsuario(7); usuario.setNombre("Usuario"); usuario.setApellidoPat("Prueba");
+        var apoderado = new Apoderado(); apoderado.setUsuario(usuario);
+        var vinculo = new AlumnoApoderado(); vinculo.setAlumno(alumno); vinculo.setApoderado(apoderado);
+        var nivel = new Nivel(); nivel.setIdNivel(1); nivel.setNombre("Primaria");
+        var grado = new Grado(); grado.setIdGrado(1); grado.setNombre("Primero"); grado.setNivel(nivel);
+        var anio = new AnioEscolar(); anio.setIdAnio(1); anio.setAnio("2026");
+        var turno = new Turno(); turno.setIdTurno(1); turno.setNombre("Turno");
+        var seccion = new GradoSeccion(); seccion.setIdGradoSeccion(12); seccion.setGrado(grado); seccion.setAnioEscolar(anio); seccion.setTurno(turno);
+        matricula.setAlumnoApoderado(vinculo); matricula.setUsuario(usuario); matricula.setGradoSeccion(seccion);
         return matricula;
     }
 }

@@ -81,7 +81,7 @@ public class MatriculaService {
             if (esGestion) {
                 Page<Matricula> page = matriculaRepository.findFiltradas(
                         AccesoConstants.ELIMINADO, idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio, idAcceso, pageable);
-                return page.map(this::toResponse);
+                return new PageImpl<>(toResponses(page.getContent()), pageable, page.getTotalElements());
             } else {
                 List<Matricula> filtradas = matriculaRepository.findFiltradasList(
                         AccesoConstants.ELIMINADO, idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio, idAcceso);
@@ -96,7 +96,7 @@ public class MatriculaService {
             Page<Matricula> page = idAcceso == null
                     ? matriculaRepository.findByAccesoNot(eliminado(), pageable)
                     : matriculaRepository.findByAcceso(accesoRepository.findById(idAcceso).orElseThrow(), pageable);
-            return page.map(this::toResponse);
+            return new PageImpl<>(toResponses(page.getContent()), pageable, page.getTotalElements());
         } else {
             List<Matricula> todas = idAcceso == null
                     ? matriculaRepository.findByAccesoNot(eliminado())
@@ -124,7 +124,7 @@ public class MatriculaService {
         int start = (int) pageable.getOffset();
         int end = Math.min(start + pageable.getPageSize(), total);
         List<Matricula> slice = start >= total ? List.of() : lista.subList(start, end);
-        List<MatriculaResponse> respuestas = slice.stream().map(this::toResponse).toList();
+        List<MatriculaResponse> respuestas = toResponses(slice);
         return new PageImpl<>(respuestas, pageable, total);
     }
 
@@ -361,7 +361,24 @@ public class MatriculaService {
         return accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow();
     }
 
+    private List<MatriculaResponse> toResponses(List<Matricula> matriculas) {
+        if (matriculas.isEmpty()) return List.of();
+        List<Integer> ids = matriculas.stream().map(m -> m.getAlumnoApoderado().getAlumno().getIdAlumno()).distinct().toList();
+        var primeros = matriculaRepository.primerosAniosPorAlumno(ids, AccesoConstants.ELIMINADO).stream()
+                .collect(Collectors.toMap(MatriculaRepository.PrimerAnioAlumno::getIdAlumno, MatriculaRepository.PrimerAnioAlumno::getPrimerAnio));
+        return matriculas.stream().map(m -> {
+            String primero = primeros.get(m.getAlumnoApoderado().getAlumno().getIdAlumno());
+            var tipo = primero != null && primero.compareTo(m.getGradoSeccion().getAnioEscolar().getAnio()) < 0
+                    ? MatriculaResponse.TipoIngreso.CONTINUANTE : MatriculaResponse.TipoIngreso.NUEVO_INGRESO;
+            return toResponse(m, tipo);
+        }).toList();
+    }
+
     public MatriculaResponse toResponse(Matricula matricula) {
+        return toResponses(List.of(matricula)).get(0);
+    }
+
+    private MatriculaResponse toResponse(Matricula matricula, MatriculaResponse.TipoIngreso tipoIngreso) {
         AlumnoApoderado vinculo = matricula.getAlumnoApoderado();
         Alumno alumno = vinculo.getAlumno();
         GradoSeccion gs = matricula.getGradoSeccion();
@@ -369,6 +386,7 @@ public class MatriculaService {
                 .findByMatriculaIdMatriculaAndAccesoNotOrderByFecha(matricula.getIdMatricula(), eliminado());
 
         MatriculaResponse response = new MatriculaResponse();
+        response.setTipoIngreso(tipoIngreso);
         response.setIdMatricula(matricula.getIdMatricula());
         response.setIdAlumno(alumno.getIdAlumno());
         response.setIdAlumnoApoderado(vinculo.getIdAlumnoApoderado());

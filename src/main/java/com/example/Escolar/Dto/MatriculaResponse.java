@@ -10,6 +10,8 @@ import java.util.List;
 @Getter
 @Setter
 public class MatriculaResponse {
+    public enum TipoIngreso { NUEVO_INGRESO, CONTINUANTE }
+    private TipoIngreso tipoIngreso;
     private Integer idMatricula;
     private Integer idAlumno;
     private Integer idAlumnoApoderado;

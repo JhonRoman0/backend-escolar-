@@ -14,6 +14,16 @@ import java.util.List;
 import java.util.Optional;
 
 public interface MatriculaRepository extends JpaRepository<Matricula, Integer> {
+    interface PrimerAnioAlumno {
+        Integer getIdAlumno();
+        String getPrimerAnio();
+    }
+
+    @Query("SELECT m.alumnoApoderado.alumno.idAlumno AS idAlumno, MIN(m.gradoSeccion.anioEscolar.anio) AS primerAnio " +
+            "FROM Matricula m WHERE m.alumnoApoderado.alumno.idAlumno IN :ids " +
+            "AND m.acceso.idAcceso <> :eliminadoId GROUP BY m.alumnoApoderado.alumno.idAlumno")
+    List<PrimerAnioAlumno> primerosAniosPorAlumno(@Param("ids") List<Integer> ids, @Param("eliminadoId") Long eliminadoId);
+
     List<Matricula> findByAccesoNot(Acceso acceso);
 
     Page<Matricula> findByAccesoNot(Acceso acceso, Pageable pageable);

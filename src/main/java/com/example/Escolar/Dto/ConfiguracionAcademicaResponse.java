@@ -1,7 +1,11 @@
 package com.example.Escolar.Dto;
 
+import com.example.Escolar.Model.EscalaCalificacion;
+import com.example.Escolar.Model.TipoPeriodo;
 import lombok.Getter;
 import lombok.Setter;
+
+import java.util.List;
 
 @Getter
 @Setter
@@ -18,4 +22,10 @@ public class ConfiguracionAcademicaResponse {
     private String anioOrigen;
     /** Asignaciones del año en el nivel: con alguna, la duracion ya no cambia. */
     private long asignaciones;
+    private EscalaCalificacion escala;
+    private TipoPeriodo tipoPeriodo;
+    private List<PeriodoEvaluacionResponse> periodos;
+    /** Si se puede guardar, y si no, por qué. */
+    private boolean editable;
+    private String motivoBloqueo;
 }

@@ -11,6 +11,11 @@ import com.example.Escolar.Repository.AnioEscolarRepository;
 import com.example.Escolar.Repository.AsignacionRepository;
 import com.example.Escolar.Repository.ConfiguracionAcademicaRepository;
 import com.example.Escolar.Repository.NivelRepository;
+import com.example.Escolar.Repository.PeriodoEvaluacionRepository;
+import com.example.Escolar.Model.EscalaCalificacion;
+import com.example.Escolar.Model.PeriodoEvaluacion;
+import com.example.Escolar.Model.TipoPeriodo;
+import java.time.LocalDate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -49,6 +54,8 @@ class ConfiguracionAcademicaServiceTest {
     private AsignacionRepository asignacionRepository;
     @Mock
     private AccesoRepository accesoRepository;
+    @Mock
+    private PeriodoEvaluacionRepository periodoRepository;
     @InjectMocks
     private ConfiguracionAcademicaService service;
 
@@ -178,5 +185,144 @@ class ConfiguracionAcademicaServiceTest {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.guardar(request(2, 2, 40)));
         assertTrue(ex.getMessage().contains("3 asignaciones"));
         verify(configuracionRepository, never()).save(any());
+    }
+
+    // ── Escala y periodos ──
+
+    private Nivel secundaria() {
+        Nivel s = nivel(3, "Secundaria");
+        when(nivelRepository.findByAccesoNot(any())).thenReturn(List.of(inicial, primaria, s));
+        return s;
+    }
+
+    private ConfiguracionAcademicaRequest conPeriodos(int idNivel, TipoPeriodo tipo, String... fechas) {
+        ConfiguracionAcademicaRequest r = request(2, idNivel, idNivel == 1 ? null : 45);
+        r.setTipoPeriodo(tipo);
+        List<ConfiguracionAcademicaRequest.PeriodoRequest> periodos = new java.util.ArrayList<>();
+        for (int i = 0; i < fechas.length; i += 2) {
+            periodos.add(new ConfiguracionAcademicaRequest.PeriodoRequest(LocalDate.parse(fechas[i]), LocalDate.parse(fechas[i + 1])));
+        }
+        r.setPeriodos(periodos);
+        return r;
+    }
+
+    private void fechas(AnioEscolar anio) {
+        anio.setFechaInicio(LocalDate.of(2027, 3, 1));
+        anio.setFechaFin(LocalDate.of(2027, 12, 20));
+    }
+
+    @Test
+    void porDefectoEsLiteralConBimestres() {
+        ConfiguracionAcademicaResponse res = service.listar(2).get(1);
+
+        assertEquals(EscalaCalificacion.LITERAL, res.getEscala());
+        assertEquals(TipoPeriodo.BIMESTRE, res.getTipoPeriodo());
+        assertTrue(res.isEditable());
+    }
+
+    @Test
+    void guardaLosBimestresEnOrden() {
+        fechas(anio2027);
+        service.guardar(conPeriodos(2, TipoPeriodo.BIMESTRE,
+                "2027-03-01", "2027-05-07", "2027-05-17", "2027-07-23", "2027-08-09", "2027-10-08", "2027-10-18", "2027-12-20"));
+
+        ArgumentCaptor<PeriodoEvaluacion> captor = ArgumentCaptor.forClass(PeriodoEvaluacion.class);
+        verify(periodoRepository, org.mockito.Mockito.times(4)).save(captor.capture());
+        assertEquals(List.of(1, 2, 3, 4), captor.getAllValues().stream().map(p -> (int) p.getNumero()).toList());
+    }
+
+    @Test
+    void rechazaPeriodosFueraDelAnio() {
+        fechas(anio2027);
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.guardar(conPeriodos(1, TipoPeriodo.TRIMESTRE,
+                "2027-02-01", "2027-05-30", "2027-06-01", "2027-09-15", "2027-09-20", "2027-12-20")));
+
+        assertTrue(ex.getMessage().contains("dentro del año"), ex.getMessage());
+        verify(periodoRepository, never()).save(any());
+    }
+
+    @Test
+    void rechazaPeriodosQueSeSolapan() {
+        fechas(anio2027);
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.guardar(conPeriodos(1, TipoPeriodo.TRIMESTRE,
+                "2027-03-01", "2027-06-10", "2027-06-10", "2027-09-15", "2027-09-20", "2027-12-20")));
+
+        assertTrue(ex.getMessage().contains("después de que termine"), ex.getMessage());
+    }
+
+    @Test
+    void exigeLaCantidadDelTipo() {
+        fechas(anio2027);
+        assertThrows(IllegalArgumentException.class, () -> service.guardar(conPeriodos(2, TipoPeriodo.BIMESTRE,
+                "2027-03-01", "2027-06-10", "2027-06-20", "2027-09-15", "2027-09-20", "2027-12-20")));
+    }
+
+    @Test
+    void sinFechasDelAnioNoSeDefinenPeriodos() {
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.guardar(conPeriodos(1, TipoPeriodo.TRIMESTRE,
+                "2027-03-01", "2027-06-10", "2027-06-20", "2027-09-15", "2027-09-20", "2027-12-20")));
+
+        assertTrue(ex.getMessage().contains("fechas de inicio y fin"), ex.getMessage());
+    }
+
+    @Test
+    void cadaNivelTieneSuPropiaEscala() {
+        secundaria();
+        ConfiguracionAcademicaRequest r = request(2, 2, 45);
+        r.setEscala(EscalaCalificacion.VIGESIMAL);
+
+        service.guardar(r);
+
+        // Solo se guarda primaria: secundaria e inicial no se tocan.
+        ArgumentCaptor<ConfiguracionAcademica> captor = ArgumentCaptor.forClass(ConfiguracionAcademica.class);
+        verify(configuracionRepository, org.mockito.Mockito.times(1)).save(captor.capture());
+        assertEquals(primaria, captor.getValue().getNivel());
+        assertEquals(EscalaCalificacion.VIGESIMAL, captor.getValue().getEscala());
+    }
+
+    @Test
+    void unVigenteSinPeriodosSeConfiguraUnaVez() {
+        fechas(anio2026);
+        anio2026.setFechaInicio(LocalDate.of(2027, 3, 1));
+        ConfiguracionAcademicaRequest r = conPeriodos(1, TipoPeriodo.TRIMESTRE,
+                "2027-03-01", "2027-06-10", "2027-06-20", "2027-09-15", "2027-09-20", "2027-12-20");
+        r.setIdAnio(1);
+
+        service.guardar(r);
+
+        verify(configuracionRepository).save(any());
+    }
+
+    @Test
+    void unVigenteConPeriodosQuedaBloqueado() {
+        when(periodoRepository.countByAnioEscolarIdAnioAndNivelIdNivel(1, 1)).thenReturn(3L);
+        ConfiguracionAcademicaRequest r = request(1, 1, null);
+        r.setEscala(EscalaCalificacion.VIGESIMAL);
+
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.guardar(r));
+
+        assertTrue(ex.getMessage().contains("vigente"));
+        assertTrue(!service.listar(1).get(0).isEditable());
+    }
+
+    @Test
+    void unCerradoQuedaBloqueado() {
+        anio2026.setEstado(AnioEscolarService.ESTADO_CERRADO);
+
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.guardar(request(1, 1, null)));
+
+        assertTrue(ex.getMessage().contains("cerrado"));
+    }
+
+    @Test
+    void elEstadoDelPeriodoSaleDeSusFechas() {
+        PeriodoEvaluacion p = new PeriodoEvaluacion();
+        p.setFechaInicio(LocalDate.of(2027, 3, 1));
+        p.setFechaFin(LocalDate.of(2027, 5, 7));
+
+        assertEquals(PeriodoEvaluacion.POR_COMENZAR, p.estadoEn(LocalDate.of(2027, 2, 28)));
+        assertEquals(PeriodoEvaluacion.ABIERTO, p.estadoEn(LocalDate.of(2027, 3, 1)));
+        assertEquals(PeriodoEvaluacion.ABIERTO, p.estadoEn(LocalDate.of(2027, 5, 7)));
+        assertEquals(PeriodoEvaluacion.CERRADO, p.estadoEn(LocalDate.of(2027, 5, 8)));
     }
 }

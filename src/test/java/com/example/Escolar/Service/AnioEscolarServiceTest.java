@@ -49,6 +49,10 @@ class AnioEscolarServiceTest {
     private CursoRepository cursoRepository;
     @Mock
     private CursoService cursoService;
+    @Mock
+    private com.example.Escolar.Repository.PeriodoEvaluacionRepository periodoRepository;
+    @Mock
+    private com.example.Escolar.Repository.ConfiguracionAcademicaRepository configuracionRepository;
     @InjectMocks
     private AnioEscolarService anioEscolarService;
 

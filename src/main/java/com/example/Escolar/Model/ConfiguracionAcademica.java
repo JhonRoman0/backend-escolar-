@@ -7,8 +7,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * Reglas academicas de un nivel en un año escolar. Por ahora solo la duracion
- * de la hora academica; mas adelante tambien el sistema de calificacion.
+ * Reglas academicas de un nivel en un año escolar: hora academica, escala de
+ * calificacion y tipo de periodo. Null en escala o periodo: el valor por defecto.
  */
 @Entity
 @Table(name = "configuracion_academica",
@@ -32,6 +32,12 @@ public class ConfiguracionAcademica {
     // dura lo que se elija (inicial se organiza por actividades).
     @Column(name = "minutos_hora_academica")
     Integer minutosHoraAcademica;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "escala", length = 10)
+    EscalaCalificacion escala;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tipo_periodo", length = 10)
+    TipoPeriodo tipoPeriodo;
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "id_acceso", nullable = false)
     Acceso acceso;

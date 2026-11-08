@@ -12,4 +12,6 @@ public interface ConfiguracionAcademicaRepository extends JpaRepository<Configur
 
     /** Las de un nivel en todos los años: de aqui se hereda la del año anterior. */
     List<ConfiguracionAcademica> findByNivelIdNivelAndAccesoNot(Integer idNivel, Acceso acceso);
+
+    void deleteByAnioEscolarIdAnio(Integer idAnio);
 }

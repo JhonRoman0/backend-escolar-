@@ -383,6 +383,8 @@ public class DataSeeder implements CommandLineRunner {
         crearAccionSiFalta("IMPRIMIR_EXPORTAR", "Imprimir/Exportar");
         crearAccionSiFalta("AUTORIZAR", "Autorizar");
         crearAccionSiFalta("IMPRIMIR_FICHA", "Imprimir ficha");
+        crearAccionSiFalta("EXPORTAR_SIAGIE", "Exportar SIAGIE");
+        crearAccionSiFalta("IMPRIMIR_BOLETA", "Imprimir boleta");
     }
 
     private void crearAccionSiFalta(String codigo, String nombre) {
@@ -448,8 +450,8 @@ public class DataSeeder implements CommandLineRunner {
                 new PermisoSeed("PAGOS_MATRICULA", "Pagos de matrícula", crud()))));
 
         crearModuloSiFalta(new ModuloSeed("Consolidado", "clipboard-check", List.of(
-                new PermisoSeed("CONSOLIDADOS", "Consolidados", List.of("CREAR", "ACTUALIZAR", "IMPRIMIR_EXPORTAR")),
-                new PermisoSeed("NOTAS", "Notas", List.of("CREAR", "AUTORIZAR", "IMPRIMIR_EXPORTAR")))));
+                new PermisoSeed("NOTAS", "Notas", List.of("CREAR", "AUTORIZAR", "IMPRIMIR_EXPORTAR")),
+                new PermisoSeed("EVALUACIONES", "Evaluaciones", crud()))));
 
         crearModuloSiFalta(new ModuloSeed("Portal", "globe", List.of(
                 new PermisoSeed("PUBLICACIONES", "Publicaciones", crud()),
@@ -466,9 +468,6 @@ public class DataSeeder implements CommandLineRunner {
 
         crearModuloSiFalta(new ModuloSeed("Horario", "horario", List.of(
                 new PermisoSeed("HORARIOS", "Horarios", List.of("CREAR", "ACTUALIZAR", "ELIMINAR", "IMPRIMIR_EXPORTAR")))));
-
-        crearModuloSiFalta(new ModuloSeed("Plantilla SIAGIE", "file-import", List.of(
-                new PermisoSeed("PLANTILLAS", "Plantillas SIAGIE", List.of("CREAR", "IMPRIMIR_EXPORTAR")))));
     }
 
     private void seedMatrizRbac() {
@@ -494,7 +493,6 @@ public class DataSeeder implements CommandLineRunner {
         asignarPermiso("Administrador", "APODERADOS", List.of("CREAR", "ACTUALIZAR"));
         asignarPermiso("Administrador", "MATRICULAS", crudWithExport());
         asignarPermiso("Administrador", "PAGOS_MATRICULA", crud());
-        asignarPermiso("Administrador", "CONSOLIDADOS", List.of("CREAR", "ACTUALIZAR", "IMPRIMIR_EXPORTAR"));
         asignarPermiso("Administrador", "COMPETENCIAS", crud());
         asignarPermiso("Administrador", "NOTAS", List.of("CREAR", "AUTORIZAR", "IMPRIMIR_EXPORTAR"));
         asignarPermiso("Administrador", "PUBLICACIONES", crud());
@@ -520,7 +518,6 @@ public class DataSeeder implements CommandLineRunner {
         asignarPermiso("Secretaria", "ALUMNOS", List.of("CREAR", "ACTUALIZAR"));
         asignarPermiso("Secretaria", "APODERADOS", List.of("CREAR", "ACTUALIZAR"));
         asignarPermiso("Secretaria", "MATRICULAS", List.of("CREAR", "ACTUALIZAR"));
-        asignarPermiso("Secretaria", "CONSOLIDADOS", List.of());
         asignarPermiso("Secretaria", "COMPETENCIAS", List.of());
         asignarPermiso("Secretaria", "NOTAS", List.of());
         asignarPermiso("Secretaria", "PUBLICACIONES", List.of("CREAR", "ACTUALIZAR"));
@@ -537,7 +534,6 @@ public class DataSeeder implements CommandLineRunner {
         asignarPermiso("Apoderado", "ASIGNACIONES", List.of());
         asignarPermiso("Apoderado", "RECREOS", List.of());
         asignarPermiso("Apoderado", "MATRICULAS", List.of());
-        asignarPermiso("Apoderado", "CONSOLIDADOS", List.of());
         asignarPermiso("Apoderado", "COMPETENCIAS", List.of());
         asignarPermiso("Apoderado", "NOTAS", List.of());
         asignarPermiso("Apoderado", "COLEGIOS", List.of());
@@ -556,7 +552,6 @@ public class DataSeeder implements CommandLineRunner {
         asignarPermiso("Docente", "SUSPENSIONES_DOCENTE", List.of());
         asignarPermiso("Docente", "CAMBIOS_DOCENTE", List.of());
         asignarPermiso("Docente", "MATRICULAS", List.of());
-        asignarPermiso("Docente", "CONSOLIDADOS", List.of("CREAR", "ACTUALIZAR"));
         asignarPermiso("Docente", "COMPETENCIAS", List.of());
         asignarPermiso("Docente", "NOTAS", List.of("CREAR"));
         asignarPermiso("Docente", "COLEGIOS", List.of());
@@ -569,10 +564,6 @@ public class DataSeeder implements CommandLineRunner {
         asignarPermiso("Auxiliar", "HORARIOS", List.of());
         asignarPermiso("Auxiliar", "RECREOS", List.of());
 
-        asignarPermiso("Administrador", "PLANTILLAS", List.of("CREAR", "IMPRIMIR_EXPORTAR"));
-        asignarPermiso("Secretaria", "PLANTILLAS", List.of());
-        asignarPermiso("Docente", "PLANTILLAS", List.of());
-        asignarPermiso("Apoderado", "PLANTILLAS", List.of());
     }
 
     private List<String> crud() {

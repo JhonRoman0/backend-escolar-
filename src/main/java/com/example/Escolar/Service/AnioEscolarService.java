@@ -6,9 +6,12 @@ import com.example.Escolar.Exception.AnioEscolarConGradosException;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.AnioEscolar;
+import com.example.Escolar.Model.PeriodoEvaluacion;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.AnioEscolarRepository;
 import com.example.Escolar.Repository.AsignacionRepository;
+import com.example.Escolar.Repository.ConfiguracionAcademicaRepository;
+import com.example.Escolar.Repository.PeriodoEvaluacionRepository;
 import com.example.Escolar.Repository.CursoRepository;
 import com.example.Escolar.Repository.GradoSeccionRepository;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +46,8 @@ public class AnioEscolarService {
     private final AsignacionRepository asignacionRepository;
     private final CursoRepository cursoRepository;
     private final CursoService cursoService;
+    private final PeriodoEvaluacionRepository periodoRepository;
+    private final ConfiguracionAcademicaRepository configuracionRepository;
 
     // Transaccional porque antes de leer cierra los años vencidos. La anotacion
     // va en el metodo publico y no en cerrarAniosVencidos: al llamarse desde
@@ -139,6 +144,7 @@ public class AnioEscolarService {
         // Validar fechas despues de aplicar cambios
         validarFechas(anioEscolar.getFechaInicio(), anioEscolar.getFechaFin());
         validarFechaFinSiVigente(anioEscolar.getEstado(), anioEscolar.getFechaFin());
+        validarPeriodosDentroDelAnio(anioEscolar);
         if (anioEscolar.getEstado() == ESTADO_VIGENTE) {
             validarVigenteSegunCalendario(anioEscolar.getAnio());
         }
@@ -203,6 +209,9 @@ public class AnioEscolarService {
                     + " porque tiene " + texto + " asociados"
             );
         }
+        // Su configuracion y sus periodos no tienen sentido sin el año.
+        periodoRepository.deleteByAnioEscolarIdAnio(id);
+        configuracionRepository.deleteByAnioEscolarIdAnio(id);
         // Los cursos eliminados logicamente siguen apuntando al año.
         cursoService.borrarEliminadosDelAnio(id);
         anioEscolarRepository.delete(anioEscolar);
@@ -222,6 +231,19 @@ public class AnioEscolarService {
         }
         vencidos.forEach(a -> a.setEstado(ESTADO_CERRADO));
         anioEscolarRepository.saveAll(vencidos);
+    }
+
+    private void validarPeriodosDentroDelAnio(AnioEscolar anio) {
+        for (PeriodoEvaluacion periodo : periodoRepository.findByAnioEscolarIdAnio(anio.getIdAnio())) {
+            boolean antes = anio.getFechaInicio() != null && periodo.getFechaInicio().isBefore(anio.getFechaInicio());
+            boolean despues = anio.getFechaFin() != null && periodo.getFechaFin().isAfter(anio.getFechaFin());
+            if (antes || despues) {
+                throw new IllegalArgumentException("El periodo " + periodo.getNumero() + " de "
+                        + periodo.getNivel().getNombre() + " (" + periodo.getFechaInicio().format(PeriodoEvaluacion.FECHA) + " al "
+                        + periodo.getFechaFin().format(PeriodoEvaluacion.FECHA)
+                        + ") quedaría fuera del año: ajusta primero sus fechas en Configuración académica");
+            }
+        }
     }
 
     private void cerrarOtrosVigentes(Integer idExcluir) {

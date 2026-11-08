@@ -3,15 +3,10 @@ package com.example.Escolar.Controller;
 import com.example.Escolar.Dto.AutorizacionRegistroResponse;
 import com.example.Escolar.Dto.AutorizacionRequest;
 import com.example.Escolar.Dto.AutorizacionResponse;
-import com.example.Escolar.Dto.NotaBatchRequest;
-import com.example.Escolar.Dto.NotaConsolidadoResponse;
 import com.example.Escolar.Dto.NotaReporteResponse;
-import com.example.Escolar.Dto.NotaRequest;
 import com.example.Escolar.Dto.NotaResponse;
-import com.example.Escolar.Dto.PromedioResponse;
 import com.example.Escolar.Dto.ValidarAutorizacionRequest;
 import com.example.Escolar.Service.AccesoContextoService;
-import com.example.Escolar.Service.ExportService;
 import com.example.Escolar.Service.NotaService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -39,7 +34,6 @@ import java.util.Map;
 public class NotaController {
 
     private final NotaService notaService;
-    private final ExportService exportService;
     private final AccesoContextoService accesoContextoService;
 
     @GetMapping("/competencia/{idCompetencia}")
@@ -56,34 +50,9 @@ public class NotaController {
                 accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
     }
 
-    @GetMapping("/consolidado")
-    public List<NotaConsolidadoResponse> getConsolidado(
-            @RequestParam Integer idGradoSeccion,
-            @RequestParam Byte bimestre,
-            @RequestParam(required = false) Integer idCurso) {
-        return notaService.getConsolidado(idGradoSeccion, bimestre, idCurso,
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
-    }
 
-    @GetMapping("/matricula/{idMatricula}/promedio")
-    public PromedioResponse promedioPorBimestre(@PathVariable Integer idMatricula) {
-        return notaService.promedioPorBimestre(idMatricula,
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
-    }
 
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public NotaResponse registrar(@Valid @RequestBody NotaRequest request) {
-        return notaService.registrar(request,
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
-    }
 
-    @PostMapping("/batch")
-    @ResponseStatus(HttpStatus.CREATED)
-    public List<NotaResponse> registrarPorLote(@Valid @RequestBody NotaBatchRequest request) {
-        return notaService.registrarPorLote(request,
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
-    }
 
     @PostMapping("/autorizaciones")
     @ResponseStatus(HttpStatus.CREATED)
@@ -113,16 +82,4 @@ public class NotaController {
         return notaService.reporte(inicio, fin, idGradoSeccion, bimestre);
     }
 
-    @GetMapping("/exportar")
-    public ResponseEntity<byte[]> exportarSiagie(
-            @RequestParam Integer idGradoSeccion,
-            @RequestParam Byte bimestre) {
-        byte[] excel = exportService.exportarSiagie(idGradoSeccion, bimestre);
-        String filename = exportService.nombreArchivoSiagie(idGradoSeccion, bimestre);
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
-        headers.setContentDispositionFormData("attachment", filename);
-        headers.setContentLength(excel.length);
-        return new ResponseEntity<>(excel, headers, HttpStatus.OK);
-    }
 }

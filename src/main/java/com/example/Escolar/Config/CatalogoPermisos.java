@@ -73,7 +73,7 @@ public final class CatalogoPermisos {
                 "ACTUALIZAR", "Editar asignaciones",
                 "ELIMINAR", "Eliminar asignaciones");
         permiso("CONFIGURACION_ACADEMICA", ACADEMICO,
-                "ACTUALIZAR", "Editar la hora académica");
+                "ACTUALIZAR", "Editar hora académica, escala y periodos");
         // Los alumnos se crean y se quitan desde Matrícula.
         permiso("ALUMNOS", ESTUDIANTES,
                 "ACTUALIZAR", "Editar foto y discapacidad",
@@ -89,6 +89,19 @@ public final class CatalogoPermisos {
                 "ELIMINAR", "Eliminar matrículas",
                 "IMPRIMIR_EXPORTAR", "Exportar reporte",
                 "IMPRIMIR_FICHA", "Imprimir ficha");
+        // Notas finales del periodo: la primera registrada vale; cambiarla es corregir.
+        permiso("NOTAS", "Consolidado",
+                "CREAR", "Registrar notas finales",
+                "ACTUALIZAR", "Corregir notas finales ya registradas",
+                "AUTORIZAR", "Generar códigos de autorización",
+                "IMPRIMIR_EXPORTAR", "Exportar reporte",
+                "EXPORTAR_SIAGIE", "Exportar Excel con formato SIAGIE",
+                "IMPRIMIR_BOLETA", "Imprimir boletas de notas");
+        // Un docente solo trabaja con sus cursos asignados; los demás, con todos.
+        permiso("EVALUACIONES", "Consolidado",
+                "CREAR", "Crear evaluaciones y registrar sus notas",
+                "ACTUALIZAR", "Editar evaluaciones",
+                "ELIMINAR", "Eliminar evaluaciones");
         permiso("PAGOS_MATRICULA", "Pagos",
                 "CREAR", "Crear métodos de pago",
                 "ACTUALIZAR", "Editar métodos de pago y montos",

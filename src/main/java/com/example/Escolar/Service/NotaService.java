@@ -3,12 +3,8 @@ package com.example.Escolar.Service;
 import com.example.Escolar.Dto.AutorizacionRegistroResponse;
 import com.example.Escolar.Dto.AutorizacionRequest;
 import com.example.Escolar.Dto.AutorizacionResponse;
-import com.example.Escolar.Dto.NotaBatchRequest;
-import com.example.Escolar.Dto.NotaConsolidadoResponse;
 import com.example.Escolar.Dto.NotaReporteResponse;
-import com.example.Escolar.Dto.NotaRequest;
 import com.example.Escolar.Dto.NotaResponse;
-import com.example.Escolar.Dto.PromedioResponse;
 import com.example.Escolar.Dto.ValidarAutorizacionRequest;
 import com.example.Escolar.Exception.AutorizacionRequeridaException;
 import com.example.Escolar.Exception.ResourceNotFoundException;
@@ -52,7 +48,6 @@ public class NotaService {
     public static final byte USADO = 1;
 
     private static final long MINUTOS_VALIDEZ = 10;
-    private static final Set<String> CALIFICACIONES_VALIDAS = Set.of("AD", "A", "B", "C");
 
     private final NotaRepository notaRepository;
     private final CompetenciaRepository competenciaRepository;
@@ -85,169 +80,6 @@ public class NotaService {
         return notaRepository.findByMatriculaIdMatriculaAndAccesoNot(idMatricula, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
                 .map(this::toResponse)
                 .toList();
-    }
-
-    public List<NotaConsolidadoResponse> getConsolidado(Integer idGradoSeccion, Byte bimestre, Integer idCurso, Integer idUsuario, List<String> roles) {
-        List<Nota> notas = notaRepository.findByMatriculaGradoSeccionIdGradoSeccionAndBimestreAndAccesoNot(
-                idGradoSeccion, bimestre, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
-
-        Map<Integer, NotaConsolidadoResponse> porMatricula = new LinkedHashMap<>();
-        for (Nota nota : notas) {
-            Competencia comp = nota.getCompetencia();
-            Curso curso = comp.getCurso();
-            if (idCurso != null && !curso.getIdCurso().equals(idCurso)) {
-                continue;
-            }
-            Matricula mat = nota.getMatricula();
-            NotaConsolidadoResponse consolidado = porMatricula.computeIfAbsent(mat.getIdMatricula(), k -> {
-                NotaConsolidadoResponse r = new NotaConsolidadoResponse();
-                r.setIdMatricula(mat.getIdMatricula());
-                r.setIdAlumno(mat.getAlumnoApoderado().getAlumno().getIdAlumno());
-                r.setCodigoAlumno(mat.getAlumnoApoderado().getAlumno().getCodigo());
-                r.setAlumno(mat.getAlumnoApoderado().getAlumno().getNombre() + " "
-                        + mat.getAlumnoApoderado().getAlumno().getApellidoPat());
-                r.setIdCurso(curso.getIdCurso());
-                r.setCurso(curso.getNombre());
-                r.setBimestre(bimestre);
-                r.setCompetencias(new ArrayList<>());
-                return r;
-            });
-
-            NotaConsolidadoResponse.CompetenciaNota cn = new NotaConsolidadoResponse.CompetenciaNota();
-            cn.setIdCompetencia(comp.getIdCompetencia());
-            cn.setCompetencia(comp.getNombre());
-            cn.setOrden(comp.getOrden());
-            cn.setIdNota(nota.getIdNota());
-            cn.setCalificacion(nota.getCalificacion());
-            cn.setConclusionDescriptiva(nota.getConclusionDescriptiva());
-            cn.setFechaRegistro(nota.getFechaRegistro());
-            consolidado.getCompetencias().add(cn);
-        }
-        return new ArrayList<>(porMatricula.values());
-    }
-
-    public PromedioResponse promedioPorBimestre(Integer idMatricula, Integer idUsuario, List<String> roles) {
-        Matricula matricula = findMatricula(idMatricula);
-        if (!esVisibleMatricula(matricula, idUsuario, roles)) {
-            throw new ResourceNotFoundException("Matrícula no encontrada con id " + idMatricula);
-        }
-        List<Nota> notas = notaRepository.findByMatriculaIdMatriculaAndAccesoNot(idMatricula, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
-
-        Map<Byte, List<String>> notasPorBimestre = new LinkedHashMap<>();
-        for (Nota nota : notas) {
-            notasPorBimestre.computeIfAbsent(nota.getBimestre(), k -> new ArrayList<>()).add(nota.getCalificacion());
-        }
-
-        PromedioResponse response = new PromedioResponse();
-        response.setIdMatricula(matricula.getIdMatricula());
-        response.setIdAlumno(matricula.getAlumnoApoderado().getAlumno().getIdAlumno());
-        response.setCodigoAlumno(matricula.getAlumnoApoderado().getAlumno().getCodigo());
-        response.setAlumno(matricula.getAlumnoApoderado().getAlumno().getNombre() + " "
-                + matricula.getAlumnoApoderado().getAlumno().getApellidoPat());
-
-        List<PromedioResponse.PorBimestre> promedios = new ArrayList<>();
-        for (Map.Entry<Byte, List<String>> entry : notasPorBimestre.entrySet()) {
-            PromedioResponse.PorBimestre item = new PromedioResponse.PorBimestre();
-            item.setBimestre(entry.getKey());
-            item.setPromedioLiteral(calcularPromedioLiteral(entry.getValue()));
-            promedios.add(item);
-        }
-        response.setPromedios(promedios);
-        return response;
-    }
-
-    @Transactional
-    public NotaResponse registrar(NotaRequest request, Integer idUsuario, List<String> roles) {
-        Matricula matricula = findMatricula(request.getIdMatricula());
-        Competencia competencia = findCompetencia(request.getIdCompetencia());
-        validarCalificacion(request.getCalificacion());
-        if ("C".equals(request.getCalificacion())) {
-            validarConclusionDescriptiva(request.getConclusionDescriptiva());
-        }
-
-        Nota existente = notaRepository
-                .findByMatriculaIdMatriculaAndCompetenciaIdCompetenciaAndBimestreAndAccesoNot(
-                        matricula.getIdMatricula(), competencia.getIdCompetencia(), request.getBimestre(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
-                .orElse(null);
-
-        if (existente != null) {
-            validarYConsumirAutorizacion(request.getCodigoAutorizacion(), idUsuario);
-            existente.setCalificacion(request.getCalificacion());
-            existente.setConclusionDescriptiva(request.getConclusionDescriptiva());
-            existente.setFechaRegistro(LocalDate.now());
-            return toResponse(notaRepository.save(existente));
-        }
-        return toResponse(crearNota(matricula, competencia, request.getBimestre(),
-                request.getCalificacion(), request.getConclusionDescriptiva(), idUsuario));
-    }
-
-    @Transactional
-    public List<NotaResponse> registrarPorLote(NotaBatchRequest request, Integer idUsuario, List<String> roles) {
-        Competencia competencia = findCompetencia(request.getIdCompetencia());
-        List<NotaResponse> result = new ArrayList<>();
-
-        boolean algunRequiereAutorizacion = false;
-        for (NotaBatchRequest.Item item : request.getNotas()) {
-            Matricula matricula = findMatricula(item.getIdMatricula());
-            validarCalificacion(item.getCalificacion());
-            if ("C".equals(item.getCalificacion())) {
-                validarConclusionDescriptiva(item.getConclusionDescriptiva());
-            }
-            boolean existe = notaRepository
-                    .findByMatriculaIdMatriculaAndCompetenciaIdCompetenciaAndBimestreAndAccesoNot(
-                            matricula.getIdMatricula(), competencia.getIdCompetencia(), request.getBimestre(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
-                    .isPresent();
-            if (existe) {
-                algunRequiereAutorizacion = true;
-            }
-        }
-        if (algunRequiereAutorizacion) {
-            validarYConsumirAutorizacion(request.getCodigoAutorizacion(), idUsuario);
-        }
-
-        for (NotaBatchRequest.Item item : request.getNotas()) {
-            Matricula matricula = findMatricula(item.getIdMatricula());
-            Nota existente = notaRepository
-                    .findByMatriculaIdMatriculaAndCompetenciaIdCompetenciaAndBimestreAndAccesoNot(
-                            matricula.getIdMatricula(), competencia.getIdCompetencia(), request.getBimestre(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
-                    .orElse(null);
-            if (existente != null) {
-                existente.setCalificacion(item.getCalificacion());
-                existente.setConclusionDescriptiva(item.getConclusionDescriptiva());
-                existente.setFechaRegistro(LocalDate.now());
-                result.add(toResponse(notaRepository.save(existente)));
-            } else {
-                result.add(toResponse(crearNota(matricula, competencia, request.getBimestre(),
-                        item.getCalificacion(), item.getConclusionDescriptiva(), idUsuario)));
-            }
-        }
-        return result;
-    }
-
-    private Nota crearNota(Matricula matricula, Competencia competencia, Byte bimestre,
-                           String calificacion, String conclusionDescriptiva, Integer idUsuarioRegistro) {
-        Nota nota = new Nota();
-        nota.setMatricula(matricula);
-        nota.setCompetencia(competencia);
-        nota.setBimestre(bimestre);
-        nota.setCalificacion(calificacion);
-        nota.setConclusionDescriptiva(conclusionDescriptiva);
-        nota.setFechaRegistro(LocalDate.now());
-        nota.setUsuarioRegistro(findUsuario(idUsuarioRegistro));
-        nota.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
-        return notaRepository.save(nota);
-    }
-
-    private void validarCalificacion(String calificacion) {
-        if (calificacion == null || !CALIFICACIONES_VALIDAS.contains(calificacion.toUpperCase())) {
-            throw new IllegalArgumentException("La calificación debe ser AD, A, B o C");
-        }
-    }
-
-    private void validarConclusionDescriptiva(String conclusion) {
-        if (conclusion == null || conclusion.isBlank()) {
-            throw new IllegalArgumentException("La calificación 'C' requiere una conclusión descriptiva obligatoria");
-        }
     }
 
     @Transactional
@@ -337,18 +169,6 @@ public class NotaService {
                 .toList();
     }
 
-    private String calcularPromedioLiteral(List<String> calificaciones) {
-        Map<String, Integer> valores = Map.of("AD" , 4, "A" , 3, "B" , 2, "C" , 1);
-        Map<Integer, String> inversa = Map.of(4, "AD", 3, "A", 2, "B", 1, "C");
-        if (calificaciones.isEmpty()) return "N/A";
-        double promedio = calificaciones.stream()
-                .mapToInt(c -> valores.getOrDefault(c.toUpperCase(), 0))
-                .average()
-                .orElse(0);
-        int redondeado = (int) Math.round(promedio);
-        return inversa.getOrDefault(redondeado, "N/A");
-    }
-
     private String nombreUsuario(Usuario usuario) {
         return usuario.getNombre() + " " + usuario.getApellidoPat();
     }
@@ -359,7 +179,8 @@ public class NotaService {
         return "ACTIVA";
     }
 
-    private void validarYConsumirAutorizacion(String codigo, Integer idUsuarioConsumidor) {
+    /** Valida el código y lo marca usado; lo pide el registro con el periodo cerrado. */
+    public void consumirAutorizacion(String codigo, Integer idUsuarioConsumidor) {
         NotaAutorizacion autorizacion = obtenerAutorizacionValida(codigo);
         autorizacion.setUsado(USADO);
         autorizacion.setUsuarioConsumidor(findUsuario(idUsuarioConsumidor));

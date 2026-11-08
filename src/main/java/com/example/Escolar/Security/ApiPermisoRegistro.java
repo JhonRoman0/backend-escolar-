@@ -24,7 +24,7 @@ public class ApiPermisoRegistro {
     private static final String[] LECTORES_ESTRUCTURA = {
             "DOCENTES", "CURSOS", "COMPETENCIAS", "TURNOS", "GRADOS", "ANIOS_ESCOLARES", "AULAS", "ASIGNACIONES",
             "RECREOS", "CONFIGURACION_ACADEMICA", "SUSPENSIONES_DOCENTE", "CAMBIOS_DOCENTE", "ALUMNOS", "APODERADOS",
-            "MATRICULAS", "ASISTENCIAS", "NOTAS", "CONSOLIDADOS", "HORARIOS", "PLANTILLAS", "USUARIOS", "PAGOS_MATRICULA", "ORDEN_GRADOS"
+            "MATRICULAS", "ASISTENCIAS", "NOTAS", "HORARIOS", "EVALUACIONES", "USUARIOS", "PAGOS_MATRICULA", "ORDEN_GRADOS"
     };
 
     private final List<Registro> registros = new ArrayList<>();
@@ -167,17 +167,28 @@ public class ApiPermisoRegistro {
         registrar("PUT", "/matriculas/**", "MATRICULAS", "ACTUALIZAR");
         registrar("DELETE", "/matriculas/**", "MATRICULAS", "ELIMINAR");
 
-        registrarLectura("GET", "/competencias", "COMPETENCIAS", "CURSOS", "NOTAS", "CONSOLIDADOS");
-        registrarLectura("GET", "/competencias/**", "COMPETENCIAS", "CURSOS", "NOTAS", "CONSOLIDADOS");
+        // Registrar notas de una evaluación es parte de crearla; editar sus datos es otra acción.
+        registrarLectura("GET", "/evaluaciones", "EVALUACIONES");
+        registrarLectura("GET", "/evaluaciones/**", "EVALUACIONES");
+        registrar("POST", "/evaluaciones", "EVALUACIONES", "CREAR");
+        registrar("PUT", "/evaluaciones/*/notas", "EVALUACIONES", "CREAR");
+        registrar("PUT", "/evaluaciones/**", "EVALUACIONES", "ACTUALIZAR");
+        registrar("DELETE", "/evaluaciones/**", "EVALUACIONES", "ELIMINAR");
+
+        registrarLectura("GET", "/competencias", "COMPETENCIAS", "CURSOS", "NOTAS");
+        registrarLectura("GET", "/competencias/**", "COMPETENCIAS", "CURSOS", "NOTAS");
         // Solo se activan o desactivan: se crean importando el Excel de cursos.
         registrar("PATCH", "/competencias/**", "COMPETENCIAS", "ACTUALIZAR");
 
+        registrar("GET", "/notas/boletas", "NOTAS", "IMPRIMIR_BOLETA");
+        registrar("GET", "/notas/siagie", "NOTAS", "EXPORTAR_SIAGIE");
+        registrar("GET", "/notas/siagie/**", "NOTAS", "EXPORTAR_SIAGIE");
+        registrarLectura("GET", "/notas/finales", "NOTAS");
+        registrarLectura("GET", "/notas/finales/**", "NOTAS");
+        registrar("PUT", "/notas/finales/correccion", "NOTAS", "ACTUALIZAR");
+        registrar("PUT", "/notas/finales", "NOTAS", "CREAR");
         registrarLectura("GET", "/notas/competencia/**", "NOTAS");
         registrarLectura("GET", "/notas/matricula/**", "NOTAS");
-        registrarLectura("GET", "/notas/consolidado", "CONSOLIDADOS");
-        registrarLectura("GET", "/notas/exportar", "CONSOLIDADOS");
-        registrar("POST", "/notas", "NOTAS", "CREAR");
-        registrar("POST", "/notas/batch", "NOTAS", "CREAR");
         registrar("GET", "/notas/reporte", "NOTAS", "IMPRIMIR_EXPORTAR");
         registrar("POST", "/notas/autorizaciones", "NOTAS", "AUTORIZAR");
         registrarLectura("POST", "/notas/autorizaciones/validar", "NOTAS");
@@ -267,9 +278,6 @@ public class ApiPermisoRegistro {
         registrarLectura("GET", "/cambios-docente", "CAMBIOS_DOCENTE");
         registrarLectura("GET", "/cambios-docente/**", "CAMBIOS_DOCENTE");
 
-        registrarLectura("GET", "/plantillas-siagie", "PLANTILLAS");
-        registrarLectura("GET", "/plantillas-siagie/**", "PLANTILLAS");
-        registrar("POST", "/plantillas-siagie", "PLANTILLAS", "CREAR");
     }
 
     private void registrar(String metodo, String patron, String permisoCodigo, String accionCodigo) {

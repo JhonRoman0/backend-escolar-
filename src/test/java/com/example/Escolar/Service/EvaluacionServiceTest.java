@@ -30,6 +30,18 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class EvaluacionServiceTest {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {1, 30})
+    void lecturasDeHistorialNoSeMultiplicanPorAlumno(int cantidad) {
+        evaluacionGuardada();
+        when(matriculaRepository.findByGradoSeccionIdGradoSeccionAndAccesoNot(30, eliminado))
+            .thenReturn(java.util.stream.IntStream.rangeClosed(1, cantidad).mapToObj(this::matricula).toList());
+        service.detalle(50, 7, roles);
+        verify(reconocimientos, times(1)).movimientosDe(any());
+        verify(notaRepository, times(1)).alumnosConHistorial(any(), any(), any(), any(), any());
+        verify(notaRepository, times(1)).findByEvaluacionIdEvaluacion(50);
+        verify(reconocimientos, never()).findByNotaOrigenMatriculaIdMatricula(any());
+    }
     @Mock EvaluacionRepository evaluacionRepository;
     @Mock NotaEvaluacionRepository notaRepository;
     @Mock NotaRepository notaFinalRepository;
@@ -42,6 +54,8 @@ class EvaluacionServiceTest {
     @Mock ConfiguracionAcademicaService configuracionService;
     @Mock HorarioClaseRepository horarioRepository;
     @Mock DiaFeriadoRepository feriadoRepository;
+    @Mock BloqueoCalificaciones bloqueo;
+    @Mock com.example.Escolar.Repository.ReconocimientoCalificacionRepository reconocimientos;
     @InjectMocks EvaluacionService service;
 
     private final Acceso activo = new Acceso(AccesoConstants.ACTIVO, "Activo");
@@ -387,6 +401,38 @@ class EvaluacionServiceTest {
         fin.setCompetencia(competencia);
         when(notaFinalRepository.findByMatriculaGradoSeccionIdGradoSeccionAndBimestreAndAccesoNot(30, (byte) 1, eliminado))
                 .thenReturn(List.of(fin));
+    }
+
+    @Test
+    void notaReconocidaNoSeEditaPorRegistroOrdinario() {
+        Evaluacion e = evaluacionGuardada();
+        NotaEvaluacion n = new NotaEvaluacion(); n.setIdNotaEvaluacion(90); n.setEvaluacion(e);
+        n.setMatricula(matricula(1)); n.setCalificacion("A"); n.setAcceso(activo);
+        when(notaRepository.findByEvaluacionIdEvaluacion(50)).thenReturn(List.of(n));
+        when(reconocimientos.existsByNotaDestinoIdNotaEvaluacion(90)).thenReturn(true);
+        assertThrows(IllegalArgumentException.class, () -> service.registrarNotas(50,
+            new NotasEvaluacionRequest(List.of(new NotasEvaluacionRequest.Item(1,"B"))),7,roles));
+        verify(notaRepository,never()).save(any());
+    }
+
+    @Test
+    void reconocidoParticipaUnaVezEnPromedioSinSumarHistorial() {
+        config.setEscala(EscalaCalificacion.VIGESIMAL);
+        Evaluacion nativa = evaluacionGuardada(); nativa.setCompetencias(Set.of(c1));
+        Evaluacion reconocida = new Evaluacion(); reconocida.setIdEvaluacion(51); reconocida.setAsignacion(asignacion);
+        reconocida.setCompetencias(Set.of(c1)); reconocida.setUsuarioRegistro(new Usuario());
+        Matricula ana = matricula(1);
+        NotaEvaluacion diez = new NotaEvaluacion(); diez.setEvaluacion(nativa); diez.setMatricula(ana); diez.setCalificacion("10");
+        NotaEvaluacion veinte = new NotaEvaluacion(); veinte.setEvaluacion(reconocida); veinte.setMatricula(ana); veinte.setCalificacion("20");
+        when(evaluacionRepository.findByAsignacionIdAsignacionAndPeriodoAndAccesoNotOrderByFechaAscIdEvaluacionAsc(10,(byte)1,eliminado))
+            .thenReturn(List.of(nativa,reconocida));
+        when(notaRepository.findByEvaluacionIdEvaluacionInAndAccesoNot(any(),eq(eliminado))).thenReturn(List.of(diez));
+        assertEquals(10, service.registro(10,1,7,roles).alumnos().get(0).competencias().get(0).promedio());
+        when(notaRepository.findByEvaluacionIdEvaluacionInAndAccesoNot(any(),eq(eliminado))).thenReturn(List.of(diez,veinte));
+        var registro = service.registro(10,1,7,roles);
+        assertEquals(15,registro.alumnos().get(0).competencias().get(0).promedio());
+        assertEquals(2,registro.alumnos().get(0).competencias().get(0).notas().size());
+        assertNull(registro.alumnos().get(1).competencias().get(0).promedio());
     }
 
     @Test

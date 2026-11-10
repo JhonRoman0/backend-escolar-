@@ -46,6 +46,8 @@ public class EvaluacionService {
     private final ConfiguracionAcademicaService configuracionService;
     private final HorarioClaseRepository horarioRepository;
     private final DiaFeriadoRepository feriadoRepository;
+    private final ReconocimientoCalificacionRepository reconocimientos;
+    private final BloqueoCalificaciones bloqueo;
 
     private static final String[] DIAS = {"lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"};
 
@@ -84,18 +86,23 @@ public class EvaluacionService {
         Map<Integer, String> notas = notaRepository.findByEvaluacionIdEvaluacionAndAccesoNot(idEvaluacion, eliminado()).stream()
                 .collect(Collectors.toMap(n -> n.getMatricula().getIdMatricula(), NotaEvaluacion::getCalificacion));
         List<Matricula> matriculas = alumnosDe(evaluacion.getAsignacion());
+        var movimientos = movimientos(matriculas);
+        var historial = historial(matriculas, evaluacion.getAsignacion(), movimientos);
+        var completas = notaRepository.findByEvaluacionIdEvaluacion(idEvaluacion);
         Set<Integer> conNotaFinal = conNotaFinal(evaluacion);
         List<EvaluacionResponse.Alumno> alumnos = matriculas.stream()
                 .map(m -> {
                     Alumno a = m.getAlumnoApoderado().getAlumno();
                     return new EvaluacionResponse.Alumno(m.getIdMatricula(), a.getCodigo(),
                             a.getApellidoPat() + " " + a.getApellidoMat() + ", " + a.getNombre(),
-                            notas.get(m.getIdMatricula()), conNotaFinal.contains(m.getIdMatricula()));
+                            notas.get(m.getIdMatricula()), conNotaFinal.contains(m.getIdMatricula()),
+                            historial.contains(m.getIdMatricula()), procedencias(m, movimientos).get(idEvaluacion),
+                            notaProtegida(completas, m.getIdMatricula(), movimientos));
                 })
                 .toList();
         int registradas = (int) alumnos.stream().filter(a -> a.calificacion() != null).count();
         return new EvaluacionResponse.Detalle(aResumen(evaluacion, registradas, alumnos.size()),
-                configuracion(evaluacion.getAsignacion()).getEscala(), alumnos);
+                configuracion(evaluacion.getAsignacion()).getEscala(), alumnos, evaluacion.getAsignacion().getIdAsignacion());
     }
 
     // ── Escritura ──
@@ -120,6 +127,8 @@ public class EvaluacionService {
     @Transactional
     public EvaluacionResponse.Resumen editar(Integer idEvaluacion, EvaluacionRequest request, Integer idUsuario, List<String> roles) {
         Evaluacion evaluacion = evaluacionAccesible(idEvaluacion, idUsuario, roles);
+        bloqueo.asignacion(evaluacion.getAsignacion().getIdAsignacion());
+        bloqueo.evaluacion(idEvaluacion);
         PeriodoEvaluacion periodo = periodoAbierto(evaluacion.getAsignacion(), (int) evaluacion.getPeriodo());
         if (tieneNotas(evaluacion)) {
             // Con notas, cambiar fecha o competencias movería notas ya puestas a otra competencia.
@@ -139,7 +148,10 @@ public class EvaluacionService {
     @Transactional
     public EvaluacionResponse.Detalle registrarNotas(Integer idEvaluacion, NotasEvaluacionRequest request,
                                                      Integer idUsuario, List<String> roles) {
+        request.notas().stream().map(NotasEvaluacionRequest.Item::idMatricula).distinct().sorted().forEach(bloqueo::matricula);
         Evaluacion evaluacion = evaluacionAccesible(idEvaluacion, idUsuario, roles);
+        bloqueo.asignacion(evaluacion.getAsignacion().getIdAsignacion());
+        bloqueo.evaluacion(idEvaluacion);
         periodoAbierto(evaluacion.getAsignacion(), (int) evaluacion.getPeriodo());
         EscalaCalificacion escala = configuracion(evaluacion.getAsignacion()).getEscala();
         Map<Integer, Matricula> matriculas = alumnosDe(evaluacion.getAsignacion()).stream()
@@ -162,6 +174,10 @@ public class EvaluacionService {
                         + " ya está registrada: su nota en esta evaluación ya no se puede cambiar");
             }
             NotaEvaluacion actual = existentes.get(item.idMatricula());
+            if (actual != null && (reconocimientos.existsByNotaDestinoIdNotaEvaluacion(actual.getIdNotaEvaluacion())
+                    || reconocimientos.existsByNotaOrigenIdNotaEvaluacionAndVigencia(actual.getIdNotaEvaluacion(), ReconocimientoCalificacion.VIGENTE))) {
+                throw new IllegalArgumentException("La nota participa en un reconocimiento activo: anúlalo antes de modificarla");
+            }
             if (item.calificacion() == null || item.calificacion().isBlank()) {
                 if (actual != null && !AccesoConstants.ELIMINADO.equals(actual.getAcceso().getIdAcceso())) {
                     actual.setAcceso(eliminado());
@@ -185,6 +201,8 @@ public class EvaluacionService {
     @Transactional
     public void eliminar(Integer idEvaluacion, Integer idUsuario, List<String> roles) {
         Evaluacion evaluacion = evaluacionAccesible(idEvaluacion, idUsuario, roles);
+        bloqueo.asignacion(evaluacion.getAsignacion().getIdAsignacion());
+        bloqueo.evaluacion(idEvaluacion);
         periodoAbierto(evaluacion.getAsignacion(), (int) evaluacion.getPeriodo());
         if (tieneNotas(evaluacion)) {
             throw new IllegalArgumentException("La evaluación tiene notas registradas: bórralas primero si quieres eliminarla");
@@ -211,6 +229,8 @@ public class EvaluacionService {
                 .put(n.getEvaluacion().getIdEvaluacion(), n.getCalificacion()));
         List<Competencia> competencias = competenciasDe(asignacion.getCurso());
         List<Matricula> alumnos = alumnosDe(asignacion);
+        var movimientos = movimientos(alumnos);
+        var historial = historial(alumnos, asignacion, movimientos);
 
         List<EvaluacionResponse.FilaRegistro> filas = alumnos.stream().map(m -> {
             Alumno a = m.getAlumnoApoderado().getAlumno();
@@ -225,7 +245,8 @@ public class EvaluacionService {
                         escala == EscalaCalificacion.VIGESIMAL ? Calificaciones.promedio(deLaCompetencia) : null);
             }).toList();
             return new EvaluacionResponse.FilaRegistro(m.getIdMatricula(), a.getCodigo(),
-                    a.getApellidoPat() + " " + a.getApellidoMat() + ", " + a.getNombre(), suyas, resumen);
+                    a.getApellidoPat() + " " + a.getApellidoMat() + ", " + a.getNombre(), suyas, resumen,
+                    historial.contains(m.getIdMatricula()), procedencias(m, movimientos));
         }).toList();
 
         Map<Integer, Long> conNota = notas.stream()
@@ -270,9 +291,13 @@ public class EvaluacionService {
         return notaFinalRepository.findByMatriculaGradoSeccionIdGradoSeccionAndBimestreAndAccesoNot(
                         evaluacion.getAsignacion().getGradoSeccion().getIdGradoSeccion(), evaluacion.getPeriodo(), eliminado())
                 .stream()
-                .filter(n -> competencias.contains(n.getCompetencia().getIdCompetencia()))
+                .filter(n -> afectaCompetencias(n, competencias))
                 .map(n -> n.getMatricula().getIdMatricula())
                 .collect(Collectors.toSet());
+    }
+
+    static boolean afectaCompetencias(Nota nota, Set<Integer> competencias) {
+        return competencias.contains(nota.getCompetencia().getIdCompetencia());
     }
 
     private boolean tieneNotas(Evaluacion evaluacion) {
@@ -403,7 +428,7 @@ public class EvaluacionService {
                 .toList();
     }
 
-    private Asignacion asignacionAccesible(Integer idAsignacion, Integer idUsuario, List<String> roles) {
+    Asignacion asignacionAccesible(Integer idAsignacion, Integer idUsuario, List<String> roles) {
         return asignacionesVisibles(idUsuario, roles).stream()
                 .filter(a -> a.getIdAsignacion().equals(idAsignacion))
                 .findFirst()
@@ -473,6 +498,22 @@ public class EvaluacionService {
     private Usuario usuario(Integer idUsuario) {
         return usuarioRepository.findById(idUsuario)
                 .orElseThrow(() -> new IllegalArgumentException("No se pudo identificar al usuario"));
+    }
+
+    private List<ReconocimientoCalificacionRepository.Movimiento> movimientos(List<Matricula> alumnos) {
+        return alumnos.isEmpty() ? List.of() : reconocimientos.movimientosDe(alumnos.stream().map(Matricula::getIdMatricula).toList());
+    }
+    private Set<Integer> historial(List<Matricula> alumnos, Asignacion a, List<ReconocimientoCalificacionRepository.Movimiento> movimientos) {
+        if (alumnos.isEmpty()) return Set.of();
+        Set<Integer> ids = new HashSet<>(notaRepository.alumnosConHistorial(alumnos.stream().map(Matricula::getIdMatricula).toList(), a.getCurso().getIdCurso(), a.getAnioEscolar().getIdAnio(), a.getGradoSeccion().getIdGradoSeccion(), eliminado()));
+        movimientos.stream().filter(r -> java.util.Objects.equals(r.getCurso(), a.getCurso().getIdCurso()) && java.util.Objects.equals(r.getAnio(), a.getAnioEscolar().getIdAnio())).forEach(r -> ids.add(r.getMatricula()));
+        return ids;
+    }
+    private boolean notaProtegida(List<NotaEvaluacion> notas, Integer matricula, List<ReconocimientoCalificacionRepository.Movimiento> movimientos) {
+        return notas.stream().filter(n -> n.getMatricula().getIdMatricula().equals(matricula)).anyMatch(n -> movimientos.stream().anyMatch(r -> java.util.Objects.equals(r.getDestino(), n.getIdNotaEvaluacion()) || (Byte.valueOf(ReconocimientoCalificacion.VIGENTE).equals(r.getVigencia()) && java.util.Objects.equals(r.getOrigen(), n.getIdNotaEvaluacion()))));
+    }
+    private Map<Integer, com.example.Escolar.Dto.ReconocimientoCalificacionResponse.Procedencia> procedencias(Matricula m, List<ReconocimientoCalificacionRepository.Movimiento> movimientos) {
+        return movimientos.stream().filter(r -> r.getMatricula().equals(m.getIdMatricula()) && Byte.valueOf(ReconocimientoCalificacion.VIGENTE).equals(r.getVigencia())).collect(Collectors.toMap(r -> r.getEvaluacion(), r -> new com.example.Escolar.Dto.ReconocimientoCalificacionResponse.Procedencia(r.getId(), r.getGrado() + (r.getSeccion() == null ? "" : " " + r.getSeccion()), r.getNombre())));
     }
 
     private Acceso eliminado() {

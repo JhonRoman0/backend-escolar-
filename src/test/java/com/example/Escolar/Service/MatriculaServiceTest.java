@@ -49,6 +49,7 @@ class MatriculaServiceTest {
     @Mock private PagoMatriculaRepository pagoMatriculaRepository;
     @Mock private AccesoRepository accesoRepository;
     @Mock private AccesoContextoService accesoContextoService;
+    @Mock BloqueoCalificaciones bloqueo;
     @InjectMocks private MatriculaService service;
 
     private final List<String> roles = List.of("Administrador");

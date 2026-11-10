@@ -64,6 +64,7 @@ public class MatriculaService {
     private final PagoMatriculaRepository pagoMatriculaRepository;
     private final AccesoRepository accesoRepository;
     private final AccesoContextoService accesoContextoService;
+    private final BloqueoCalificaciones bloqueo;
 
     public Page<MatriculaResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles,
                                          Integer idNivel, Integer idGrado, Integer idSeccion,
@@ -142,6 +143,7 @@ public class MatriculaService {
      */
     @Transactional
     public MatriculaResponse cambioSeccion(Integer idMatricula, Integer idGradoSeccion, String motivo) {
+        bloqueo.matricula(idMatricula);
         Matricula matricula = findMatricula(idMatricula);
         GradoSeccion actual = matricula.getGradoSeccion();
         if (actual.getAnioEscolar().getEstado() != AnioEscolarService.ESTADO_VIGENTE) {

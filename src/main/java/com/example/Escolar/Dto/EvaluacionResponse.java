@@ -31,10 +31,11 @@ public final class EvaluacionResponse {
 
     /** notaFinalRegistrada: ya tiene nota final en alguna competencia que la evaluación afecta. */
     public record Alumno(Integer idMatricula, String codigo, String nombre, String calificacion,
-                         boolean notaFinalRegistrada) {
+                         boolean notaFinalRegistrada, boolean tieneHistorial,
+                         ReconocimientoCalificacionResponse.Procedencia procedencia, boolean notaProtegida) {
     }
 
-    public record Detalle(Resumen evaluacion, EscalaCalificacion escala, List<Alumno> alumnos) {
+    public record Detalle(Resumen evaluacion, EscalaCalificacion escala, List<Alumno> alumnos, Integer idAsignacion) {
     }
 
     /** Cuántos alumnos de la sección ya tienen la nota final de la competencia en el periodo. */
@@ -50,7 +51,8 @@ public final class EvaluacionResponse {
 
     /** notas: idEvaluacion → calificación. */
     public record FilaRegistro(Integer idMatricula, String codigo, String nombre, java.util.Map<Integer, String> notas,
-                               List<PorCompetencia> competencias) {
+                               List<PorCompetencia> competencias, boolean tieneHistorial,
+                               java.util.Map<Integer, ReconocimientoCalificacionResponse.Procedencia> procedencias) {
     }
 
     public record Registro(EscalaCalificacion escala, List<Resumen> evaluaciones, List<Competencia> competencias,

@@ -45,7 +45,7 @@ class ReportesAlcanceTest {
     private MatriculaService matriculas() {
         lenient().when(accesoRepository.findById(AccesoConstants.ELIMINADO)).thenReturn(Optional.of(eliminado));
         return new MatriculaService(matriculaRepository, historialMatriculaRepository, alumnoApoderadoRepository,
-                gradoSeccionRepository, pagoMatriculaRepository, accesoRepository, accesoContextoService);
+                gradoSeccionRepository, pagoMatriculaRepository, accesoRepository, accesoContextoService, org.mockito.Mockito.mock(BloqueoCalificaciones.class));
     }
 
     private Matricula matricula(int id, int idAlumno, String apellido, String anioTexto, String gradoNombre, int ordenGrado) {

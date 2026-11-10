@@ -30,7 +30,6 @@ build/
 !**/src/test/**/build/
 
 ### VS Code ###
-.vscode/
 
 # ==========================================
 # Documentación privada / Archivos locales
@@ -62,8 +61,6 @@ application-local.properties
 # ==========================================
 # Variables de Entorno y Config Local
 # ==========================================
-.env
-.env.local
 .env.*.local
 docker-compose.yml
 
@@ -72,3 +69,5 @@ docker-compose.yml
 # ==========================================
 .DS_Store
 Thumbs.db
+config.bat
+node_modules

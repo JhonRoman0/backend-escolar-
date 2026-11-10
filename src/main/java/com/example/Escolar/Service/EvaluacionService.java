@@ -71,13 +71,12 @@ public class EvaluacionService {
         List<Evaluacion> evaluaciones = evaluacionRepository
                 .findByAsignacionIdAsignacionAndPeriodoAndAccesoNotOrderByFechaAscIdEvaluacionAsc(
                         idAsignacion, periodo.byteValue(), eliminado());
-        Map<Integer, Long> conNota = notaRepository.findByEvaluacionIdEvaluacionInAndAccesoNot(
-                        evaluaciones.stream().map(Evaluacion::getIdEvaluacion).toList(), eliminado()).stream()
-                .collect(Collectors.groupingBy(n -> n.getEvaluacion().getIdEvaluacion(), Collectors.counting()));
-        int alumnos = alumnosDe(asignacion).size();
-        return evaluaciones.stream()
-                .map(e -> aResumen(e, conNota.getOrDefault(e.getIdEvaluacion(), 0L).intValue(), alumnos))
-                .toList();
+        List<NotaEvaluacion> notas = notaRepository.findByEvaluacionIdEvaluacionInAndAccesoNot(
+                evaluaciones.stream().map(Evaluacion::getIdEvaluacion).toList(), eliminado());
+        Set<Integer> actuales = alumnosDe(asignacion).stream().map(Matricula::getIdMatricula).collect(Collectors.toSet());
+        Map<Integer, Long> conNota = contarNotasActuales(notas, actuales);
+        Set<Integer> conHistoricas = notas.stream().map(n -> n.getEvaluacion().getIdEvaluacion()).collect(Collectors.toSet());
+        return evaluaciones.stream().map(e -> aResumen(e, conNota.getOrDefault(e.getIdEvaluacion(), 0L).intValue(), actuales.size(), conHistoricas.contains(e.getIdEvaluacion()))).toList();
     }
 
     @Transactional(readOnly = true)
@@ -249,10 +248,10 @@ public class EvaluacionService {
                     historial.contains(m.getIdMatricula()), procedencias(m, movimientos));
         }).toList();
 
-        Map<Integer, Long> conNota = notas.stream()
-                .collect(Collectors.groupingBy(n -> n.getEvaluacion().getIdEvaluacion(), Collectors.counting()));
+        Map<Integer, Long> conNota = contarNotasActuales(notas, alumnos.stream().map(Matricula::getIdMatricula).collect(Collectors.toSet()));
+        Set<Integer> conHistoricas = notas.stream().map(n -> n.getEvaluacion().getIdEvaluacion()).collect(Collectors.toSet());
         return new EvaluacionResponse.Registro(escala,
-                evaluaciones.stream().map(e -> aResumen(e, conNota.getOrDefault(e.getIdEvaluacion(), 0L).intValue(), alumnos.size())).toList(),
+                evaluaciones.stream().map(e -> aResumen(e, conNota.getOrDefault(e.getIdEvaluacion(), 0L).intValue(), alumnos.size(), conHistoricas.contains(e.getIdEvaluacion()))).toList(),
                 competencias.stream().map(EvaluacionService::aCompetencia).toList(),
                 filas);
     }
@@ -472,7 +471,16 @@ public class EvaluacionService {
                 feriadosDe(a.getAnioEscolar()).stream().map(DiaFeriado::getFecha).sorted().toList());
     }
 
+    private Map<Integer, Long> contarNotasActuales(List<NotaEvaluacion> notas, Set<Integer> actuales) {
+        return notas.stream().filter(n -> actuales.contains(n.getMatricula().getIdMatricula()))
+            .collect(Collectors.groupingBy(n -> n.getEvaluacion().getIdEvaluacion(), Collectors.counting()));
+    }
+
     private EvaluacionResponse.Resumen aResumen(Evaluacion e, int registradas, int alumnos) {
+        return aResumen(e, registradas, alumnos, e.getIdEvaluacion() != null && tieneNotas(e));
+    }
+
+    private EvaluacionResponse.Resumen aResumen(Evaluacion e, int registradas, int alumnos, boolean tieneNotasRegistradas) {
         Asignacion a = e.getAsignacion();
         boolean editable = a.getAnioEscolar().getEstado() == AnioEscolarService.ESTADO_VIGENTE
                 && configuracion(a).getPeriodos().stream()
@@ -484,7 +492,7 @@ public class EvaluacionService {
                         .map(EvaluacionService::aCompetencia).toList(),
                 registradas, alumnos,
                 e.getUsuarioRegistro().getNombre() + " " + e.getUsuarioRegistro().getApellidoPat(), editable,
-                e.getIdEvaluacion() == null ? 0 : conNotaFinal(e).size());
+                e.getIdEvaluacion() == null ? 0 : conNotaFinal(e).size(), tieneNotasRegistradas);
     }
 
     private static EvaluacionResponse.Competencia aCompetencia(Competencia c) {

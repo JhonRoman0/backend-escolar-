@@ -185,7 +185,7 @@ public class ReconocimientoCalificacionService {
         return new ReconocimientoCalificacionResponse(r.getIdReconocimiento(), r.getNotaDestino().getEvaluacion().getIdEvaluacion(),
             r.getNotaDestino().getEvaluacion().getNombre(), nombreSeccion(r.getSeccionDestino()), r.getCalificacion(),
             r.getVigencia() == null ? ReconocimientoCalificacion.ANULADO : ReconocimientoCalificacion.ACTIVO, nombre(r.getUsuarioRegistro()), r.getFechaRegistro(),
-            r.getMotivoAnulacion(), r.getUsuarioAnulacion() == null ? null : nombre(r.getUsuarioAnulacion()), r.getFechaAnulacion(), puede);
+            r.getMotivoAnulacion(), r.getUsuarioAnulacion() == null ? null : nombre(r.getUsuarioAnulacion()), r.getFechaAnulacion(), puede, r.getSeccionDestino().getIdGradoSeccion().equals(actual.getGradoSeccion().getIdGradoSeccion()));
     }
     private void validarMatricula(Matricula m, Asignacion a) {
         if (!esActivo(m.getAcceso()) || !m.getGradoSeccion().getIdGradoSeccion().equals(a.getGradoSeccion().getIdGradoSeccion()))

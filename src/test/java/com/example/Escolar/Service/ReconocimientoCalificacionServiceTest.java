@@ -68,6 +68,7 @@ class ReconocimientoCalificacionServiceTest {
     private ReconocimientoCalificacionRequest request() { return new ReconocimientoCalificacionRequest(50,2,"15"); }
     @Test void reconoceConNombresDiferentesYConservaOriginal() {
         var r = service.reconocer(request(),7,roles);
+        assertTrue(r.enSeccionActual());
         assertEquals("15",r.calificacion()); assertEquals("15",nota.getCalificacion()); assertSame(origen,nota.getEvaluacion());
         verify(notas,never()).save(nota); verify(finales,never()).save(any());
         ArgumentCaptor<ReconocimientoCalificacion> captor = ArgumentCaptor.forClass(ReconocimientoCalificacion.class);
@@ -129,6 +130,16 @@ class ReconocimientoCalificacionServiceTest {
         ReconocimientoCalificacion r = new ReconocimientoCalificacion(); r.setIdReconocimiento(1);
         r.setNotaOrigen(nota); r.setNotaDestino(copia); r.setSeccionDestino(matricula.getGradoSeccion()); r.setVigencia((byte)1);
         when(reconocimientos.findById(1)).thenReturn(Optional.of(r)); return r;
+    }
+    @Test void historialDistingueReconocimientoDeOtraSeccion() {
+        var r = reconocido(); r.setCalificacion("15"); r.setUsuarioRegistro(usuarios.findById(7).orElseThrow());
+        GradoSeccion tercera = new GradoSeccion(); tercera.setIdGradoSeccion(3);
+        tercera.setGrado(matricula.getGradoSeccion().getGrado()); tercera.setTurno(matricula.getGradoSeccion().getTurno());
+        tercera.setAnioEscolar(matricula.getGradoSeccion().getAnioEscolar());
+        matricula.setGradoSeccion(tercera); destino.getAsignacion().setGradoSeccion(tercera);
+        when(reconocimientos.findByNotaOrigenMatriculaIdMatricula(10)).thenReturn(List.of(r));
+        when(notas.findByMatriculaIdMatriculaAndAccesoNot(10,eliminado)).thenReturn(List.of(nota));
+        assertFalse(service.historial(10,2,7,roles).get(0).reconocimientos().get(0).enSeccionActual());
     }
     @Test void anulaConAuditoriaSinTocarOriginal() {
         ReconocimientoCalificacion r = reconocido(); service.anular(1,"Destino incorrecto",7,roles);

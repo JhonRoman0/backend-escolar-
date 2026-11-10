@@ -30,6 +30,40 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class EvaluacionServiceTest {
+    @Test void contadorIncluyeReconocidaVigentePeroNoMatriculasInactivas() {
+        Evaluacion e = evaluacionGuardada();
+        Matricula actual = matricula(1), inactiva = matricula(2), borrada = matricula(3);
+        inactiva.setAcceso(new Acceso(AccesoConstants.INACTIVO, "Inactivo"));
+        borrada.setAcceso(eliminado);
+        when(matriculaRepository.findByGradoSeccionIdGradoSeccionAndAccesoNot(30,eliminado)).thenReturn(List.of(actual,inactiva,borrada));
+        when(evaluacionRepository.findByAsignacionIdAsignacionAndPeriodoAndAccesoNotOrderByFechaAscIdEvaluacionAsc(10,(byte)1,eliminado)).thenReturn(List.of(e));
+        // Una reconocida vigente tiene la misma representacion en nota_evaluacion.
+        NotaEvaluacion reconocida = new NotaEvaluacion(); reconocida.setMatricula(actual); reconocida.setEvaluacion(e); reconocida.setCalificacion("A");
+        NotaEvaluacion antigua = new NotaEvaluacion(); antigua.setMatricula(inactiva); antigua.setEvaluacion(e); antigua.setCalificacion("B");
+        when(notaRepository.findByEvaluacionIdEvaluacionInAndAccesoNot(any(),eq(eliminado))).thenReturn(List.of(reconocida,antigua));
+        var resumen = service.listar(10,1,7,roles).get(0);
+        assertEquals(1,resumen.notasRegistradas()); assertEquals(1,resumen.totalAlumnos());
+        // La consulta utilizada excluye las notas eliminadas, incluidas las anuladas.
+        verify(notaRepository).findByEvaluacionIdEvaluacionInAndAccesoNot(any(),eq(eliminado));
+        verifyNoInteractions(reconocimientos);
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {0, 1, 2})
+    void contadorSoloIncluyeMatriculasActualesYConservaBloqueoHistorico(int actuales) {
+        Evaluacion e = evaluacionGuardada();
+        when(evaluacionRepository.findByAsignacionIdAsignacionAndPeriodoAndAccesoNotOrderByFechaAscIdEvaluacionAsc(10,(byte)1,eliminado)).thenReturn(List.of(e));
+        when(matriculaRepository.findByGradoSeccionIdGradoSeccionAndAccesoNot(30,eliminado)).thenReturn(java.util.stream.IntStream.rangeClosed(1,actuales).mapToObj(this::matricula).toList());
+        NotaEvaluacion n = new NotaEvaluacion(); n.setEvaluacion(e); n.setMatricula(matricula(1)); n.setCalificacion("A");
+        NotaEvaluacion historica = new NotaEvaluacion(); historica.setEvaluacion(e); historica.setMatricula(matricula(99)); historica.setCalificacion("B");
+        when(notaRepository.findByEvaluacionIdEvaluacionInAndAccesoNot(any(),eq(eliminado))).thenReturn(List.of(n,historica));
+        var listado = service.listar(10,1,7,roles).get(0);
+        var registro = service.registro(10,1,7,roles).evaluaciones().get(0);
+        assertEquals(actuales == 0 ? 0 : 1,listado.notasRegistradas());
+        assertEquals(actuales,listado.totalAlumnos());
+        assertEquals(listado.notasRegistradas(),registro.notasRegistradas());
+        assertTrue(listado.tieneNotasRegistradas());
+        verify(notaRepository,never()).save(any());
+    }
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(ints = {1, 30})
     void lecturasDeHistorialNoSeMultiplicanPorAlumno(int cantidad) {

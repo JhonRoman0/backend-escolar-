@@ -26,7 +26,7 @@ public final class EvaluacionResponse {
     /** alumnosConNotaFinal: alumnos cuya nota en esta evaluación ya no cambia (ver Alumno). */
     public record Resumen(Integer idEvaluacion, String nombre, LocalDate fecha, int periodo,
                           List<Competencia> competencias, int notasRegistradas, int totalAlumnos,
-                          String registradoPor, boolean editable, int alumnosConNotaFinal) {
+                          String registradoPor, boolean editable, int alumnosConNotaFinal, boolean tieneNotasRegistradas) {
     }
 
     /** notaFinalRegistrada: ya tiene nota final en alguna competencia que la evaluación afecta. */

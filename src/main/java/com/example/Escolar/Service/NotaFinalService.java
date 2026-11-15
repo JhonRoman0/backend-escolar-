@@ -42,6 +42,7 @@ public class NotaFinalService {
     private final AccesoContextoService accesoContextoService;
     private final ConfiguracionAcademicaService configuracionService;
     private final NotaService notaService;
+    private final BloqueoCalificaciones bloqueo;
 
     /** Un área de una sección y las competencias que el usuario puede calificar en ella. */
     private record Alcance(GradoSeccion gradoSeccion, Curso area, List<Competencia> competencias) {
@@ -126,6 +127,7 @@ public class NotaFinalService {
 
     private NotaFinalResponse.Detalle guardar(NotaFinalRequest request, boolean correccion,
                                              Integer idUsuario, List<String> roles) {
+        request.notas().stream().map(NotaFinalRequest.Item::idMatricula).distinct().sorted().forEach(bloqueo::matricula);
         Alcance alcance = alcance(request.idGradoSeccion(), request.idArea(), idUsuario, roles);
         GradoSeccion gs = alcance.gradoSeccion();
         if (gs.getAnioEscolar().getEstado() != AnioEscolarService.ESTADO_VIGENTE) {

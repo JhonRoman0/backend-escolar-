@@ -84,6 +84,8 @@ class AsignacionServiceTest {
     private RecreoRepository recreoRepository;
     @Mock
     private ConfiguracionAcademicaService configuracionAcademicaService;
+    @Mock BloqueoCalificaciones bloqueo;
+    @Mock com.example.Escolar.Repository.ReconocimientoCalificacionRepository reconocimientos;
     @InjectMocks
     private AsignacionService asignacionService;
 

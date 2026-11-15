@@ -43,6 +43,7 @@ class NotaFinalServiceTest {
     @Mock AccesoContextoService accesoContextoService;
     @Mock ConfiguracionAcademicaService configuracionService;
     @Mock NotaService notaService;
+    @Mock BloqueoCalificaciones bloqueo;
     @InjectMocks NotaFinalService service;
 
     private final Acceso activo = new Acceso(AccesoConstants.ACTIVO, "Activo");

@@ -26,15 +26,16 @@ public final class EvaluacionResponse {
     /** alumnosConNotaFinal: alumnos cuya nota en esta evaluación ya no cambia (ver Alumno). */
     public record Resumen(Integer idEvaluacion, String nombre, LocalDate fecha, int periodo,
                           List<Competencia> competencias, int notasRegistradas, int totalAlumnos,
-                          String registradoPor, boolean editable, int alumnosConNotaFinal) {
+                          String registradoPor, boolean editable, int alumnosConNotaFinal, boolean tieneNotasRegistradas) {
     }
 
     /** notaFinalRegistrada: ya tiene nota final en alguna competencia que la evaluación afecta. */
     public record Alumno(Integer idMatricula, String codigo, String nombre, String calificacion,
-                         boolean notaFinalRegistrada) {
+                         boolean notaFinalRegistrada, boolean tieneHistorial,
+                         ReconocimientoCalificacionResponse.Procedencia procedencia, boolean notaProtegida) {
     }
 
-    public record Detalle(Resumen evaluacion, EscalaCalificacion escala, List<Alumno> alumnos) {
+    public record Detalle(Resumen evaluacion, EscalaCalificacion escala, List<Alumno> alumnos, Integer idAsignacion) {
     }
 
     /** Cuántos alumnos de la sección ya tienen la nota final de la competencia en el periodo. */
@@ -50,7 +51,8 @@ public final class EvaluacionResponse {
 
     /** notas: idEvaluacion → calificación. */
     public record FilaRegistro(Integer idMatricula, String codigo, String nombre, java.util.Map<Integer, String> notas,
-                               List<PorCompetencia> competencias) {
+                               List<PorCompetencia> competencias, boolean tieneHistorial,
+                               java.util.Map<Integer, ReconocimientoCalificacionResponse.Procedencia> procedencias) {
     }
 
     public record Registro(EscalaCalificacion escala, List<Resumen> evaluaciones, List<Competencia> competencias,

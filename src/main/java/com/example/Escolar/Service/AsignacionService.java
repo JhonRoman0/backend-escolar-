@@ -49,6 +49,8 @@ public class AsignacionService {
     private static final String PERMISO = "ASIGNACIONES";
 
     private final AsignacionRepository asignacionRepository;
+    private final com.example.Escolar.Repository.ReconocimientoCalificacionRepository reconocimientos;
+    private final BloqueoCalificaciones bloqueo;
     private final HorarioClaseRepository horarioClaseRepository;
     private final CursoRepository cursoRepository;
     private final DocenteRepository docenteRepository;
@@ -110,10 +112,18 @@ public class AsignacionService {
     /** El formulario siempre manda la asignacion completa: se valida como al crear. */
     @Transactional
     public AsignacionResponse update(Integer id, AsignacionRequest request) {
+        bloqueo.asignacion(id);
         Asignacion asignacion = findAsignacion(id);
         validarBloqueoHorarios(asignacion.getAnioEscolar());
         ReglasAnioEscolar.validarEditable(asignacion.getAnioEscolar(), QUE);
         Datos datos = validarDatos(request, id);
+        if (reconocimientos.tieneAsignacionActiva(id, com.example.Escolar.Model.ReconocimientoCalificacion.VIGENTE) &&
+                (!asignacion.getCurso().getIdCurso().equals(datos.curso().getIdCurso())
+                || !asignacion.getGradoSeccion().getIdGradoSeccion().equals(datos.gradoSeccion().getIdGradoSeccion())
+                || !asignacion.getAnioEscolar().getIdAnio().equals(datos.anio().getIdAnio())
+                || (request.getAccesoId() != null && !AccesoConstants.ACTIVO.equals(request.getAccesoId())))) {
+            throw new IllegalArgumentException("La asignación participa en reconocimientos activos");
+        }
         ReglasAnioEscolar.validarEditable(datos.anio(), QUE);
         List<HorarioClase> nuevos = prepararHorarios(request, datos, id);
 
@@ -131,6 +141,8 @@ public class AsignacionService {
 
     @Transactional
     public void delete(Integer id) {
+        bloqueo.asignacion(id);
+        if (reconocimientos.tieneAsignacionActiva(id, com.example.Escolar.Model.ReconocimientoCalificacion.VIGENTE)) throw new IllegalArgumentException("La asignación participa en reconocimientos activos");
         Asignacion asignacion = findAsignacion(id);
         validarBloqueoHorarios(asignacion.getAnioEscolar());
         ReglasAnioEscolar.validarEditable(asignacion.getAnioEscolar(), QUE);

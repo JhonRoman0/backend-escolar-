@@ -168,6 +168,10 @@ public class ApiPermisoRegistro {
         registrar("DELETE", "/matriculas/**", "MATRICULAS", "ELIMINAR");
 
         // Registrar notas de una evaluación es parte de crearla; editar sus datos es otra acción.
+        registrarLectura("GET", "/evaluaciones/historial-calificaciones", "EVALUACIONES");
+        registrarLectura("GET", "/evaluaciones/reconocimientos/candidatas", "EVALUACIONES");
+        registrar("POST", "/evaluaciones/reconocimientos", "EVALUACIONES", "CREAR");
+        registrar("POST", "/evaluaciones/reconocimientos/*/anulacion", "EVALUACIONES", "ACTUALIZAR");
         registrarLectura("GET", "/evaluaciones", "EVALUACIONES");
         registrarLectura("GET", "/evaluaciones/**", "EVALUACIONES");
         registrar("POST", "/evaluaciones", "EVALUACIONES", "CREAR");

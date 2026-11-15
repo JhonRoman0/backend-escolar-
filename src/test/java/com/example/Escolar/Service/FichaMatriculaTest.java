@@ -30,6 +30,7 @@ class FichaMatriculaTest {
     @Mock PagoMatriculaRepository pagoMatriculaRepository;
     @Mock AccesoRepository accesoRepository;
     @Mock AccesoContextoService accesoContextoService;
+    @Mock BloqueoCalificaciones bloqueo;
     @InjectMocks MatriculaService service;
 
     private final Acceso activo = new Acceso(AccesoConstants.ACTIVO, "Activo");

@@ -5,6 +5,7 @@ import com.example.Escolar.Dto.EvaluacionResponse;
 import com.example.Escolar.Dto.NotasEvaluacionRequest;
 import com.example.Escolar.Service.AccesoContextoService;
 import com.example.Escolar.Service.EvaluacionService;
+import com.example.Escolar.Service.ReconocimientoCalificacionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -20,6 +21,8 @@ public class EvaluacionController {
 
     private final EvaluacionService evaluacionService;
     private final AccesoContextoService accesoContextoService;
+    /** Crear y editar pasan por aquí: también registran a los trasladados que no rinden. */
+    private final ReconocimientoCalificacionService reconocimientoService;
 
     @GetMapping("/cursos")
     public List<EvaluacionResponse.Curso> cursos(@RequestParam Integer idAnio) {
@@ -46,10 +49,16 @@ public class EvaluacionController {
         return evaluacionService.detalle(id, usuario(), roles());
     }
 
+    /** Pide la acción VER_RESUMEN (ver ApiPermisoRegistro). */
+    @GetMapping("/{id}/resumen")
+    public EvaluacionResponse.Ficha resumen(@PathVariable Integer id) {
+        return evaluacionService.resumen(id, usuario(), roles());
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public EvaluacionResponse.Resumen crear(@Valid @RequestBody EvaluacionRequest request) {
-        return evaluacionService.crear(request, usuario(), roles());
+        return reconocimientoService.crear(request, usuario(), roles());
     }
 
     @PutMapping("/{id}/notas")
@@ -60,7 +69,7 @@ public class EvaluacionController {
 
     @PutMapping("/{id}")
     public EvaluacionResponse.Resumen editar(@PathVariable Integer id, @Valid @RequestBody EvaluacionRequest request) {
-        return evaluacionService.editar(id, request, usuario(), roles());
+        return reconocimientoService.editar(id, request, usuario(), roles());
     }
 
     @DeleteMapping("/{id}")

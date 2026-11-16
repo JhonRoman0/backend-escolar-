@@ -4,6 +4,7 @@ import com.example.Escolar.Model.EscalaCalificacion;
 import com.example.Escolar.Model.TipoPeriodo;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 public final class EvaluacionResponse {
@@ -27,6 +28,12 @@ public final class EvaluacionResponse {
     public record Resumen(Integer idEvaluacion, String nombre, LocalDate fecha, int periodo,
                           List<Competencia> competencias, int notasRegistradas, int totalAlumnos,
                           String registradoPor, boolean editable, int alumnosConNotaFinal, boolean tieneNotasRegistradas) {
+    }
+
+    /** Ficha de solo lectura de una evaluación (acción VER_RESUMEN). */
+    public record Ficha(Integer idEvaluacion, String nombre, String periodo, LocalDate fecha,
+                        LocalDateTime fechaCreacion, String creadoPor, List<Competencia> competencias,
+                        int notasRegistradas, int totalAlumnos) {
     }
 
     /** notaFinalRegistrada: ya tiene nota final en alguna competencia que la evaluación afecta. */

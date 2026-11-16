@@ -1,3 +1,10 @@
 package com.example.Escolar.Dto;
-import jakarta.validation.constraints.*;
-public record AnulacionReconocimientoRequest(@NotBlank @Size(max = com.example.Escolar.Model.ReconocimientoCalificacion.MOTIVO_MAXIMO) String motivo) {}
+
+import com.example.Escolar.Model.ReconocimientoCalificacion;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
+public record AnulacionReconocimientoRequest(
+        @NotBlank(message = "Escribe el motivo")
+        @Size(max = ReconocimientoCalificacion.MOTIVO_MAXIMO, message = "El motivo no puede pasar de 500 caracteres") String motivo) {
+}

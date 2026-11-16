@@ -169,9 +169,9 @@ public class ApiPermisoRegistro {
 
         // Registrar notas de una evaluación es parte de crearla; editar sus datos es otra acción.
         registrarLectura("GET", "/evaluaciones/historial-calificaciones", "EVALUACIONES");
-        registrarLectura("GET", "/evaluaciones/reconocimientos/candidatas", "EVALUACIONES");
         registrar("POST", "/evaluaciones/reconocimientos", "EVALUACIONES", "CREAR");
         registrar("POST", "/evaluaciones/reconocimientos/*/anulacion", "EVALUACIONES", "ACTUALIZAR");
+        registrar("GET", "/evaluaciones/*/resumen", "EVALUACIONES", "VER_RESUMEN");
         registrarLectura("GET", "/evaluaciones", "EVALUACIONES");
         registrarLectura("GET", "/evaluaciones/**", "EVALUACIONES");
         registrar("POST", "/evaluaciones", "EVALUACIONES", "CREAR");
@@ -190,13 +190,16 @@ public class ApiPermisoRegistro {
         registrarLectura("GET", "/notas/finales", "NOTAS");
         registrarLectura("GET", "/notas/finales/**", "NOTAS");
         registrar("PUT", "/notas/finales/correccion", "NOTAS", "ACTUALIZAR");
+        registrar("POST", "/notas/finales/reapertura", "NOTAS", "ACTUALIZAR");
+        registrarLectura("GET", "/notas/anuales", "NOTAS_ANUALES");
+        registrarLectura("GET", "/notas/anuales/**", "NOTAS_ANUALES");
+        registrar("PUT", "/notas/anuales/correccion", "NOTAS_ANUALES", "ACTUALIZAR");
+        registrar("POST", "/notas/anuales/reapertura", "NOTAS_ANUALES", "ACTUALIZAR");
+        registrar("PUT", "/notas/anuales", "NOTAS_ANUALES", "CREAR");
         registrar("PUT", "/notas/finales", "NOTAS", "CREAR");
         registrarLectura("GET", "/notas/competencia/**", "NOTAS");
         registrarLectura("GET", "/notas/matricula/**", "NOTAS");
         registrar("GET", "/notas/reporte", "NOTAS", "IMPRIMIR_EXPORTAR");
-        registrar("POST", "/notas/autorizaciones", "NOTAS", "AUTORIZAR");
-        registrarLectura("POST", "/notas/autorizaciones/validar", "NOTAS");
-        registrarLectura("GET", "/notas/autorizaciones", "NOTAS");
 
         registrarLectura("GET", "/publicaciones", "PUBLICACIONES");
         registrarLectura("GET", "/publicaciones/**", "PUBLICACIONES");

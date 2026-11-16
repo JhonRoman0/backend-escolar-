@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "nota")
@@ -39,4 +40,15 @@ public class Nota {
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "id_acceso", nullable = false)
     Acceso acceso;
+
+    // Al corregir o reabrir, la nota anterior queda borrada con quién, cuándo y por qué.
+    @Column(name = "motivo_anulacion", length = MOTIVO_MAXIMO)
+    String motivoAnulacion;
+    @ManyToOne
+    @JoinColumn(name = "id_usuario_anulacion")
+    Usuario usuarioAnulacion;
+    @Column(name = "fecha_anulacion")
+    LocalDateTime fechaAnulacion;
+
+    public static final int MOTIVO_MAXIMO = 500;
 }

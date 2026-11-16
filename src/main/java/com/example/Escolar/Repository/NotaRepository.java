@@ -22,6 +22,10 @@ public interface NotaRepository extends JpaRepository<Nota, Integer> {
 
     List<Nota> findByMatriculaIdMatriculaInAndCompetenciaIdCompetenciaInAndBimestreAndAccesoNot(
             java.util.Collection<Integer> idsMatricula, java.util.Collection<Integer> idsCompetencia, Byte bimestre, Acceso acceso);
+    /** Todas las de esas competencias, en cualquier periodo. */
+    List<Nota> findByMatriculaIdMatriculaInAndCompetenciaIdCompetenciaInAndAccesoNot(
+            java.util.Collection<Integer> idsMatricula, java.util.Collection<Integer> idsCompetencia, Acceso acceso);
+
     List<Nota> findByFechaRegistroBetweenAndAccesoNot(LocalDate inicio, LocalDate fin, Acceso acceso);
 
     List<Nota> findByMatriculaGradoSeccionIdGradoSeccionAndBimestreAndAccesoNot(

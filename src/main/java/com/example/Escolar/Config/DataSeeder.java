@@ -381,10 +381,10 @@ public class DataSeeder implements CommandLineRunner {
         crearAccionSiFalta("ACTUALIZAR", "Actualizar");
         crearAccionSiFalta("ELIMINAR", "Eliminar");
         crearAccionSiFalta("IMPRIMIR_EXPORTAR", "Imprimir/Exportar");
-        crearAccionSiFalta("AUTORIZAR", "Autorizar");
         crearAccionSiFalta("IMPRIMIR_FICHA", "Imprimir ficha");
         crearAccionSiFalta("EXPORTAR_SIAGIE", "Exportar SIAGIE");
         crearAccionSiFalta("IMPRIMIR_BOLETA", "Imprimir boleta");
+        crearAccionSiFalta("VER_RESUMEN", "Ver resumen");
     }
 
     private void crearAccionSiFalta(String codigo, String nombre) {
@@ -450,8 +450,9 @@ public class DataSeeder implements CommandLineRunner {
                 new PermisoSeed("PAGOS_MATRICULA", "Pagos de matrícula", crud()))));
 
         crearModuloSiFalta(new ModuloSeed("Consolidado", "clipboard-check", List.of(
-                new PermisoSeed("NOTAS", "Notas", List.of("CREAR", "AUTORIZAR", "IMPRIMIR_EXPORTAR")),
-                new PermisoSeed("EVALUACIONES", "Evaluaciones", crud()))));
+                new PermisoSeed("NOTAS", "Notas", List.of("CREAR", "IMPRIMIR_EXPORTAR")),
+                new PermisoSeed("EVALUACIONES", "Evaluaciones", crud()),
+                new PermisoSeed("NOTAS_ANUALES", "Notas finales anuales", List.of("CREAR", "ACTUALIZAR")))));
 
         crearModuloSiFalta(new ModuloSeed("Portal", "globe", List.of(
                 new PermisoSeed("PUBLICACIONES", "Publicaciones", crud()),
@@ -494,7 +495,7 @@ public class DataSeeder implements CommandLineRunner {
         asignarPermiso("Administrador", "MATRICULAS", crudWithExport());
         asignarPermiso("Administrador", "PAGOS_MATRICULA", crud());
         asignarPermiso("Administrador", "COMPETENCIAS", crud());
-        asignarPermiso("Administrador", "NOTAS", List.of("CREAR", "AUTORIZAR", "IMPRIMIR_EXPORTAR"));
+        asignarPermiso("Administrador", "NOTAS", List.of("CREAR", "IMPRIMIR_EXPORTAR"));
         asignarPermiso("Administrador", "PUBLICACIONES", crud());
         asignarPermiso("Administrador", "EVENTOS", crud());
         asignarPermiso("Administrador", "GALERIAS", crud());

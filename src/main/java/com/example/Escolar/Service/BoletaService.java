@@ -33,6 +33,7 @@ public class BoletaService {
     private final ConfiguracionAcademicaService configuracionService;
     private final NotaFinalService notaFinalService;
     private final MallaEvaluable mallaEvaluable;
+    private final NotaFinalAnualRepository notaAnualRepository;
 
     @Transactional(readOnly = true)
     public BoletaResponse boletas(Integer idGradoSeccion, Integer periodo, Integer idUsuario, List<String> roles) {
@@ -69,6 +70,13 @@ public class BoletaService {
                             .put(p.numero(), n));
         }
 
+        // En la boleta del último periodo va también la nota del año.
+        boolean ultimo = config.getPeriodos().stream().allMatch(p -> p.numero() <= periodo);
+        Map<Integer, List<NotaFinalAnual>> anuales = ultimo
+                ? notaAnualRepository.findByMatriculaGradoSeccionIdGradoSeccionAndAccesoNot(idGradoSeccion, eliminado).stream()
+                        .collect(Collectors.groupingBy(n -> n.getMatricula().getIdMatricula()))
+                : Map.of();
+
         // Solo los días ya transcurridos del periodo.
         LocalDate hasta = actual.getFechaFin().isBefore(LocalDate.now()) ? actual.getFechaFin() : LocalDate.now();
         Set<Integer> ids = alumnos.stream().map(Matricula::getIdMatricula).collect(Collectors.toSet());
@@ -93,7 +101,12 @@ public class BoletaService {
             });
             return new BoletaResponse.AlumnoBoleta(m.getIdMatricula(), a.getCodigo(), a.getDocumentoIdentidad(),
                     a.getApellidoPat() + " " + a.getApellidoMat() + ", " + a.getNombre(), calificaciones, conclusiones,
-                    resumen(asistencias.getOrDefault(m.getIdMatricula(), List.of())));
+                    resumen(asistencias.getOrDefault(m.getIdMatricula(), List.of())),
+                    anuales.getOrDefault(m.getIdMatricula(), List.of()).stream()
+                            .collect(Collectors.toMap(n -> n.getCompetencia().getIdCompetencia(), NotaFinalAnual::getCalificacion, (x, y) -> x)),
+                    anuales.getOrDefault(m.getIdMatricula(), List.of()).stream()
+                            .filter(n -> n.getConclusionDescriptiva() != null)
+                            .collect(Collectors.toMap(n -> n.getCompetencia().getIdCompetencia(), NotaFinalAnual::getConclusionDescriptiva, (x, y) -> x)));
         }).toList();
 
         return new BoletaResponse(
@@ -105,7 +118,7 @@ public class BoletaService {
                         area.competencias().stream()
                                 .map(c -> new EvaluacionResponse.Competencia(c.getIdCompetencia(), c.getCodigo(), c.getNombre()))
                                 .toList())).toList(),
-                filas);
+                filas, !anuales.isEmpty());
     }
 
     private static BoletaResponse.Asistencia resumen(List<AsistenciaAlumno> dias) {

@@ -4,6 +4,7 @@ import com.example.Escolar.Dto.ConfiguracionAcademicaResponse;
 import com.example.Escolar.Dto.EvaluacionResponse;
 import com.example.Escolar.Dto.NotaFinalRequest;
 import com.example.Escolar.Dto.NotaFinalResponse;
+import com.example.Escolar.Dto.ReaperturaNotaRequest;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.*;
 import com.example.Escolar.Repository.*;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -41,11 +43,17 @@ public class NotaFinalService {
     private final AccesoRepository accesoRepository;
     private final AccesoContextoService accesoContextoService;
     private final ConfiguracionAcademicaService configuracionService;
-    private final NotaService notaService;
     private final BloqueoCalificaciones bloqueo;
+    private final HistorialMatriculaRepository historialRepository;
+    private final ReconocimientoCalificacionRepository reconocimientoRepository;
+    private final NotaFinalAnualRepository notaAnualRepository;
 
     /** Un área de una sección y las competencias que el usuario puede calificar en ella. */
-    private record Alcance(GradoSeccion gradoSeccion, Curso area, List<Competencia> competencias) {
+    record Alcance(GradoSeccion gradoSeccion, Curso area, List<Competencia> competencias) {
+    }
+
+    /** Por alumno, sus secciones en el año; y sus notas de otras secciones aún no usadas aquí. */
+    private record Traslados(Map<Integer, List<HistorialMatricula>> historial, List<NotaEvaluacion> notas) {
     }
 
     // ── Consultas ──
@@ -70,8 +78,14 @@ public class NotaFinalService {
                 .findByEvaluacionIdEvaluacionInAndAccesoNot(evaluaciones.stream().map(Evaluacion::getIdEvaluacion).toList(), eliminado()).stream()
                 .collect(Collectors.groupingBy(n -> n.getEvaluacion().getIdEvaluacion()));
 
+        Traslados traslados = traslados(alumnos, alcance, numero, evaluaciones);
+        boolean cerrado = PeriodoEvaluacion.CERRADO.equals(numero.estadoEn(LocalDate.now()));
+        Set<String> conAnual = conNotaAnual(alumnos, competencias);
+
         List<NotaFinalResponse.Alumno> filas = alumnos.stream().map(m -> {
             Alumno a = m.getAlumnoApoderado().getAlumno();
+            List<HistorialMatricula> historial = traslados.historial().getOrDefault(m.getIdMatricula(), List.of());
+            boolean cursoEnOtra = cursoEnOtraSeccion(historial, alcance.gradoSeccion(), numero);
             List<NotaFinalResponse.Celda> celdas = alcance.competencias().stream().map(c -> {
                 List<NotaFinalResponse.Guia> guia = evaluaciones.stream()
                         .filter(e -> e.getCompetencias().stream().anyMatch(x -> x.getIdCompetencia().equals(c.getIdCompetencia())))
@@ -82,6 +96,13 @@ public class NotaFinalService {
                         .sorted(Comparator.comparing(NotaFinalResponse.Guia::fecha))
                         .toList();
                 Nota fin = finales.get(clave(m.getIdMatricula(), c.getIdCompetencia()));
+                List<NotaFinalResponse.Referencia> referencias = traslados.notas().stream()
+                        .filter(n -> n.getMatricula().getIdMatricula().equals(m.getIdMatricula()))
+                        .filter(n -> n.getEvaluacion().getCompetencias().stream()
+                                .anyMatch(x -> x.getIdCompetencia().equals(c.getIdCompetencia())))
+                        .sorted(Comparator.comparing((NotaEvaluacion n) -> n.getEvaluacion().getFecha()))
+                        .map(NotaFinalService::aReferencia)
+                        .toList();
                 return new NotaFinalResponse.Celda(c.getIdCompetencia(),
                         fin != null ? fin.getCalificacion() : null,
                         fin != null ? fin.getConclusionDescriptiva() : null,
@@ -89,7 +110,11 @@ public class NotaFinalService {
                         guia,
                         config.getEscala() == EscalaCalificacion.VIGESIMAL
                                 ? Calificaciones.promedio(guia.stream().map(NotaFinalResponse.Guia::calificacion).toList())
-                                : null);
+                                : null,
+                        fin != null ? seccionDistinta(historial, fin.getFechaRegistro(), alcance.gradoSeccion()) : null,
+                        referencias,
+                        fin == null && cerrado && cursoEnOtra,
+                        conAnual.contains(clave(m.getIdMatricula(), c.getIdCompetencia())));
             }).toList();
             return new NotaFinalResponse.Alumno(m.getIdMatricula(), a.getCodigo(),
                     a.getApellidoPat() + " " + a.getApellidoMat() + ", " + a.getNombre(), celdas);
@@ -101,8 +126,8 @@ public class NotaFinalService {
         return new NotaFinalResponse.Detalle(aCurso(alcance), config.getEscala(),
                 new NotaFinalResponse.Periodo(numero.getNumero(), config.getTipoPeriodo().nombre(numero.getNumero()), estado),
                 periodoEditable,
-                periodoEditable && accesoContextoService.tieneAccion(PERMISO, "CREAR", idUsuario, roles),
-                periodoEditable && PeriodoEvaluacion.CERRADO.equals(estado),
+                periodoEditable && !PeriodoEvaluacion.CERRADO.equals(estado)
+                        && accesoContextoService.tieneAccion(PERMISO, "CREAR", idUsuario, roles),
                 periodoEditable && accesoContextoService.tieneAccion(PERMISO, "ACTUALIZAR", idUsuario, roles),
                 alcance.competencias().stream()
                         .map(c -> new NotaFinalResponse.CompetenciaFinal(c.getIdCompetencia(), c.getCodigo(), c.getNombre(),
@@ -138,9 +163,9 @@ public class NotaFinalService {
         if (PeriodoEvaluacion.POR_COMENZAR.equals(estado)) {
             throw new IllegalArgumentException("El periodo aún no empieza");
         }
-        if (PeriodoEvaluacion.CERRADO.equals(estado)) {
-            // Un código vale para todo el guardado, no para cada nota.
-            notaService.consumirAutorizacion(request.codigoAutorizacion(), idUsuario);
+        // Con el periodo cerrado solo escribe quien corrige (con motivo e historial al cambiar).
+        if (PeriodoEvaluacion.CERRADO.equals(estado) && !correccion) {
+            throw new IllegalArgumentException("El periodo ya cerró: sus notas las registra quien puede corregir notas");
         }
 
         EscalaCalificacion escala = configuracion(gs).getEscala();
@@ -149,8 +174,14 @@ public class NotaFinalService {
         Map<Integer, Matricula> alumnos = alumnosDe(gs).stream()
                 .collect(Collectors.toMap(Matricula::getIdMatricula, Function.identity()));
         Map<String, Nota> existentes = finales(new ArrayList<>(alumnos.values()), competencias.keySet(), request.periodo());
+        Map<Integer, List<HistorialMatricula>> historiales = PeriodoEvaluacion.CERRADO.equals(estado)
+                ? historiales(new ArrayList<>(alumnos.values())) : Map.of();
         Usuario registrador = usuarioRepository.findById(idUsuario)
                 .orElseThrow(() -> new IllegalArgumentException("No se pudo identificar al usuario"));
+        List<Evaluacion> evaluaciones = evaluacionesDelArea(alcance, request.periodo());
+        Map<Integer, List<NotaEvaluacion>> notasPorEvaluacion = notasPorEvaluacion(evaluaciones);
+        Set<String> conAnual = conNotaAnual(new ArrayList<>(alumnos.values()), competencias.keySet());
+        String motivo = request.motivo() == null ? "" : request.motivo().trim();
 
         for (NotaFinalRequest.Item item : request.notas()) {
             Matricula matricula = alumnos.get(item.idMatricula());
@@ -161,23 +192,44 @@ public class NotaFinalService {
             if (competencia == null) {
                 throw new IllegalArgumentException("No puedes calificar esa competencia en " + alcance.area().getNombre());
             }
+            String quien = nombreAlumno(matricula) + " en la competencia " + competencia.getCodigo();
             Nota actual = existentes.get(clave(item.idMatricula(), item.idCompetencia()));
             if (actual != null && !correccion) {
                 throw new IllegalArgumentException("La competencia " + competencia.getCodigo() + " de "
                         + nombreAlumno(matricula) + " ya la registró " + nombre(actual.getUsuarioRegistro())
                         + ": cambiarla requiere el permiso de corregir notas");
             }
-            if (item.calificacion() == null || item.calificacion().isBlank()) {
-                if (actual != null) {
-                    actual.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
-                    notaRepository.save(actual);
-                }
-                continue;
+            boolean cursoEnOtra = cursoEnOtraSeccion(historiales.getOrDefault(item.idMatricula(), List.of()), gs, periodo);
+            if (actual == null && !correccion && cursoEnOtra) {
+                throw new IllegalArgumentException(nombreAlumno(matricula) + " cursó el "
+                        + configuracion(gs).getTipoPeriodo().nombre(periodo.getNumero()).toLowerCase()
+                        + " en otra sección: su nota final la registra dirección");
             }
-            String calificacion = Calificaciones.normalizar(escala, item.calificacion());
-            String conclusion = Calificaciones.validarConclusion(escala, calificacion, item.conclusionDescriptiva(),
-                    nombreAlumno(matricula) + " en la competencia " + competencia.getCodigo());
-            Nota nota = actual != null ? actual : new Nota();
+            if (actual != null && conAnual.contains(clave(item.idMatricula(), item.idCompetencia()))) {
+                throw new IllegalArgumentException(quien + " ya tiene la nota final del año: reábrela antes");
+            }
+            List<String> guia = guia(evaluaciones, notasPorEvaluacion, item.idMatricula(), item.idCompetencia());
+            // Dirección registra al que cursó el periodo cerrado en otra sección, guiada por esas notas.
+            boolean excepcionTraslado = correccion && actual == null && cursoEnOtra;
+            if (actual == null && guia.isEmpty() && !excepcionTraslado) {
+                throw new IllegalArgumentException(quien + " no tiene notas de evaluaciones: califícalo primero");
+            }
+            if (escala != EscalaCalificacion.VIGESIMAL && (item.calificacion() == null || item.calificacion().isBlank())) {
+                throw new IllegalArgumentException("Falta la nota de " + quien + ": para quitar una nota, reábrela");
+            }
+            String calificacion = calificacionFinal(escala, actual, guia, item.calificacion());
+            String conclusion = Calificaciones.validarConclusion(escala, calificacion, item.conclusionDescriptiva(), quien);
+            if (actual != null) {
+                if (calificacion.equals(actual.getCalificacion())
+                        && Objects.equals(conclusion, actual.getConclusionDescriptiva())) {
+                    continue;
+                }
+                if (motivo.isEmpty()) {
+                    throw new IllegalArgumentException("Escribe el motivo de la corrección");
+                }
+                anular(actual, motivo, registrador);
+            }
+            Nota nota = new Nota();
             nota.setMatricula(matricula);
             nota.setCompetencia(competencia);
             nota.setBimestre(periodo.getNumero());
@@ -189,6 +241,98 @@ public class NotaFinalService {
             notaRepository.save(nota);
         }
         return detalle(request.idGradoSeccion(), request.idArea(), request.periodo(), idUsuario, roles);
+    }
+
+    /**
+     * Anula la nota final con su motivo: las evaluaciones del alumno en esa
+     * competencia se desbloquean y la nota se vuelve a registrar. No se puede si
+     * ya está la nota del año.
+     */
+    @Transactional
+    public NotaFinalResponse.Detalle reabrir(ReaperturaNotaRequest request, Integer idUsuario, List<String> roles) {
+        if (request.periodo() == null) {
+            throw new IllegalArgumentException("Elige el periodo");
+        }
+        bloqueo.matricula(request.idMatricula());
+        Alcance alcance = alcance(request.idGradoSeccion(), request.idArea(), idUsuario, roles);
+        GradoSeccion gs = alcance.gradoSeccion();
+        if (gs.getAnioEscolar().getEstado() != AnioEscolarService.ESTADO_VIGENTE) {
+            throw new IllegalArgumentException("Solo se reabren notas en un año vigente");
+        }
+        PeriodoEvaluacion periodo = periodo(gs, request.periodo());
+        Matricula matricula = alumnosDe(gs).stream()
+                .filter(m -> m.getIdMatricula().equals(request.idMatricula()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("El alumno ya no está matriculado en esta sección"));
+        Competencia competencia = alcance.competencias().stream()
+                .filter(c -> c.getIdCompetencia().equals(request.idCompetencia()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("No puedes calificar esa competencia en " + alcance.area().getNombre()));
+        Nota actual = finales(List.of(matricula), Set.of(competencia.getIdCompetencia()), request.periodo())
+                .get(clave(matricula.getIdMatricula(), competencia.getIdCompetencia()));
+        if (actual == null) {
+            throw new IllegalArgumentException("No hay nota final que reabrir");
+        }
+        if (!conNotaAnual(List.of(matricula), Set.of(competencia.getIdCompetencia())).isEmpty()) {
+            throw new IllegalArgumentException(nombreAlumno(matricula) + " ya tiene la nota final del año en la competencia "
+                    + competencia.getCodigo() + ": reábrela antes");
+        }
+        anular(actual, request.motivo().trim(), usuarioRepository.findById(idUsuario)
+                .orElseThrow(() -> new IllegalArgumentException("No se pudo identificar al usuario")));
+        return detalle(request.idGradoSeccion(), request.idArea(), request.periodo(), idUsuario, roles);
+    }
+
+    /** Vigesimal: el promedio de las evaluaciones (o la ya registrada, que solo se reabre). Literal: la elegida. */
+    private static String calificacionFinal(EscalaCalificacion escala, Nota actual, List<String> guia, String elegida) {
+        if (escala == EscalaCalificacion.VIGESIMAL) {
+            if (actual != null) {
+                return actual.getCalificacion();
+            }
+            Integer promedio = Calificaciones.promedio(guia);
+            if (promedio != null) {
+                return String.valueOf(promedio);
+            }
+        }
+        return Calificaciones.normalizar(escala, elegida);
+    }
+
+    private void anular(Nota nota, String motivo, Usuario usuario) {
+        nota.setAcceso(eliminado());
+        nota.setMotivoAnulacion(motivo);
+        nota.setUsuarioAnulacion(usuario);
+        nota.setFechaAnulacion(LocalDateTime.now());
+        notaRepository.save(nota);
+    }
+
+    /** Notas del alumno en las evaluaciones de esta sección que afectan la competencia. */
+    private static List<String> guia(List<Evaluacion> evaluaciones, Map<Integer, List<NotaEvaluacion>> notasPorEvaluacion,
+                                     Integer idMatricula, Integer idCompetencia) {
+        return evaluaciones.stream()
+                .filter(e -> e.getCompetencias().stream().anyMatch(x -> x.getIdCompetencia().equals(idCompetencia)))
+                .flatMap(e -> notasPorEvaluacion.getOrDefault(e.getIdEvaluacion(), List.of()).stream())
+                .filter(n -> n.getMatricula().getIdMatricula().equals(idMatricula))
+                .map(NotaEvaluacion::getCalificacion)
+                .toList();
+    }
+
+    private Map<Integer, List<NotaEvaluacion>> notasPorEvaluacion(List<Evaluacion> evaluaciones) {
+        if (evaluaciones.isEmpty()) {
+            return Map.of();
+        }
+        return notaEvaluacionRepository.findByEvaluacionIdEvaluacionInAndAccesoNot(
+                        evaluaciones.stream().map(Evaluacion::getIdEvaluacion).toList(), eliminado()).stream()
+                .collect(Collectors.groupingBy(n -> n.getEvaluacion().getIdEvaluacion()));
+    }
+
+    /** Claves alumno-competencia que ya tienen la nota del año. */
+    private Set<String> conNotaAnual(List<Matricula> alumnos, Set<Integer> competencias) {
+        if (alumnos.isEmpty() || competencias.isEmpty()) {
+            return Set.of();
+        }
+        return notaAnualRepository.findByMatriculaIdMatriculaInAndCompetenciaIdCompetenciaInAndAccesoNot(
+                        alumnos.stream().map(Matricula::getIdMatricula).toList(), competencias, eliminado()).stream()
+                .map(n -> clave(n.getMatricula().getIdMatricula(), n.getCompetencia().getIdCompetencia()))
+                .collect(Collectors.toSet());
     }
 
     // ── Alcance ──
@@ -242,7 +386,7 @@ public class NotaFinalService {
                 .anyMatch(a -> a.gradoSeccion().getIdGradoSeccion().equals(gs.getIdGradoSeccion()));
     }
 
-    private Alcance alcance(Integer idGradoSeccion, Integer idArea, Integer idUsuario, List<String> roles) {
+    Alcance alcance(Integer idGradoSeccion, Integer idArea, Integer idUsuario, List<String> roles) {
         GradoSeccion gs = gradoSeccionRepository.findById(idGradoSeccion)
                 .orElseThrow(() -> new ResourceNotFoundException("Sección no encontrada"));
         return alcances(gs.getAnioEscolar().getIdAnio(), idUsuario, roles).stream()
@@ -276,6 +420,125 @@ public class NotaFinalService {
                         alcance.gradoSeccion().getIdGradoSeccion(), periodo.byteValue(), eliminado()).stream()
                 .filter(e -> area(e.getAsignacion().getCurso()).getIdCurso().equals(alcance.area().getIdCurso()))
                 .toList();
+    }
+
+    // ── Alumnos trasladados ──
+
+    /**
+     * Áreas y periodos cerrados en que al alumno le falta alguna nota final. Se
+     * avisa antes de cambiarlo de sección: luego solo dirección podrá registrarlas.
+     */
+    @Transactional(readOnly = true)
+    public List<String> pendientesTraslado(Integer idMatricula) {
+        Matricula m = matriculaRepository.findById(idMatricula)
+                .orElseThrow(() -> new ResourceNotFoundException("Matrícula no encontrada"));
+        GradoSeccion gs = m.getGradoSeccion();
+        if (gs.getAnioEscolar().getEstado() != AnioEscolarService.ESTADO_VIGENTE) {
+            return List.of();
+        }
+        ConfiguracionAcademicaResponse config = configuracion(gs);
+        List<PeriodoEvaluacion> cerrados = configuracionService.periodos(gs.getAnioEscolar(), gs.getGrado().getNivel()).stream()
+                .filter(p -> PeriodoEvaluacion.CERRADO.equals(p.estadoEn(LocalDate.now())))
+                .sorted(Comparator.comparing(PeriodoEvaluacion::getNumero))
+                .toList();
+        if (cerrados.isEmpty()) {
+            return List.of();
+        }
+        Set<String> conNota = notaRepository.findByMatriculaIdMatriculaAndAccesoNot(idMatricula, eliminado()).stream()
+                .map(n -> n.getBimestre() + "-" + n.getCompetencia().getIdCompetencia())
+                .collect(Collectors.toSet());
+        List<String> pendientes = new ArrayList<>();
+        cursoRepository.findByAnioEscolarIdAnioAndNivelIdNivelAndAccesoNot(gs.getAnioEscolar().getIdAnio(),
+                        gs.getGrado().getNivel().getIdNivel(), eliminado()).stream()
+                .filter(c -> c.getTipo() != TipoCurso.SUBCURSO && AccesoConstants.ACTIVO.equals(c.getAcceso().getIdAcceso()))
+                .sorted(Comparator.comparing((Curso c) -> c.getTipo() == TipoCurso.TRANSVERSAL).thenComparing(Curso::getNombre))
+                .forEach(area -> {
+                    List<Competencia> competencias = competenciasDe(area);
+                    List<String> periodos = cerrados.stream()
+                            .filter(p -> competencias.stream().anyMatch(c -> !conNota.contains(p.getNumero() + "-" + c.getIdCompetencia())))
+                            .map(p -> config.getTipoPeriodo().nombre(p.getNumero()))
+                            .toList();
+                    if (!competencias.isEmpty() && !periodos.isEmpty()) {
+                        pendientes.add(area.getNombre() + ": " + String.join(", ", periodos));
+                    }
+                });
+        return pendientes;
+    }
+
+    private Map<Integer, List<HistorialMatricula>> historiales(List<Matricula> alumnos) {
+        if (alumnos.isEmpty()) {
+            return Map.of();
+        }
+        return historialRepository.findByMatriculaIdMatriculaInAndAccesoNot(
+                        alumnos.stream().map(Matricula::getIdMatricula).toList(), eliminado()).stream()
+                .collect(Collectors.groupingBy(h -> h.getMatricula().getIdMatricula()));
+    }
+
+    /**
+     * Notas del periodo en el área puestas en otras secciones. Fuera: las ya
+     * usadas en esta sección y las copias (se ve la original).
+     */
+    private Traslados traslados(List<Matricula> alumnos, Alcance alcance, PeriodoEvaluacion periodo,
+                                List<Evaluacion> evaluaciones) {
+        if (alumnos.isEmpty()) {
+            return new Traslados(Map.of(), List.of());
+        }
+        List<Integer> ids = alumnos.stream().map(Matricula::getIdMatricula).toList();
+        Set<Integer> deEstaSeccion = evaluaciones.stream().map(Evaluacion::getIdEvaluacion).collect(Collectors.toSet());
+        Set<Integer> excluidas = new HashSet<>();
+        reconocimientoRepository.movimientosDe(ids).stream()
+                .filter(r -> Byte.valueOf(ReconocimientoCalificacion.VIGENTE).equals(r.getVigencia()))
+                .forEach(r -> {
+                    excluidas.add(r.getDestino());
+                    if (deEstaSeccion.contains(r.getEvaluacion())) {
+                        excluidas.add(r.getOrigen());
+                    }
+                });
+        Integer seccion = alcance.gradoSeccion().getIdGradoSeccion();
+        Integer anio = alcance.gradoSeccion().getAnioEscolar().getIdAnio();
+        List<NotaEvaluacion> notas = notaEvaluacionRepository
+                .findByMatriculaIdMatriculaInAndEvaluacionPeriodoAndAccesoNot(ids, periodo.getNumero(), eliminado()).stream()
+                .filter(n -> !excluidas.contains(n.getIdNotaEvaluacion()))
+                .filter(n -> {
+                    Asignacion a = n.getEvaluacion().getAsignacion();
+                    return !a.getGradoSeccion().getIdGradoSeccion().equals(seccion)
+                            && a.getAnioEscolar().getIdAnio().equals(anio)
+                            && AccesoConstants.ACTIVO.equals(n.getEvaluacion().getAcceso().getIdAcceso())
+                            && area(a.getCurso()).getIdCurso().equals(alcance.area().getIdCurso());
+                })
+                .toList();
+        return new Traslados(historiales(alumnos), notas);
+    }
+
+    /** Llegó a la sección después de terminado el periodo: lo cursó en otra. */
+    static boolean cursoEnOtraSeccion(List<HistorialMatricula> historial, GradoSeccion actual, PeriodoEvaluacion periodo) {
+        return historial.stream()
+                .filter(h -> h.getFechaFinal() == null && h.getGradoSeccion().getIdGradoSeccion().equals(actual.getIdGradoSeccion()))
+                .map(HistorialMatricula::getFechaInicio)
+                .filter(Objects::nonNull)
+                .anyMatch(llegada -> llegada.isAfter(periodo.getFechaFin()));
+    }
+
+    /** Sección del alumno en esa fecha, si no es la actual: "3ro B · Mañana". */
+    static String seccionDistinta(List<HistorialMatricula> historial, LocalDate fecha, GradoSeccion actual) {
+        if (fecha == null) {
+            return null;
+        }
+        return historial.stream()
+                .filter(h -> h.getFechaInicio() != null && !fecha.isBefore(h.getFechaInicio())
+                        && (h.getFechaFinal() == null || fecha.isBefore(h.getFechaFinal())))
+                .map(HistorialMatricula::getGradoSeccion)
+                .filter(gs -> !gs.getIdGradoSeccion().equals(actual.getIdGradoSeccion()))
+                .map(ReconocimientoCalificacionService::nombreSeccion)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private static NotaFinalResponse.Referencia aReferencia(NotaEvaluacion n) {
+        Evaluacion e = n.getEvaluacion();
+        return new NotaFinalResponse.Referencia(e.getNombre(), e.getAsignacion().getCurso().getNombre(),
+                ReconocimientoCalificacionService.nombreSeccion(e.getAsignacion().getGradoSeccion()), e.getFecha(),
+                n.getCalificacion());
     }
 
     /** Subcursos asignados en la sección, ligados a la competencia, que aún no la evaluaron. */
@@ -313,18 +576,18 @@ public class NotaFinalService {
                 .orElseThrow(() -> new IllegalArgumentException("El periodo no existe: configúralo en Configuración académica"));
     }
 
-    private List<Matricula> alumnosDe(GradoSeccion gs) {
+    List<Matricula> alumnosDe(GradoSeccion gs) {
         return matriculaRepository.findByGradoSeccionIdGradoSeccionAndAccesoNot(gs.getIdGradoSeccion(), eliminado()).stream()
                 .filter(m -> AccesoConstants.ACTIVO.equals(m.getAcceso().getIdAcceso()))
                 .sorted(MatriculaService.ORDEN_REPORTE)
                 .toList();
     }
 
-    private ConfiguracionAcademicaResponse configuracion(GradoSeccion gs) {
+    ConfiguracionAcademicaResponse configuracion(GradoSeccion gs) {
         return configuracionService.obtener(gs.getAnioEscolar().getIdAnio(), gs.getGrado().getNivel().getIdNivel());
     }
 
-    private NotaFinalResponse.Curso aCurso(Alcance a) {
+    NotaFinalResponse.Curso aCurso(Alcance a) {
         GradoSeccion gs = a.gradoSeccion();
         ConfiguracionAcademicaResponse config = configuracion(gs);
         return new NotaFinalResponse.Curso(gs.getIdGradoSeccion(), a.area().getIdCurso(), a.area().getNombre(),
@@ -341,15 +604,15 @@ public class NotaFinalService {
         return competencias.stream().map(Competencia::getIdCompetencia).collect(Collectors.toSet());
     }
 
-    private static String clave(Integer idMatricula, Integer idCompetencia) {
+    static String clave(Integer idMatricula, Integer idCompetencia) {
         return idMatricula + "-" + idCompetencia;
     }
 
-    private static String nombre(Usuario u) {
+    static String nombre(Usuario u) {
         return u == null ? null : u.getNombre() + " " + u.getApellidoPat();
     }
 
-    private static String nombreAlumno(Matricula m) {
+    static String nombreAlumno(Matricula m) {
         Alumno a = m.getAlumnoApoderado().getAlumno();
         return a.getNombre() + " " + a.getApellidoPat();
     }
@@ -358,7 +621,7 @@ public class NotaFinalService {
         return valor == null ? Integer.MAX_VALUE : valor;
     }
 
-    private Acceso eliminado() {
+    Acceso eliminado() {
         return accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow();
     }
 }

@@ -19,4 +19,20 @@ class ApiPermisoRegistroReportesTest {
         assertEquals("IMPRIMIR_FICHA",
                 new ApiPermisoRegistro().buscar("GET", "/matriculas/5/ficha").orElseThrow().accionCodigo());
     }
+
+    @org.junit.jupiter.api.Test
+    void lasNotasAnualesTienenSuPropioPermiso() {
+        var registro = new ApiPermisoRegistro();
+        assertEquals("CREAR", registro.buscar("PUT", "/notas/anuales").orElseThrow().accionCodigo());
+        assertEquals("ACTUALIZAR", registro.buscar("PUT", "/notas/anuales/correccion").orElseThrow().accionCodigo());
+        assertEquals("ACTUALIZAR", registro.buscar("POST", "/notas/anuales/reapertura").orElseThrow().accionCodigo());
+        assertEquals(java.util.Set.of("NOTAS_ANUALES"), registro.buscar("GET", "/notas/anuales").orElseThrow().permisosCodigo());
+        assertEquals("ACTUALIZAR", registro.buscar("POST", "/notas/finales/reapertura").orElseThrow().accionCodigo());
+    }
+
+    @org.junit.jupiter.api.Test
+    void elResumenDeUnaEvaluacionExigeSuPropiaAccion() {
+        assertEquals("VER_RESUMEN",
+                new ApiPermisoRegistro().buscar("GET", "/evaluaciones/50/resumen").orElseThrow().accionCodigo());
+    }
 }

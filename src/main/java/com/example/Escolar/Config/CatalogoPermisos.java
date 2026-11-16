@@ -93,15 +93,19 @@ public final class CatalogoPermisos {
         permiso("NOTAS", "Consolidado",
                 "CREAR", "Registrar notas finales",
                 "ACTUALIZAR", "Corregir notas finales ya registradas",
-                "AUTORIZAR", "Generar códigos de autorización",
                 "IMPRIMIR_EXPORTAR", "Exportar reporte",
                 "EXPORTAR_SIAGIE", "Exportar Excel con formato SIAGIE",
                 "IMPRIMIR_BOLETA", "Imprimir boletas de notas");
+        // Nota final del año por competencia: aparte de las de cada periodo.
+        permiso("NOTAS_ANUALES", "Consolidado",
+                "CREAR", "Registrar notas finales del año",
+                "ACTUALIZAR", "Corregir y reabrir notas finales del año");
         // Un docente solo trabaja con sus cursos asignados; los demás, con todos.
         permiso("EVALUACIONES", "Consolidado",
                 "CREAR", "Crear evaluaciones y registrar sus notas",
                 "ACTUALIZAR", "Editar evaluaciones",
-                "ELIMINAR", "Eliminar evaluaciones");
+                "ELIMINAR", "Eliminar evaluaciones",
+                "VER_RESUMEN", "Ver el resumen de una evaluación");
         permiso("PAGOS_MATRICULA", "Pagos",
                 "CREAR", "Crear métodos de pago",
                 "ACTUALIZAR", "Editar métodos de pago y montos",

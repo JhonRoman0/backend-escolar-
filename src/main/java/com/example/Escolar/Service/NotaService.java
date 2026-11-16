@@ -1,37 +1,23 @@
 package com.example.Escolar.Service;
 
-import com.example.Escolar.Dto.AutorizacionRegistroResponse;
-import com.example.Escolar.Dto.AutorizacionRequest;
-import com.example.Escolar.Dto.AutorizacionResponse;
 import com.example.Escolar.Dto.NotaReporteResponse;
 import com.example.Escolar.Dto.NotaResponse;
-import com.example.Escolar.Dto.ValidarAutorizacionRequest;
-import com.example.Escolar.Exception.AutorizacionRequeridaException;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.Competencia;
 import com.example.Escolar.Model.Curso;
 import com.example.Escolar.Model.Docente;
 import com.example.Escolar.Model.Matricula;
 import com.example.Escolar.Model.Nota;
-import com.example.Escolar.Model.NotaAutorizacion;
 import com.example.Escolar.Model.Usuario;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.CompetenciaRepository;
-import com.example.Escolar.Repository.DocenteRepository;
 import com.example.Escolar.Repository.MatriculaRepository;
-import com.example.Escolar.Repository.NotaAutorizacionRepository;
 import com.example.Escolar.Repository.NotaRepository;
-import com.example.Escolar.Repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -44,18 +30,11 @@ import java.util.Set;
 public class NotaService {
 
     private static final String PERMISO = "NOTAS";
-    public static final byte NO_USADO = 0;
-    public static final byte USADO = 1;
-
-    private static final long MINUTOS_VALIDEZ = 10;
 
     private final NotaRepository notaRepository;
     private final CompetenciaRepository competenciaRepository;
     private final MatriculaRepository matriculaRepository;
     private final AccesoContextoService accesoContextoService;
-    private final NotaAutorizacionRepository notaAutorizacionRepository;
-    private final DocenteRepository docenteRepository;
-    private final UsuarioRepository usuarioRepository;
     private final AccesoRepository accesoRepository;
 
     public List<NotaResponse> getPorCompetencia(Integer idCompetencia, Byte bimestre, Integer idUsuario, List<String> roles) {
@@ -79,64 +58,6 @@ public class NotaService {
         }
         return notaRepository.findByMatriculaIdMatriculaAndAccesoNot(idMatricula, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
                 .map(this::toResponse)
-                .toList();
-    }
-
-    @Transactional
-    public AutorizacionResponse generarAutorizacion(Integer idUsuario, List<String> roles, AutorizacionRequest request) {
-        if (!accesoContextoService.tieneAccion(PERMISO, "AUTORIZAR", idUsuario, roles)) {
-            throw new AutorizacionRequeridaException("Necesitas el permiso para autorizar notas para generar códigos de autorización");
-        }
-        Usuario emisor = findUsuario(idUsuario);
-        if (request == null || request.getIdUsuarioDestinatario() == null) {
-            throw new AutorizacionRequeridaException("Debe indicar el docente al que se asigna el código");
-        }
-        Usuario destinatario = findUsuario(request.getIdUsuarioDestinatario());
-
-        String codigo = generarCodigo();
-        NotaAutorizacion autorizacion = new NotaAutorizacion();
-        autorizacion.setCodigo(codigo);
-        autorizacion.setCodigoHash(generarCodigoHash(codigo));
-        autorizacion.setUsuarioEmisor(emisor);
-        autorizacion.setUsuarioDestinatario(destinatario);
-        autorizacion.setFechaAsignacion(LocalDateTime.now());
-        autorizacion.setFechaGeneracion(LocalDateTime.now());
-        autorizacion.setFechaExpiracion(LocalDateTime.now().plusMinutes(MINUTOS_VALIDEZ));
-        autorizacion.setUsado(NO_USADO);
-        autorizacion.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
-        notaAutorizacionRepository.save(autorizacion);
-
-        AutorizacionResponse response = new AutorizacionResponse();
-        response.setCodigo(codigo);
-        response.setDestinatario(nombreUsuario(destinatario));
-        response.setFechaGeneracion(autorizacion.getFechaGeneracion());
-        response.setFechaExpiracion(autorizacion.getFechaExpiracion());
-        return response;
-    }
-
-    @Transactional(readOnly = true)
-    public List<AutorizacionRegistroResponse> listarAutorizaciones(Integer idUsuario, List<String> roles) {
-        if (!accesoContextoService.tieneAccion(PERMISO, "AUTORIZAR", idUsuario, roles)) {
-            throw new AutorizacionRequeridaException("Necesitas el permiso para autorizar notas para consultar los códigos de autorización");
-        }
-        LocalDateTime ahora = LocalDateTime.now();
-        return notaAutorizacionRepository.findAll().stream()
-                .filter(a -> !a.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
-                .map(a -> {
-                    AutorizacionRegistroResponse r = new AutorizacionRegistroResponse();
-                    r.setIdNotaAutorizacion(a.getIdNotaAutorizacion());
-                    r.setCodigo(a.getCodigo());
-                    r.setEmisor(nombreUsuario(a.getUsuarioEmisor()));
-                    r.setDestinatario(a.getUsuarioDestinatario() != null ? nombreUsuario(a.getUsuarioDestinatario()) : null);
-                    r.setFechaAsignacion(a.getFechaAsignacion());
-                    r.setFechaGeneracion(a.getFechaGeneracion());
-                    r.setFechaExpiracion(a.getFechaExpiracion());
-                    r.setEstado(estadoAutorizacion(a, ahora));
-                    r.setConsumidor(a.getUsuarioConsumidor() != null ? nombreUsuario(a.getUsuarioConsumidor()) : null);
-                    r.setFechaUso(a.getFechaUso());
-                    return r;
-                })
-                .sorted(Comparator.comparing(AutorizacionRegistroResponse::getFechaGeneracion).reversed())
                 .toList();
     }
 
@@ -173,42 +94,6 @@ public class NotaService {
         return usuario.getNombre() + " " + usuario.getApellidoPat();
     }
 
-    private String estadoAutorizacion(NotaAutorizacion autorizacion, LocalDateTime ahora) {
-        if (autorizacion.getUsado() == USADO) return "USADA";
-        if (autorizacion.getFechaExpiracion().isBefore(ahora)) return "EXPIRADA";
-        return "ACTIVA";
-    }
-
-    /** Valida el código y lo marca usado; lo pide el registro con el periodo cerrado. */
-    public void consumirAutorizacion(String codigo, Integer idUsuarioConsumidor) {
-        NotaAutorizacion autorizacion = obtenerAutorizacionValida(codigo);
-        autorizacion.setUsado(USADO);
-        autorizacion.setUsuarioConsumidor(findUsuario(idUsuarioConsumidor));
-        autorizacion.setFechaUso(LocalDateTime.now());
-        notaAutorizacionRepository.save(autorizacion);
-    }
-
-    public void validarAutorizacion(String codigo) {
-        obtenerAutorizacionValida(codigo);
-    }
-
-    private NotaAutorizacion obtenerAutorizacionValida(String codigo) {
-        if (codigo == null || codigo.isBlank()) {
-            throw new AutorizacionRequeridaException(
-                    "La nota ya existe: se requiere un código de autorización del director para modificarla");
-        }
-        String hash = generarCodigoHash(codigo);
-        NotaAutorizacion autorizacion = notaAutorizacionRepository.findByCodigoHashAndAccesoNot(hash, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
-                .orElseThrow(() -> new AutorizacionRequeridaException("El código de autorización no es válido"));
-        if (autorizacion.getUsado() == USADO) {
-            throw new AutorizacionRequeridaException("El código de autorización ya fue utilizado");
-        }
-        if (autorizacion.getFechaExpiracion().isBefore(LocalDateTime.now())) {
-            throw new AutorizacionRequeridaException("El código de autorización ha expirado");
-        }
-        return autorizacion;
-    }
-
     private boolean esVisibleMatricula(Matricula matricula, Integer idUsuario, List<String> roles) {
         return switch (accesoContextoService.alcance(PERMISO, idUsuario, roles)) {
             case TODO -> true;
@@ -219,30 +104,6 @@ public class NotaService {
         };
     }
 
-    private String generarCodigo() {
-        String caracteres = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-        SecureRandom random = new SecureRandom();
-        StringBuilder sb = new StringBuilder(8);
-        for (int i = 0; i < 8; i++) {
-            sb.append(caracteres.charAt(random.nextInt(caracteres.length())));
-        }
-        return sb.toString();
-    }
-
-    private String generarCodigoHash(String codigo) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(codigo.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
-            for (byte b : hash) {
-                hex.append(String.format("%02x", b));
-            }
-            return hex.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalArgumentException("No se pudo generar el hash del código");
-        }
-    }
-
     private Matricula findMatricula(Integer id) {
         return matriculaRepository.findByIdMatriculaAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("Matrícula no encontrada con id " + id));
@@ -251,11 +112,6 @@ public class NotaService {
     private Competencia findCompetencia(Integer id) {
         return competenciaRepository.findByIdCompetenciaAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("Competencia no encontrada con id " + id));
-    }
-
-    private Usuario findUsuario(Integer id) {
-        return usuarioRepository.findByIdUsuarioAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
-                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con id " + id));
     }
 
     private NotaResponse toResponse(Nota nota) {

@@ -38,6 +38,11 @@ public class ConfiguracionAcademica {
     @Enumerated(EnumType.STRING)
     @Column(name = "tipo_periodo", length = 10)
     TipoPeriodo tipoPeriodo;
+    // Promoción al matricular. Null: el valor por defecto (B o 11; 4 áreas).
+    @Column(name = "nota_minima", length = 3)
+    String notaMinima;
+    @Column(name = "areas_para_repetir")
+    Integer areasParaRepetir;
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "id_acceso", nullable = false)
     Acceso acceso;

@@ -17,6 +17,7 @@ import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.AnioEscolarRepository;
 import com.example.Escolar.Repository.AsignacionRepository;
 import com.example.Escolar.Repository.ConfiguracionAcademicaRepository;
+import com.example.Escolar.Repository.GradoRepository;
 import com.example.Escolar.Repository.NivelRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -41,6 +42,7 @@ public class ConfiguracionAcademicaService {
     public static final int MINUTOS_POR_DEFECTO = 45;
     public static final int MINUTOS_MINIMO = 30;
     public static final int MINUTOS_MAXIMO = 60;
+    public static final int AREAS_PARA_REPETIR_POR_DEFECTO = 4;
 
     private final ConfiguracionAcademicaRepository configuracionRepository;
     private final AnioEscolarRepository anioEscolarRepository;
@@ -48,6 +50,7 @@ public class ConfiguracionAcademicaService {
     private final AsignacionRepository asignacionRepository;
     private final AccesoRepository accesoRepository;
     private final PeriodoEvaluacionRepository periodoRepository;
+    private final GradoRepository gradoRepository;
 
     /** Una fila por nivel, con la duracion vigente y de donde sale. */
     @Transactional(readOnly = true)
@@ -114,11 +117,27 @@ public class ConfiguracionAcademicaService {
         if (request.getPeriodos() != null) {
             validarPeriodos(anio, tipo, request.getPeriodos());
         }
+        // Al cambiar de escala la mínima anterior ya no vale: vuelve a la de por defecto (sin contar como cambio).
+        String notaBase = escala != actual.getEscala() ? Calificaciones.minimaPorDefecto(escala) : actual.getNotaMinima();
+        String notaMinima = request.getNotaMinima() != null && !request.getNotaMinima().isBlank()
+                ? Calificaciones.normalizarMinima(escala, request.getNotaMinima())
+                : notaBase;
+        int areasParaRepetir = request.getAreasParaRepetir() != null ? request.getAreasParaRepetir() : actual.getAreasParaRepetir();
+        if (areasParaRepetir < 1) {
+            throw new IllegalArgumentException("Las áreas desaprobadas para repetir deben ser al menos 1");
+        }
+        boolean cambiaPromocion = !notaMinima.equals(notaBase) || areasParaRepetir != actual.getAreasParaRepetir();
+        if (cambiaPromocion && anio.getEstado() != AnioEscolarService.ESTADO_POR_COMENZAR) {
+            throw new IllegalArgumentException("El año " + anio.getAnio()
+                    + " ya empezó: la nota mínima y las áreas para repetir solo se cambian con el año por comenzar");
+        }
 
         ConfiguracionAcademica configuracion = fila(anio, nivel, actual);
         configuracion.setMinutosHoraAcademica(minutos);
         configuracion.setEscala(escala);
         configuracion.setTipoPeriodo(tipo);
+        configuracion.setNotaMinima(notaMinima);
+        configuracion.setAreasParaRepetir(areasParaRepetir);
         configuracionRepository.save(configuracion);
 
         if (request.getPeriodos() != null || tipo != actual.getTipoPeriodo()) {
@@ -138,6 +157,8 @@ public class ConfiguracionAcademicaService {
                     nueva.setMinutosHoraAcademica(actual.getMinutosHoraAcademica());
                     nueva.setEscala(actual.getEscala());
                     nueva.setTipoPeriodo(actual.getTipoPeriodo());
+                    nueva.setNotaMinima(actual.getNotaMinima());
+                    nueva.setAreasParaRepetir(actual.getAreasParaRepetir());
                     nueva.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
                     return nueva;
                 });
@@ -224,6 +245,9 @@ public class ConfiguracionAcademicaService {
                 .map(p -> new PeriodoEvaluacionResponse(p.getNumero(), tipoDe(p, guardados).nombre(p.getNumero()),
                         p.getFechaInicio(), p.getFechaFin(), p.estadoEn(hoy)))
                 .toList());
+        // Sin grados que repitan (Inicial), la nota mínima y las áreas no se usan.
+        response.setConRepitencia(gradoRepository.findByNivelAndAccesoNot(nivel, eliminado).stream()
+                .anyMatch(g -> !Boolean.FALSE.equals(g.getRepite())));
         response.setMotivoBloqueo(motivoBloqueo(anio, nivel));
         response.setEditable(response.getMotivoBloqueo() == null);
 
@@ -250,6 +274,8 @@ public class ConfiguracionAcademicaService {
         response.setMinutosHoraAcademica(inicial ? null : MINUTOS_POR_DEFECTO);
         response.setEscala(EscalaCalificacion.LITERAL);
         response.setTipoPeriodo(TipoPeriodo.BIMESTRE);
+        response.setNotaMinima(Calificaciones.minimaPorDefecto(EscalaCalificacion.LITERAL));
+        response.setAreasParaRepetir(AREAS_PARA_REPETIR_POR_DEFECTO);
         response.setOrigen("DEFECTO");
         return response;
     }
@@ -258,6 +284,9 @@ public class ConfiguracionAcademicaService {
         response.setMinutosHoraAcademica(fila.getMinutosHoraAcademica());
         response.setEscala(fila.getEscala() != null ? fila.getEscala() : EscalaCalificacion.LITERAL);
         response.setTipoPeriodo(fila.getTipoPeriodo() != null ? fila.getTipoPeriodo() : TipoPeriodo.BIMESTRE);
+        // Las filas anteriores a estos campos usan los valores por defecto.
+        response.setNotaMinima(fila.getNotaMinima() != null ? fila.getNotaMinima() : Calificaciones.minimaPorDefecto(response.getEscala()));
+        response.setAreasParaRepetir(fila.getAreasParaRepetir() != null ? fila.getAreasParaRepetir() : AREAS_PARA_REPETIR_POR_DEFECTO);
     }
 
     /** Por su cantidad: 3 periodos guardados son trimestres. */

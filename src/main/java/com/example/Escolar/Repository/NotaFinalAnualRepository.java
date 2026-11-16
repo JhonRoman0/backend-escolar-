@@ -12,4 +12,9 @@ public interface NotaFinalAnualRepository extends JpaRepository<NotaFinalAnual, 
             Collection<Integer> idsMatricula, Collection<Integer> idsCompetencia, Acceso acceso);
 
     List<NotaFinalAnual> findByMatriculaGradoSeccionIdGradoSeccionAndAccesoNot(Integer idGradoSeccion, Acceso acceso);
+
+    List<NotaFinalAnual> findByMatriculaIdMatriculaAndAccesoNot(Integer idMatricula, Acceso acceso);
+
+    /** Si la sección ya usó notas del año (los años previos a ellas no tienen ninguna). */
+    boolean existsByMatriculaGradoSeccionIdGradoSeccionAndAccesoNot(Integer idGradoSeccion, Acceso acceso);
 }

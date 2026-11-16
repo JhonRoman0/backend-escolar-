@@ -13,6 +13,7 @@ import com.example.Escolar.Repository.ConfiguracionAcademicaRepository;
 import com.example.Escolar.Repository.NivelRepository;
 import com.example.Escolar.Repository.PeriodoEvaluacionRepository;
 import com.example.Escolar.Model.EscalaCalificacion;
+import com.example.Escolar.Model.Grado;
 import com.example.Escolar.Model.PeriodoEvaluacion;
 import com.example.Escolar.Model.TipoPeriodo;
 import java.time.LocalDate;
@@ -30,6 +31,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -56,6 +58,8 @@ class ConfiguracionAcademicaServiceTest {
     private AccesoRepository accesoRepository;
     @Mock
     private PeriodoEvaluacionRepository periodoRepository;
+    @Mock
+    private com.example.Escolar.Repository.GradoRepository gradoRepository;
     @InjectMocks
     private ConfiguracionAcademicaService service;
 
@@ -324,5 +328,85 @@ class ConfiguracionAcademicaServiceTest {
         assertEquals(PeriodoEvaluacion.ABIERTO, p.estadoEn(LocalDate.of(2027, 3, 1)));
         assertEquals(PeriodoEvaluacion.ABIERTO, p.estadoEn(LocalDate.of(2027, 5, 7)));
         assertEquals(PeriodoEvaluacion.CERRADO, p.estadoEn(LocalDate.of(2027, 5, 8)));
+    }
+
+    // ── Promoción ──
+
+    @Test
+    void porDefectoLaMinimaEsBYRepiteConCuatroAreas() {
+        ConfiguracionAcademicaResponse res = service.listar(2).get(1);
+
+        assertEquals("B", res.getNotaMinima());
+        assertEquals(4, res.getAreasParaRepetir());
+    }
+
+    @Test
+    void unaConfiguracionAnteriorAEstosCamposUsaLosDeSuEscala() {
+        ConfiguracionAcademica vieja = guardada(anio2027, primaria, 45);
+        vieja.setEscala(EscalaCalificacion.VIGESIMAL);
+        when(configuracionRepository.findByAnioEscolarIdAnioAndNivelIdNivelAndAccesoNot(eq(2), eq(2), any()))
+                .thenReturn(Optional.of(vieja));
+
+        assertEquals("11", service.obtener(2, 2).getNotaMinima());
+    }
+
+    @Test
+    void guardaLaMinimaYLasAreasConElAnioPorComenzar() {
+        ConfiguracionAcademicaRequest r = request(2, 2, 45);
+        r.setNotaMinima("a");
+        r.setAreasParaRepetir(3);
+
+        service.guardar(r);
+
+        ArgumentCaptor<ConfiguracionAcademica> captor = ArgumentCaptor.forClass(ConfiguracionAcademica.class);
+        verify(configuracionRepository).save(captor.capture());
+        assertEquals("A", captor.getValue().getNotaMinima());
+        assertEquals(3, captor.getValue().getAreasParaRepetir());
+    }
+
+    @Test
+    void laMinimaNoPuedeSerLaNotaMasBaja() {
+        ConfiguracionAcademicaRequest r = request(2, 2, 45);
+        r.setNotaMinima("C");
+
+        assertThrows(IllegalArgumentException.class, () -> service.guardar(r));
+        verify(configuracionRepository, never()).save(any());
+    }
+
+    @Test
+    void conElAnioVigenteNoSeCambiaLaPromocion() {
+        ConfiguracionAcademicaRequest r = request(1, 1, null);
+        r.setAreasParaRepetir(2);
+
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.guardar(r));
+
+        assertTrue(ex.getMessage().contains("por comenzar"), ex.getMessage());
+    }
+
+    @Test
+    void cambiarLaEscalaReiniciaLaMinima() {
+        ConfiguracionAcademicaRequest r = request(1, 1, null);
+        r.setEscala(EscalaCalificacion.VIGESIMAL);
+
+        service.guardar(r);
+
+        ArgumentCaptor<ConfiguracionAcademica> captor = ArgumentCaptor.forClass(ConfiguracionAcademica.class);
+        verify(configuracionRepository).save(captor.capture());
+        assertEquals("11", captor.getValue().getNotaMinima());
+    }
+
+    @Test
+    void laPromocionSoloAplicaSiAlgunGradoRepite() {
+        Grado noRepite = new Grado();
+        noRepite.setRepite(false);
+        Grado repite = new Grado();
+        repite.setRepite(true);
+        when(gradoRepository.findByNivelAndAccesoNot(eq(inicial), any())).thenReturn(List.of(noRepite));
+        when(gradoRepository.findByNivelAndAccesoNot(eq(primaria), any())).thenReturn(List.of(noRepite, repite));
+
+        List<ConfiguracionAcademicaResponse> res = service.listar(2);
+
+        assertFalse(res.get(0).isConRepitencia());
+        assertTrue(res.get(1).isConRepitencia());
     }
 }

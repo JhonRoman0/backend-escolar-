@@ -33,6 +33,29 @@ public final class Calificaciones {
         return String.valueOf(Integer.parseInt(texto));
     }
 
+    /** Nota mínima para aprobar si el nivel no la configuró. */
+    public static String minimaPorDefecto(EscalaCalificacion escala) {
+        return escala == EscalaCalificacion.LITERAL ? "B" : "11";
+    }
+
+    /** La nota mínima limpia: en literal AD, A o B (con C nadie desaprobaría); en vigesimal de 1 a 20. */
+    public static String normalizarMinima(EscalaCalificacion escala, String valor) {
+        String nota = normalizar(escala, valor);
+        if ("C".equals(nota) || "0".equals(nota)) {
+            throw new IllegalArgumentException("La nota mínima no puede ser la más baja de la escala");
+        }
+        return nota;
+    }
+
+    /** Si la nota (ya normalizada) está por debajo de la mínima. */
+    public static boolean desaprobada(EscalaCalificacion escala, String nota, String minima) {
+        if (escala == EscalaCalificacion.LITERAL) {
+            // AD es la más alta: un índice mayor es una nota más baja.
+            return LITERALES.indexOf(nota) > LITERALES.indexOf(minima);
+        }
+        return Integer.parseInt(nota) < Integer.parseInt(minima);
+    }
+
     /** B o C en literal; 12 o menos en vigesimal. La nota ya viene normalizada. */
     public static boolean requiereConclusion(EscalaCalificacion escala, String calificacion) {
         if (escala == EscalaCalificacion.LITERAL) {

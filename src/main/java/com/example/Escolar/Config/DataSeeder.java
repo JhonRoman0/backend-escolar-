@@ -385,6 +385,7 @@ public class DataSeeder implements CommandLineRunner {
         crearAccionSiFalta("EXPORTAR_SIAGIE", "Exportar SIAGIE");
         crearAccionSiFalta("IMPRIMIR_BOLETA", "Imprimir boleta");
         crearAccionSiFalta("VER_RESUMEN", "Ver resumen");
+        crearAccionSiFalta("VER_COLEGIO", "Ver colegio");
     }
 
     private void crearAccionSiFalta(String codigo, String nombre) {
@@ -468,7 +469,7 @@ public class DataSeeder implements CommandLineRunner {
                 new PermisoSeed("ASISTENCIAS", "Asistencia", List.of("CREAR", "ACTUALIZAR", "ELIMINAR", "IMPRIMIR_EXPORTAR")))));
 
         crearModuloSiFalta(new ModuloSeed("Horario", "horario", List.of(
-                new PermisoSeed("HORARIOS", "Horarios", List.of("CREAR", "ACTUALIZAR", "ELIMINAR", "IMPRIMIR_EXPORTAR")))));
+                new PermisoSeed("HORARIOS", "Horarios", List.of("VER_COLEGIO", "IMPRIMIR_EXPORTAR")))));
     }
 
     private void seedMatrizRbac() {
@@ -558,11 +559,11 @@ public class DataSeeder implements CommandLineRunner {
         asignarPermiso("Docente", "COLEGIOS", List.of());
         asignarPermiso("Docente", "ASISTENCIAS", List.of());
 
-        asignarPermiso("Administrador", "HORARIOS", List.of("CREAR", "ACTUALIZAR", "ELIMINAR", "IMPRIMIR_EXPORTAR"));
-        asignarPermiso("Secretaria", "HORARIOS", List.of("CREAR", "ACTUALIZAR"));
+        asignarPermiso("Administrador", "HORARIOS", List.of("VER_COLEGIO", "IMPRIMIR_EXPORTAR"));
+        asignarPermiso("Secretaria", "HORARIOS", List.of("VER_COLEGIO", "IMPRIMIR_EXPORTAR"));
         asignarPermiso("Docente", "HORARIOS", List.of("IMPRIMIR_EXPORTAR"));
         asignarPermiso("Apoderado", "HORARIOS", List.of("IMPRIMIR_EXPORTAR"));
-        asignarPermiso("Auxiliar", "HORARIOS", List.of());
+        asignarPermiso("Auxiliar", "HORARIOS", List.of("VER_COLEGIO", "IMPRIMIR_EXPORTAR"));
         asignarPermiso("Auxiliar", "RECREOS", List.of());
 
     }

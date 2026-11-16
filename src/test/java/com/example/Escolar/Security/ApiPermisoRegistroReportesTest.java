@@ -35,4 +35,13 @@ class ApiPermisoRegistroReportesTest {
         assertEquals("VER_RESUMEN",
                 new ApiPermisoRegistro().buscar("GET", "/evaluaciones/50/resumen").orElseThrow().accionCodigo());
     }
+
+    @org.junit.jupiter.api.Test
+    void elHorarioDelColegioPideVerColegioYElPropioSoloLectura() {
+        var registro = new ApiPermisoRegistro();
+        assertEquals("VER_COLEGIO", registro.buscar("GET", "/horarios").orElseThrow().accionCodigo());
+        assertEquals("VER_COLEGIO", registro.buscar("GET", "/horarios/seccion/5/recreos").orElseThrow().accionCodigo());
+        assertEquals(null, registro.buscar("GET", "/horarios/mio").orElseThrow().accionCodigo());
+        assertEquals(java.util.Set.of("IMPRIMIR_EXPORTAR", "VER_COLEGIO"), registro.accionesDe("HORARIOS"));
+    }
 }

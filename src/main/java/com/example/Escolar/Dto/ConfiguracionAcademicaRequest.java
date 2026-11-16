@@ -23,6 +23,10 @@ public class ConfiguracionAcademicaRequest {
     private EscalaCalificacion escala;
     /** Null: se mantiene el actual. */
     private TipoPeriodo tipoPeriodo;
+    /** Nota mínima para aprobar un área. Null: la actual (o la de por defecto si cambia la escala). */
+    private String notaMinima;
+    /** Con esta cantidad de áreas desaprobadas el alumno repite. Null: la actual. */
+    private Integer areasParaRepetir;
     /** En orden. Null: se mantienen los guardados. */
     private List<@Valid PeriodoRequest> periodos;
 

@@ -14,6 +14,10 @@ public class MatriculaOpcionesResponse {
     private String bloqueo;
     /** Ej. "1ro Primaria 2026"; null para un alumno nuevo. */
     private String ultimoGrado;
+    /** PROMOVIDO o REPITE según sus notas del año; null si no aplica (nuevo, grado que no repite, años sin notas del año). */
+    private String situacion;
+    /** Áreas desaprobadas del año anterior. */
+    private List<String> areasDesaprobadas;
     private List<GradoOpcion> grados;
 
     @Getter

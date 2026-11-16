@@ -96,6 +96,11 @@ public final class CatalogoPermisos {
                 "IMPRIMIR_EXPORTAR", "Exportar reporte",
                 "EXPORTAR_SIAGIE", "Exportar Excel con formato SIAGIE",
                 "IMPRIMIR_BOLETA", "Imprimir boletas de notas");
+        // Horarios solo se consultan (se arman en Asignaciones). Un docente con
+        // VER_COLEGIO ve además los de cualquier sección.
+        permiso("HORARIOS", "Horario",
+                "VER_COLEGIO", "Ver horarios de todo el colegio",
+                "IMPRIMIR_EXPORTAR", "Descargar horario en PDF");
         // Nota final del año por competencia: aparte de las de cada periodo.
         permiso("NOTAS_ANUALES", "Consolidado",
                 "CREAR", "Registrar notas finales del año",

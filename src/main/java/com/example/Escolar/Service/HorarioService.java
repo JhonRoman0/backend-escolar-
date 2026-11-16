@@ -1,6 +1,12 @@
 package com.example.Escolar.Service;
 
 import com.example.Escolar.Dto.HorarioPlanoResponse;
+import com.example.Escolar.Dto.MiHorarioResponse;
+import com.example.Escolar.Dto.RecreoHorarioResponse;
+import com.example.Escolar.Model.GradoSeccion;
+import com.example.Escolar.Model.Recreo;
+import com.example.Escolar.Repository.GradoSeccionRepository;
+import com.example.Escolar.Repository.RecreoRepository;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.HorarioClase;
 import com.example.Escolar.Model.Matricula;
@@ -28,6 +34,21 @@ public class HorarioService {
     private final MatriculaRepository matriculaRepository;
     private final AccesoRepository accesoRepository;
     private final AccesoContextoService accesoContextoService;
+    private final RecreoRepository recreoRepository;
+    private final GradoSeccionRepository gradoSeccionRepository;
+
+    /**
+     * Con VER_COLEGIO (o ADMIN) se ven todos los horarios. Sin ella, el docente
+     * ve los suyos, el apoderado los de sus hijos y quien no tiene vínculo, nada.
+     */
+    private Alcance alcance(Integer idUsuario, List<String> roles) {
+        if (accesoContextoService.tieneAccion(PERMISO, "VER_COLEGIO", idUsuario, roles)) {
+            return Alcance.TODO;
+        }
+        Alcance base = accesoContextoService.alcance(PERMISO, idUsuario, roles);
+        // Sin vínculo cae en "lo propio": como no es docente, no tiene clases.
+        return base == Alcance.TODO ? Alcance.DOCENTE : base;
+    }
 
     public org.springframework.data.domain.Page<HorarioPlanoResponse> listar(
             String grado, String seccion,
@@ -36,7 +57,7 @@ public class HorarioService {
             Integer idUsuario, List<String> roles,
             org.springframework.data.domain.Pageable pageable) {
         Integer anio = resolverAnio(idAnio);
-        if (accesoContextoService.alcance(PERMISO, idUsuario, roles) == Alcance.TODO) {
+        if (alcance(idUsuario, roles) == Alcance.TODO) {
             org.springframework.data.domain.Page<HorarioClase> page = horarioClaseRepository.findFiltrados(
                     accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow(), anio,
                     idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idDocente, grado, seccion, pageable);
@@ -74,7 +95,7 @@ public class HorarioService {
         Integer anio = resolverAnio(idAnio);
         List<HorarioClase> horarios;
 
-        Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, roles);
+        Alcance alcance = alcance(idUsuario, roles);
         if (alcance == Alcance.TODO) {
             horarios = horarioClaseRepository.findPlanosPorDocenteYAnio(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow(), anio, idDocente);
         } else if (alcance == Alcance.DOCENTE) {
@@ -92,6 +113,48 @@ public class HorarioService {
         return horarios.stream().map(this::toPlanoResponse).toList();
     }
 
+    /**
+     * Horario del docente vinculado al usuario: todas sus clases del año, en
+     * cualquier nivel, grado, sección o turno. Sin año, el vigente.
+     */
+    public MiHorarioResponse mio(Integer idAnio, Integer idUsuario) {
+        Integer idDocente = accesoContextoService.docenteDeUsuario(idUsuario)
+                .map(d -> d.getIdDocente())
+                .orElseThrow(() -> new IllegalArgumentException("Tu usuario no está vinculado a un docente"));
+        Integer anio = resolverAnio(idAnio);
+        List<HorarioClase> clases = horarioClaseRepository.findPlanosPorDocenteYAnio(
+                accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow(), anio, idDocente);
+        // Por turno: con un solo grado (aunque sean varias secciones) su recreo aplica a todas sus clases.
+        List<RecreoHorarioResponse> recreos = clases.stream()
+                .map(h -> h.getAsignacion().getGradoSeccion())
+                .collect(java.util.stream.Collectors.groupingBy(gs -> gs.getTurno().getIdTurno()))
+                .values().stream()
+                .filter(secciones -> secciones.stream().map(gs -> gs.getGrado().getIdGrado()).distinct().count() == 1)
+                .flatMap(secciones -> recreosDe(anio, secciones.get(0)).stream())
+                .toList();
+        return new MiHorarioResponse(clases.stream().map(this::toPlanoResponse).toList(), recreos);
+    }
+
+    /** Recreos del grado y turno de una sección, en su año. */
+    public List<RecreoHorarioResponse> recreosDeSeccion(Integer idGradoSeccion) {
+        GradoSeccion gs = gradoSeccionRepository.findById(idGradoSeccion)
+                .orElseThrow(() -> new ResourceNotFoundException("Sección no encontrada"));
+        return recreosDe(gs.getAnioEscolar().getIdAnio(), gs);
+    }
+
+    private List<RecreoHorarioResponse> recreosDe(Integer idAnio, GradoSeccion gs) {
+        return recreoRepository.findByAnioEscolarIdAnioAndTurnoIdTurnoAndGradoIdGradoAndAccesoNot(idAnio,
+                        gs.getTurno().getIdTurno(), gs.getGrado().getIdGrado(),
+                        accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
+                .map(HorarioService::aRecreo)
+                .toList();
+    }
+
+    private static RecreoHorarioResponse aRecreo(Recreo r) {
+        return new RecreoHorarioResponse(r.getTurno().getIdTurno(), r.getTurno().getNombre(), r.getDiaSemana(),
+                r.getHoraInicio(), r.getHoraFin(), r.getGrado().getNombre());
+    }
+
     public List<HorarioPlanoResponse> porAlumno(Integer idAlumno, Integer idAnio,
                                                   Integer idUsuario, List<String> roles) {
         Integer anio = resolverAnio(idAnio);
@@ -102,11 +165,15 @@ public class HorarioService {
             throw new ResourceNotFoundException("El alumno con id " + idAlumno + " no tiene matrícula activa");
         }
 
-        if (accesoContextoService.alcance(PERMISO, idUsuario, roles) == Alcance.APODERADO) {
+        Alcance alcance = alcance(idUsuario, roles);
+        if (alcance == Alcance.APODERADO) {
             boolean esHijo = accesoContextoService.esApoderadoDe(idUsuario, matriculas.get(0));
             if (!esHijo) {
                 throw new ResourceNotFoundException("El alumno con id " + idAlumno + " no es hijo del apoderado autenticado");
             }
+        } else if (alcance == Alcance.DOCENTE) {
+            // Sin VER_COLEGIO, un docente no consulta el horario de cualquier alumno.
+            throw new ResourceNotFoundException("Alumno no encontrado con id " + idAlumno);
         }
 
         Integer idGradoSeccion = matriculas.get(0).getGradoSeccion().getIdGradoSeccion();
@@ -126,7 +193,7 @@ public class HorarioService {
 
     private List<HorarioClase> filtrarPorVisibilidad(List<HorarioClase> horarios,
                                                       Integer idUsuario, List<String> roles) {
-        Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, roles);
+        Alcance alcance = alcance(idUsuario, roles);
         if (alcance == Alcance.TODO) {
             return horarios;
         }
@@ -179,6 +246,8 @@ public class HorarioService {
                 ? h.getAsignacion().getGradoSeccion().getSeccion().getNombre()
                 : "Única");
         r.setTurno(h.getAsignacion().getGradoSeccion().getTurno().getNombre());
+        r.setIdNivel(h.getAsignacion().getGradoSeccion().getGrado().getNivel().getIdNivel());
+        r.setNivel(h.getAsignacion().getGradoSeccion().getGrado().getNivel().getNombre());
         r.setIdAnio(h.getAsignacion().getAnioEscolar().getIdAnio());
         return r;
     }

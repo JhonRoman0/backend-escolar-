@@ -28,6 +28,8 @@ public class ApiPermisoRegistro {
     };
 
     private final List<Registro> registros = new ArrayList<>();
+    /** Acciones que se cumplen en la pantalla, sin ruta propia (permiso → acciones). */
+    private final java.util.Map<String, Set<String>> accionesDePantalla = new java.util.HashMap<>();
     private final AntPathMatcher matcher = new AntPathMatcher();
 
     public ApiPermisoRegistro() {
@@ -264,8 +266,12 @@ public class ApiPermisoRegistro {
         registrar("PUT", "/dias-feriados/**", "ASISTENCIAS", "ACTUALIZAR");
         registrar("DELETE", "/dias-feriados/**", "ASISTENCIAS", "ELIMINAR");
 
-        registrarLectura("GET", "/horarios", "HORARIOS");
+        // El horario del colegio pide VER_COLEGIO; el propio y el del hijo solo la lectura.
+        registrar("GET", "/horarios", "HORARIOS", "VER_COLEGIO");
+        registrar("GET", "/horarios/seccion/*/recreos", "HORARIOS", "VER_COLEGIO");
         registrarLectura("GET", "/horarios/**", "HORARIOS");
+        // El PDF del horario se arma en el navegador con lo ya cargado.
+        registrarDePantalla("HORARIOS", "IMPRIMIR_EXPORTAR");
 
         registrarLectura("GET", "/configuracion-academica", "CONFIGURACION_ACADEMICA");
         registrar("PUT", "/configuracion-academica", "CONFIGURACION_ACADEMICA", "ACTUALIZAR");
@@ -299,9 +305,13 @@ public class ApiPermisoRegistro {
         registros.add(new Registro(metodo, patron, Set.copyOf(permisos), null));
     }
 
-    /** Acciones que piden las rutas de un permiso (sin contar las de solo lectura). */
+    private void registrarDePantalla(String permisoCodigo, String accionCodigo) {
+        accionesDePantalla.computeIfAbsent(permisoCodigo, k -> new TreeSet<>()).add(accionCodigo);
+    }
+
+    /** Acciones que piden las rutas de un permiso (sin contar las de solo lectura) o su pantalla. */
     public Set<String> accionesDe(String permisoCodigo) {
-        Set<String> acciones = new TreeSet<>();
+        Set<String> acciones = new TreeSet<>(accionesDePantalla.getOrDefault(permisoCodigo, Set.of()));
         for (Registro registro : registros) {
             if (registro.permisosCodigo().contains(permisoCodigo) && registro.accionCodigo() != null) {
                 acciones.add(registro.accionCodigo());

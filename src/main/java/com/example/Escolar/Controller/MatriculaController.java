@@ -14,6 +14,7 @@ import com.example.Escolar.Service.ExclusividadDniService;
 import com.example.Escolar.Service.InscripcionService;
 import com.example.Escolar.Service.MatriculaReglasService;
 import com.example.Escolar.Service.MatriculaService;
+import com.example.Escolar.Service.NotaFinalService;
 import jakarta.validation.Valid;
 import org.springframework.dao.ConcurrencyFailureException;
 import lombok.RequiredArgsConstructor;
@@ -50,6 +51,7 @@ public class MatriculaController {
     private final InscripcionService inscripcionService;
     private final MatriculaReglasService matriculaReglasService;
     private final AccesoContextoService accesoContextoService;
+    private final NotaFinalService notaFinalService;
 
     @GetMapping
     public Page<MatriculaResponse> getAll(@PageableDefault(size = 10, sort = "idMatricula") Pageable pageable,
@@ -127,6 +129,14 @@ public class MatriculaController {
                                     @Valid @RequestPart("datos") MatriculaEdicionRequest request,
                                     @RequestPart(value = "comprobante", required = false) MultipartFile comprobante) {
         return inscripcionService.editar(id, request, comprobante, accesoContextoService.idUsuarioAutenticado());
+    }
+
+    /** Notas finales que faltan en periodos cerrados: se avisa antes de cambiar de sección. */
+    @GetMapping("/{id}/cambio-seccion/pendientes")
+    public List<String> pendientesCambioSeccion(@PathVariable Integer id) {
+        // Valida que el usuario pueda ver la matrícula.
+        matriculaService.getById(id, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+        return notaFinalService.pendientesTraslado(id);
     }
 
     @PostMapping("/{id}/cambio-seccion")

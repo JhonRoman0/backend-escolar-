@@ -2,6 +2,7 @@ package com.example.Escolar.Controller;
 
 import com.example.Escolar.Dto.NotaFinalRequest;
 import com.example.Escolar.Dto.NotaFinalResponse;
+import com.example.Escolar.Dto.ReaperturaNotaRequest;
 import com.example.Escolar.Service.AccesoContextoService;
 import com.example.Escolar.Service.NotaFinalService;
 import jakarta.validation.Valid;
@@ -37,6 +38,11 @@ public class NotaFinalController {
     @PutMapping("/correccion")
     public NotaFinalResponse.Detalle corregir(@Valid @RequestBody NotaFinalRequest request) {
         return notaFinalService.corregir(request, usuario(), roles());
+    }
+
+    @PostMapping("/reapertura")
+    public NotaFinalResponse.Detalle reabrir(@Valid @RequestBody ReaperturaNotaRequest request) {
+        return notaFinalService.reabrir(request, usuario(), roles());
     }
 
     private Integer usuario() {

@@ -24,6 +24,12 @@ public class ConfiguracionAcademicaResponse {
     private long asignaciones;
     private EscalaCalificacion escala;
     private TipoPeriodo tipoPeriodo;
+    /** Nota mínima para aprobar un área (B u 11 por defecto). */
+    private String notaMinima;
+    /** Áreas desaprobadas con las que el alumno repite (4 por defecto). */
+    private int areasParaRepetir;
+    /** Algún grado del nivel repite (Orden de grados): si no, la promoción no aplica. */
+    private boolean conRepitencia;
     private List<PeriodoEvaluacionResponse> periodos;
     /** Si se puede guardar, y si no, por qué. */
     private boolean editable;

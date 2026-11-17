@@ -141,6 +141,7 @@ class EvaluacionServiceTest {
         when(accesoContextoService.docenteDeUsuario(7)).thenReturn(Optional.of(docente));
         when(asignacionRepository.findByDocenteIdDocenteAndAccesoNot(5, eliminado)).thenReturn(List.of(asignacion));
         when(evaluacionRepository.save(any(Evaluacion.class))).thenAnswer(i -> i.getArgument(0));
+        when(evaluacionRepository.saveAndFlush(any(Evaluacion.class))).thenAnswer(i -> i.getArgument(0));
         config = new ConfiguracionAcademicaResponse();
         config.setEscala(EscalaCalificacion.LITERAL);
         config.setTipoPeriodo(TipoPeriodo.BIMESTRE);
@@ -186,7 +187,7 @@ class EvaluacionServiceTest {
         assertThrows(IllegalArgumentException.class,
                 () -> service.crear(new EvaluacionRequest(10, 1, "Examen", sabado, Set.of(1)), 7, roles));
         service.crear(new EvaluacionRequest(10, 1, "Examen", jueves, Set.of(1)), 7, roles);
-        verify(evaluacionRepository).save(any());
+        verify(evaluacionRepository).saveAndFlush(any());
     }
 
     @Test
@@ -228,7 +229,7 @@ class EvaluacionServiceTest {
         service.crear(request(1, 3), 7, roles);
 
         ArgumentCaptor<Evaluacion> captor = ArgumentCaptor.forClass(Evaluacion.class);
-        verify(evaluacionRepository).save(captor.capture());
+        verify(evaluacionRepository).saveAndFlush(captor.capture());
         assertEquals(Set.of(c1, c3), captor.getValue().getCompetencias());
         assertEquals(1, captor.getValue().getPeriodo());
     }
@@ -374,17 +375,50 @@ class EvaluacionServiceTest {
     }
 
     @Test
-    void conNotasSoloSeCambiaElNombre() {
+    void conNotasNoSeEditaNiElNombre() {
         Evaluacion e = evaluacionGuardada();
         e.setCompetencias(Set.of(c1));
-        when(notaRepository.countByEvaluacionIdEvaluacionAndAccesoNot(50, eliminado)).thenReturn(3L);
+        when(notaRepository.countByEvaluacionIdEvaluacionAndAccesoNot(50, eliminado)).thenReturn(1L);
 
         var ex = assertThrows(IllegalArgumentException.class,
-                () -> service.editar(50, new EvaluacionRequest(null, null, "Examen 1", hoy, Set.of(1, 3)), 7, roles));
-        assertTrue(ex.getMessage().contains("solo se puede cambiar el nombre"));
+                () -> service.editar(50, new EvaluacionRequest(null, null, "Examen final", hoy, Set.of(1)), 7, roles));
+        assertTrue(ex.getMessage().contains("no se puede editar"), ex.getMessage());
+        assertEquals("Examen 1", e.getNombre());
+        verify(evaluacionRepository, never()).save(any());
+    }
+
+    @Test
+    void sinNotasSeEditaTodo() {
+        Evaluacion e = evaluacionGuardada();
+        e.setCompetencias(Set.of(c1));
 
         service.editar(50, new EvaluacionRequest(null, null, "Examen final", hoy, Set.of(1)), 7, roles);
+
         assertEquals("Examen final", e.getNombre());
+    }
+
+    @Test
+    void resumenMuestraCreadorFechasYAvance() {
+        Evaluacion e = evaluacionGuardada();
+        e.setCompetencias(Set.of(c1));
+        Usuario creador = new Usuario();
+        creador.setNombre("ROSA");
+        creador.setApellidoPat("DIAZ");
+        e.setUsuarioRegistro(creador);
+        e.setFechaRegistro(hoy.atTime(9, 30));
+        NotaEvaluacion n = new NotaEvaluacion();
+        n.setMatricula(matricula(1));
+        n.setCalificacion("A");
+        when(notaRepository.findByEvaluacionIdEvaluacionAndAccesoNot(50, eliminado)).thenReturn(List.of(n));
+
+        var ficha = service.resumen(50, 7, roles);
+
+        assertEquals("ROSA DIAZ", ficha.creadoPor());
+        assertEquals(hoy.atTime(9, 30), ficha.fechaCreacion());
+        assertEquals(hoy, ficha.fecha());
+        assertEquals(1, ficha.competencias().size());
+        assertEquals(1, ficha.notasRegistradas());
+        assertEquals(2, ficha.totalAlumnos());
     }
 
     @Test
@@ -443,10 +477,23 @@ class EvaluacionServiceTest {
         NotaEvaluacion n = new NotaEvaluacion(); n.setIdNotaEvaluacion(90); n.setEvaluacion(e);
         n.setMatricula(matricula(1)); n.setCalificacion("A"); n.setAcceso(activo);
         when(notaRepository.findByEvaluacionIdEvaluacion(50)).thenReturn(List.of(n));
-        when(reconocimientos.existsByNotaDestinoIdNotaEvaluacion(90)).thenReturn(true);
+        when(reconocimientos.existsByNotaDestinoIdNotaEvaluacionAndVigencia(90, ReconocimientoCalificacion.VIGENTE)).thenReturn(true);
         assertThrows(IllegalArgumentException.class, () -> service.registrarNotas(50,
             new NotasEvaluacionRequest(List.of(new NotasEvaluacionRequest.Item(1,"B"))),7,roles));
         verify(notaRepository,never()).save(any());
+    }
+
+    @Test
+    void trasAnularElUsoElAlumnoRindeYSeLePoneNota() {
+        Evaluacion e = evaluacionGuardada();
+        NotaEvaluacion n = new NotaEvaluacion(); n.setIdNotaEvaluacion(90); n.setEvaluacion(e);
+        n.setMatricula(matricula(1)); n.setCalificacion("A"); n.setAcceso(eliminado);
+        when(notaRepository.findByEvaluacionIdEvaluacion(50)).thenReturn(List.of(n));
+        // El reconocimiento quedó anulado: ya no hay uno activo sobre esa fila.
+        when(reconocimientos.existsByNotaDestinoIdNotaEvaluacionAndVigencia(90, ReconocimientoCalificacion.VIGENTE)).thenReturn(false);
+        service.registrarNotas(50, new NotasEvaluacionRequest(List.of(new NotasEvaluacionRequest.Item(1, "B"))), 7, roles);
+        assertEquals("B", n.getCalificacion());
+        assertEquals(activo, n.getAcceso());
     }
 
     @Test
@@ -539,7 +586,7 @@ class EvaluacionServiceTest {
 
         service.crear(request(1), 7, roles);
 
-        verify(evaluacionRepository).save(any());
+        verify(evaluacionRepository).saveAndFlush(any());
     }
 
     @Test

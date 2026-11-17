@@ -93,15 +93,33 @@ public final class CatalogoPermisos {
         permiso("NOTAS", "Consolidado",
                 "CREAR", "Registrar notas finales",
                 "ACTUALIZAR", "Corregir notas finales ya registradas",
-                "AUTORIZAR", "Generar códigos de autorización",
                 "IMPRIMIR_EXPORTAR", "Exportar reporte",
                 "EXPORTAR_SIAGIE", "Exportar Excel con formato SIAGIE",
                 "IMPRIMIR_BOLETA", "Imprimir boletas de notas");
+        // Asistencia de entrada: tener el permiso es ver; cada acción, una tarea.
+        permiso("ASISTENCIAS", "Asistencia",
+                "CREAR", "Registrar asistencia",
+                "ACTUALIZAR", "Justificar asistencias",
+                "ELIMINAR", "Anular marcas del día",
+                "CONFIGURAR", "Gestionar motivos y feriados",
+                "IMPRIMIR_EXPORTAR", "Generar reportes");
+        // Portal del apoderado: solo lectura de sus hijos, sin acciones.
+        permiso("PORTAL_APODERADO", "Portal");
+        // Horarios solo se consultan (se arman en Asignaciones). Un docente con
+        // VER_COLEGIO ve además los de cualquier sección.
+        permiso("HORARIOS", "Horario",
+                "VER_COLEGIO", "Ver horarios de todo el colegio",
+                "IMPRIMIR_EXPORTAR", "Descargar horario en PDF");
+        // Nota final del año por competencia: aparte de las de cada periodo.
+        permiso("NOTAS_ANUALES", "Consolidado",
+                "CREAR", "Registrar notas finales del año",
+                "ACTUALIZAR", "Corregir y reabrir notas finales del año");
         // Un docente solo trabaja con sus cursos asignados; los demás, con todos.
         permiso("EVALUACIONES", "Consolidado",
                 "CREAR", "Crear evaluaciones y registrar sus notas",
                 "ACTUALIZAR", "Editar evaluaciones",
-                "ELIMINAR", "Eliminar evaluaciones");
+                "ELIMINAR", "Eliminar evaluaciones",
+                "VER_RESUMEN", "Ver el resumen de una evaluación");
         permiso("PAGOS_MATRICULA", "Pagos",
                 "CREAR", "Crear métodos de pago",
                 "ACTUALIZAR", "Editar métodos de pago y montos",

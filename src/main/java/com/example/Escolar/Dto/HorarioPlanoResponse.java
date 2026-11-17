@@ -21,5 +21,7 @@ public class HorarioPlanoResponse {
     private String grado;
     private String seccion;
     private String turno;
+    private Integer idNivel;
+    private String nivel;
     private Integer idAnio;
 }

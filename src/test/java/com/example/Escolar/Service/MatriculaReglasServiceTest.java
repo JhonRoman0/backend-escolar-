@@ -57,6 +57,8 @@ class MatriculaReglasServiceTest {
     private OrdenAcademicoService ordenAcademicoService;
     @Mock
     private PagoConfigService pagoConfigService;
+    @Mock
+    private PromocionService promocionService;
     @InjectMocks
     private MatriculaReglasService reglas;
 
@@ -85,6 +87,12 @@ class MatriculaReglasServiceTest {
         });
         when(ordenAcademicoService.siguiente(cincoAnios)).thenReturn(Optional.of(new Posicion(2, 1)));
         when(ordenAcademicoService.siguiente(tercero)).thenReturn(Optional.of(new Posicion(2, 4)));
+        terminoCon(PromocionService.Situacion.SIN_NOTAS_DEL_ANIO);
+    }
+
+    private void terminoCon(PromocionService.Situacion situacion, String... areas) {
+        when(promocionService.situacion(any())).thenReturn(new PromocionService.Resultado(situacion, List.of(areas),
+                situacion == PromocionService.Situacion.FALTAN_NOTAS ? List.of("Matemática C01") : List.of()));
     }
 
     private static Nivel nivel(int id, String nombre) {
@@ -161,6 +169,19 @@ class MatriculaReglasServiceTest {
     }
 
     @Test
+    void unGradoQueNoRepitePasaAlSiguienteSinMirarSusNotas() {
+        anio2026.setEstado(AnioEscolarService.ESTADO_CERRADO);
+        cursa(cincoAnios, anio2026);
+        terminoCon(PromocionService.Situacion.REPITE, "Matemática", "Comunicación", "Ciencia", "Inglés");
+
+        Regla regla = reglas.regla(anio2027, alumno, null);
+
+        assertEquals(Set.of(new Posicion(2, 1)), regla.permitidas());
+        assertNull(regla.promocion());
+        org.mockito.Mockito.verify(promocionService, org.mockito.Mockito.never()).situacion(any());
+    }
+
+    @Test
     void quienPuedeRepetirEsperaElCierreDelAnio() {
         cursa(tercero, anio2026);
 
@@ -171,7 +192,7 @@ class MatriculaReglasServiceTest {
     }
 
     @Test
-    void conElAnioCerradoPuedeRepetirOPasarAlSiguiente() {
+    void sinNotasDelAnioPuedeRepetirOPasarAlSiguiente() {
         anio2026.setEstado(AnioEscolarService.ESTADO_CERRADO);
         cursa(tercero, anio2026);
 
@@ -213,5 +234,51 @@ class MatriculaReglasServiceTest {
 
         when(matriculaRepository.countByGradoSeccionIdGradoSeccionAndAccesoNot(eq(202), any())).thenReturn(1L);
         assertDoesNotThrow(() -> reglas.validarSeccion(llena, null, null));
+    }
+
+    @Test
+    void promovidoSoloVaAlSiguiente() {
+        anio2026.setEstado(AnioEscolarService.ESTADO_CERRADO);
+        cursa(tercero, anio2026);
+        terminoCon(PromocionService.Situacion.PROMOVIDO, "Inglés");
+
+        Regla regla = reglas.regla(anio2027, alumno, null);
+
+        assertEquals(Set.of(new Posicion(2, 4)), regla.permitidas());
+        assertEquals(PromocionService.Situacion.PROMOVIDO, regla.promocion().situacion());
+    }
+
+    @Test
+    void quienRepiteSoloVaAlMismoGrado() {
+        anio2026.setEstado(AnioEscolarService.ESTADO_CERRADO);
+        cursa(tercero, anio2026);
+        terminoCon(PromocionService.Situacion.REPITE, "Matemática", "Comunicación", "Ciencia", "Inglés");
+
+        Regla regla = reglas.regla(anio2027, alumno, null);
+
+        assertEquals(Set.of(new Posicion(2, 3)), regla.permitidas());
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> reglas.validarSeccion(seccion(201, cuarto, anio2027, 30), alumno, null));
+        assertEquals("El alumno no puede matricularse en 4to Primaria: repite el grado según sus notas del año", ex.getMessage());
+    }
+
+    @Test
+    void sinTodasSusNotasDelAnioNoSeMatricula() {
+        anio2026.setEstado(AnioEscolarService.ESTADO_CERRADO);
+        cursa(tercero, anio2026);
+        terminoCon(PromocionService.Situacion.FALTAN_NOTAS);
+
+        assertEquals("Luis García aún no tiene todas sus notas finales del año 2026: faltan Matemática C01",
+                reglas.regla(anio2027, alumno, null).bloqueo());
+    }
+
+    @Test
+    void promovidoDelUltimoGradoYaNoSeMatricula() {
+        anio2026.setEstado(AnioEscolarService.ESTADO_CERRADO);
+        cursa(cuarto, anio2026);
+        when(ordenAcademicoService.siguiente(cuarto)).thenReturn(Optional.empty());
+        terminoCon(PromocionService.Situacion.PROMOVIDO);
+
+        assertEquals("Luis García ya cursó el último grado", reglas.regla(anio2027, alumno, null).bloqueo());
     }
 }

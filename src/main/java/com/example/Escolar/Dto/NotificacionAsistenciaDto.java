@@ -4,9 +4,18 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 
-public record NotificacionAsistenciaDto(String alumnoNombre,
+/**
+ * Aviso de asistencia a los apoderados. tipo: INGRESO (puntual, tardanza o
+ * justificado), FALTA o JUSTIFICACION (de una marca ya registrada).
+ */
+public record NotificacionAsistenciaDto(Tipo tipo,
+                                        String alumnoNombre,
                                         LocalDate fecha,
                                         LocalTime horaEntrada,
                                         String estado,
-                                        List<String> celulares) {
+                                        String motivo,
+                                        String acompanante,
+                                        List<String> celulares,
+                                        List<String> correos) {
+    public enum Tipo { INGRESO, FALTA, JUSTIFICACION }
 }

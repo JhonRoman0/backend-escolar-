@@ -25,4 +25,6 @@ public class AsistenciaResponse {
     private String justificacion;
     private Integer idUsuarioRegistro;
     private String usuarioRegistro;
+    private String acompanante;
+    private String urlEvidencia;
 }

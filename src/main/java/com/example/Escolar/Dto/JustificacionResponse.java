@@ -10,7 +10,6 @@ import java.time.LocalDate;
 public class JustificacionResponse {
     private Integer idJustificacion;
     private String motivo;
-    private String documentoUrl;
-    private LocalDate fechaJustificacion;
+    private LocalDate fechaRegistro;
     private Long accesoId;
 }

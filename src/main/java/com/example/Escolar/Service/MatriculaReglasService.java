@@ -34,7 +34,9 @@ import java.util.Set;
  * <ul>
  *   <li>Nuevo: cualquier grado.</li>
  *   <li>Antiguo de un grado que no repite (Inicial, 1ro de Primaria): solo el siguiente, sin esperar el cierre.</li>
- *   <li>Antiguo de un grado que repite: espera el cierre del año anterior; luego el mismo o el siguiente.</li>
+ *   <li>Antiguo de un grado que repite: espera el cierre del año anterior; luego sus notas del año
+ *       deciden: promovido, solo el siguiente; repite, solo el mismo. Si le faltan notas, no se
+ *       matricula. Los años sin notas del año (anteriores a ellas) dejan elegir el mismo o el siguiente.</li>
  * </ul>
  * Solo se ofrecen secciones con aula y con cupo.
  */
@@ -42,8 +44,16 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class MatriculaReglasService {
 
-    /** Resultado de aplicar las reglas: permitidas null significa cualquier grado. */
-    record Regla(String bloqueo, Set<Posicion> permitidas, Posicion sugerida, String ultimoGrado) {
+    /**
+     * Resultado de aplicar las reglas: permitidas null significa cualquier grado.
+     * promocion: la situación por notas del año, si se usó.
+     */
+    record Regla(String bloqueo, Set<Posicion> permitidas, Posicion sugerida, String ultimoGrado,
+                 PromocionService.Resultado promocion) {
+        Regla(String bloqueo, Set<Posicion> permitidas, Posicion sugerida, String ultimoGrado) {
+            this(bloqueo, permitidas, sugerida, ultimoGrado, null);
+        }
+
         boolean permite(Grado grado) {
             return permitidas == null || permitidas.contains(new Posicion(grado.getNivel().getIdNivel(), grado.getOrden()));
         }
@@ -56,6 +66,7 @@ public class MatriculaReglasService {
     private final AccesoRepository accesoRepository;
     private final OrdenAcademicoService ordenAcademicoService;
     private final PagoConfigService pagoConfigService;
+    private final PromocionService promocionService;
 
     public MatriculaOpcionesResponse opciones(Integer idAnio, Integer idAlumno, Integer idMatriculaExcluir) {
         AnioEscolar anio = anioEscolarRepository.findByIdAnioAndAccesoNot(idAnio, eliminado())
@@ -67,6 +78,10 @@ public class MatriculaReglasService {
         MatriculaOpcionesResponse response = new MatriculaOpcionesResponse();
         response.setBloqueo(regla.bloqueo());
         response.setUltimoGrado(regla.ultimoGrado());
+        if (regla.promocion() != null) {
+            response.setSituacion(regla.promocion().situacion().name());
+            response.setAreasDesaprobadas(regla.promocion().desaprobadas());
+        }
         response.setGrados(regla.bloqueo() != null ? List.of() : grados(anio, regla, idMatriculaExcluir));
         return response;
     }
@@ -79,7 +94,9 @@ public class MatriculaReglasService {
         }
         if (!regla.permite(gradoSeccion.getGrado())) {
             throw new IllegalArgumentException("El alumno no puede matricularse en " + nombreGrado(gradoSeccion.getGrado())
-                    + ": solo puede ir a su mismo grado o al siguiente");
+                    + (regla.promocion() == null ? ": solo puede ir a su mismo grado o al siguiente"
+                    : regla.promocion().situacion() == PromocionService.Situacion.REPITE
+                    ? ": repite el grado según sus notas del año" : ": fue promovido al grado siguiente"));
         }
         if (gradoSeccion.getAula() == null) {
             throw new IllegalArgumentException("La sección " + GradoSeccionService.nombreSeccion(gradoSeccion)
@@ -130,9 +147,19 @@ public class MatriculaReglasService {
                     null, null, ultimo);
         }
         Posicion mismo = ordenAcademicoService.posicion(grado);
-        return siguiente
-                .map(s -> new Regla(null, Set.of(mismo, s), s, ultimo))
-                .orElseGet(() -> new Regla(null, Set.of(mismo), null, ultimo));
+        PromocionService.Resultado promocion = promocionService.situacion(previa.get());
+        return switch (promocion.situacion()) {
+            case FALTAN_NOTAS -> new Regla(nombre + " aún no tiene todas sus notas finales del año " + anioPrevio.getAnio()
+                    + ": faltan " + resumen(promocion.faltantes()), null, null, ultimo, promocion);
+            case REPITE -> new Regla(null, Set.of(mismo), mismo, ultimo, promocion);
+            case PROMOVIDO -> siguiente
+                    .map(s -> new Regla(null, Set.of(s), s, ultimo, promocion))
+                    .orElseGet(() -> new Regla(nombre + " ya cursó el último grado", null, null, ultimo, promocion));
+            // Años sin notas del año: decide quien matricula, como antes.
+            case SIN_NOTAS_DEL_ANIO -> siguiente
+                    .map(s -> new Regla(null, Set.of(mismo, s), s, ultimo))
+                    .orElseGet(() -> new Regla(null, Set.of(mismo), null, ultimo));
+        };
     }
 
     private List<GradoOpcion> grados(AnioEscolar anio, Regla regla, Integer idMatriculaExcluir) {
@@ -191,6 +218,13 @@ public class MatriculaReglasService {
             total--;
         }
         return total;
+    }
+
+    /** "Matemática C01, Comunicación C02 y 3 más". */
+    private static String resumen(List<String> faltantes) {
+        int mostrar = 3;
+        String lista = String.join(", ", faltantes.subList(0, Math.min(mostrar, faltantes.size())));
+        return faltantes.size() > mostrar ? lista + " y " + (faltantes.size() - mostrar) + " más" : lista;
     }
 
     static String nombreGrado(Grado grado) {

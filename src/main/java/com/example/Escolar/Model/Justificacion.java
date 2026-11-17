@@ -21,10 +21,9 @@ public class Justificacion {
     Integer idJustificacion;
     @Column(name = "motivo", length = 150, nullable = false)
     String motivo;
-    @Column(name = "documento_url")
-    String documentoUrl;
-    @Column(name = "fecha_justificacion", nullable = false)
-    LocalDate fechaJustificacion;
+    /** Día en que se creó el motivo; lo pone el sistema (MigracionJustificacion la deja obligatoria). */
+    @Column(name = "fecha_registro")
+    LocalDate fechaRegistro;
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "id_acceso", nullable = false)
     Acceso acceso;

@@ -24,5 +24,7 @@ public interface AsistenciaAlumnoRepository extends JpaRepository<AsistenciaAlum
 
     List<AsistenciaAlumno> findByMatriculaIdMatriculaAndFechaBetweenAndAccesoNot(Integer idMatricula, LocalDate inicio, LocalDate fin, Acceso acceso);
 
+    List<AsistenciaAlumno> findByMatriculaIdMatriculaInAndFechaBetweenAndAccesoNot(java.util.Collection<Integer> idsMatricula,
+            LocalDate inicio, LocalDate fin, Acceso acceso);
     List<AsistenciaAlumno> findByUsuarioRegistroIdUsuarioAndFechaBetweenAndAccesoNot(Integer idUsuario, LocalDate inicio, LocalDate fin, Acceso acceso);
 }

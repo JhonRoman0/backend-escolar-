@@ -28,6 +28,8 @@ public class ApiPermisoRegistro {
     };
 
     private final List<Registro> registros = new ArrayList<>();
+    /** Acciones que se cumplen en la pantalla, sin ruta propia (permiso → acciones). */
+    private final java.util.Map<String, Set<String>> accionesDePantalla = new java.util.HashMap<>();
     private final AntPathMatcher matcher = new AntPathMatcher();
 
     public ApiPermisoRegistro() {
@@ -169,9 +171,9 @@ public class ApiPermisoRegistro {
 
         // Registrar notas de una evaluación es parte de crearla; editar sus datos es otra acción.
         registrarLectura("GET", "/evaluaciones/historial-calificaciones", "EVALUACIONES");
-        registrarLectura("GET", "/evaluaciones/reconocimientos/candidatas", "EVALUACIONES");
         registrar("POST", "/evaluaciones/reconocimientos", "EVALUACIONES", "CREAR");
         registrar("POST", "/evaluaciones/reconocimientos/*/anulacion", "EVALUACIONES", "ACTUALIZAR");
+        registrar("GET", "/evaluaciones/*/resumen", "EVALUACIONES", "VER_RESUMEN");
         registrarLectura("GET", "/evaluaciones", "EVALUACIONES");
         registrarLectura("GET", "/evaluaciones/**", "EVALUACIONES");
         registrar("POST", "/evaluaciones", "EVALUACIONES", "CREAR");
@@ -190,47 +192,19 @@ public class ApiPermisoRegistro {
         registrarLectura("GET", "/notas/finales", "NOTAS");
         registrarLectura("GET", "/notas/finales/**", "NOTAS");
         registrar("PUT", "/notas/finales/correccion", "NOTAS", "ACTUALIZAR");
+        registrar("POST", "/notas/finales/reapertura", "NOTAS", "ACTUALIZAR");
+        registrarLectura("GET", "/notas/anuales", "NOTAS_ANUALES");
+        registrarLectura("GET", "/notas/anuales/**", "NOTAS_ANUALES");
+        registrar("PUT", "/notas/anuales/correccion", "NOTAS_ANUALES", "ACTUALIZAR");
+        registrar("POST", "/notas/anuales/reapertura", "NOTAS_ANUALES", "ACTUALIZAR");
+        registrar("PUT", "/notas/anuales", "NOTAS_ANUALES", "CREAR");
         registrar("PUT", "/notas/finales", "NOTAS", "CREAR");
         registrarLectura("GET", "/notas/competencia/**", "NOTAS");
         registrarLectura("GET", "/notas/matricula/**", "NOTAS");
         registrar("GET", "/notas/reporte", "NOTAS", "IMPRIMIR_EXPORTAR");
-        registrar("POST", "/notas/autorizaciones", "NOTAS", "AUTORIZAR");
-        registrarLectura("POST", "/notas/autorizaciones/validar", "NOTAS");
-        registrarLectura("GET", "/notas/autorizaciones", "NOTAS");
 
-        registrarLectura("GET", "/publicaciones", "PUBLICACIONES");
-        registrarLectura("GET", "/publicaciones/**", "PUBLICACIONES");
-        registrar("POST", "/publicaciones", "PUBLICACIONES", "CREAR");
-        registrar("PUT", "/publicaciones/**", "PUBLICACIONES", "ACTUALIZAR");
-        registrar("DELETE", "/publicaciones/**", "PUBLICACIONES", "ELIMINAR");
-        registrar("POST", "/publicaciones/**/imagen", "PUBLICACIONES", "ACTUALIZAR");
-        registrar("DELETE", "/publicaciones/**/imagen", "PUBLICACIONES", "ACTUALIZAR");
-
-        registrarLectura("GET", "/eventos", "EVENTOS");
-        registrarLectura("GET", "/eventos/**", "EVENTOS");
-        registrar("POST", "/eventos", "EVENTOS", "CREAR");
-        registrar("PUT", "/eventos/**", "EVENTOS", "ACTUALIZAR");
-        registrar("DELETE", "/eventos/**", "EVENTOS", "ELIMINAR");
-        registrar("POST", "/eventos/**/imagen", "EVENTOS", "ACTUALIZAR");
-        registrar("DELETE", "/eventos/**/imagen", "EVENTOS", "ACTUALIZAR");
-
-        registrarLectura("GET", "/galerias", "GALERIAS");
-        registrarLectura("GET", "/galerias/**", "GALERIAS");
-        registrar("POST", "/galerias", "GALERIAS", "CREAR");
-        registrar("PUT", "/galerias/**", "GALERIAS", "ACTUALIZAR");
-        registrar("DELETE", "/galerias/**", "GALERIAS", "ELIMINAR");
-        registrar("POST", "/galerias/**/fotos", "GALERIAS", "ACTUALIZAR");
-        registrar("DELETE", "/galerias/fotos/**", "GALERIAS", "ACTUALIZAR");
-
-        registrarLectura("GET", "/contactos", "CONTACTOS");
-        registrarLectura("GET", "/contactos/**", "CONTACTOS");
-        registrar("PUT", "/contactos/**", "CONTACTOS", "ACTUALIZAR");
-
-        registrarLectura("GET", "/ajustes", "AJUSTES");
-        registrarLectura("GET", "/ajustes/**", "AJUSTES");
-        registrar("POST", "/ajustes", "AJUSTES", "CREAR");
-        registrar("PUT", "/ajustes/**", "AJUSTES", "ACTUALIZAR");
-        registrar("DELETE", "/ajustes/**", "AJUSTES", "ELIMINAR");
+        // Portal del apoderado: el servicio limita cada consulta a sus hijos.
+        registrarLectura("GET", "/portal-apoderado/**", "PORTAL_APODERADO");
 
         registrarLectura("GET", "/colegios", "COLEGIOS");
         registrarLectura("GET", "/colegios/**", "COLEGIOS");
@@ -243,26 +217,31 @@ public class ApiPermisoRegistro {
 
         registrarLectura("GET", "/asistencias", "ASISTENCIAS");
         registrarLectura("GET", "/asistencias/**", "ASISTENCIAS");
+        // Anular va antes que el registro general (gana la primera ruta que coincide).
+        registrar("POST", "/asistencias/*/anulacion", "ASISTENCIAS", "ELIMINAR");
         registrar("POST", "/asistencias/**", "ASISTENCIAS", "CREAR");
         registrar("PUT", "/asistencias/**", "ASISTENCIAS", "ACTUALIZAR");
-        registrar("DELETE", "/asistencias/**", "ASISTENCIAS", "ELIMINAR");
 
-        registrarLectura("GET", "/reportes/**", "ASISTENCIAS");
+        registrar("GET", "/reportes/**", "ASISTENCIAS", "IMPRIMIR_EXPORTAR");
 
         registrarLectura("GET", "/justificaciones", "ASISTENCIAS");
         registrarLectura("GET", "/justificaciones/**", "ASISTENCIAS");
-        registrar("POST", "/justificaciones", "ASISTENCIAS", "CREAR");
-        registrar("PUT", "/justificaciones/**", "ASISTENCIAS", "ACTUALIZAR");
-        registrar("DELETE", "/justificaciones/**", "ASISTENCIAS", "ELIMINAR");
+        registrar("POST", "/justificaciones", "ASISTENCIAS", "CONFIGURAR");
+        registrar("PUT", "/justificaciones/**", "ASISTENCIAS", "CONFIGURAR");
+        registrar("DELETE", "/justificaciones/**", "ASISTENCIAS", "CONFIGURAR");
 
         registrarLectura("GET", "/dias-feriados", "ASISTENCIAS");
         registrarLectura("GET", "/dias-feriados/**", "ASISTENCIAS");
-        registrar("POST", "/dias-feriados", "ASISTENCIAS", "CREAR");
-        registrar("PUT", "/dias-feriados/**", "ASISTENCIAS", "ACTUALIZAR");
-        registrar("DELETE", "/dias-feriados/**", "ASISTENCIAS", "ELIMINAR");
+        registrar("POST", "/dias-feriados", "ASISTENCIAS", "CONFIGURAR");
+        registrar("PUT", "/dias-feriados/**", "ASISTENCIAS", "CONFIGURAR");
+        registrar("DELETE", "/dias-feriados/**", "ASISTENCIAS", "CONFIGURAR");
 
-        registrarLectura("GET", "/horarios", "HORARIOS");
+        // El horario del colegio pide VER_COLEGIO; el propio y el del hijo solo la lectura.
+        registrar("GET", "/horarios", "HORARIOS", "VER_COLEGIO");
+        registrar("GET", "/horarios/seccion/*/recreos", "HORARIOS", "VER_COLEGIO");
         registrarLectura("GET", "/horarios/**", "HORARIOS");
+        // El PDF del horario se arma en el navegador con lo ya cargado.
+        registrarDePantalla("HORARIOS", "IMPRIMIR_EXPORTAR");
 
         registrarLectura("GET", "/configuracion-academica", "CONFIGURACION_ACADEMICA");
         registrar("PUT", "/configuracion-academica", "CONFIGURACION_ACADEMICA", "ACTUALIZAR");
@@ -296,9 +275,13 @@ public class ApiPermisoRegistro {
         registros.add(new Registro(metodo, patron, Set.copyOf(permisos), null));
     }
 
-    /** Acciones que piden las rutas de un permiso (sin contar las de solo lectura). */
+    private void registrarDePantalla(String permisoCodigo, String accionCodigo) {
+        accionesDePantalla.computeIfAbsent(permisoCodigo, k -> new TreeSet<>()).add(accionCodigo);
+    }
+
+    /** Acciones que piden las rutas de un permiso (sin contar las de solo lectura) o su pantalla. */
     public Set<String> accionesDe(String permisoCodigo) {
-        Set<String> acciones = new TreeSet<>();
+        Set<String> acciones = new TreeSet<>(accionesDePantalla.getOrDefault(permisoCodigo, Set.of()));
         for (Registro registro : registros) {
             if (registro.permisosCodigo().contains(permisoCodigo) && registro.accionCodigo() != null) {
                 acciones.add(registro.accionCodigo());

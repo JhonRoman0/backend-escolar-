@@ -34,6 +34,7 @@ class BoletaServiceTest {
     @Mock ConfiguracionAcademicaService configuracionService;
     @Mock NotaFinalService notaFinalService;
     @Mock MallaEvaluable mallaEvaluable;
+    @Mock NotaFinalAnualRepository notaAnualRepository;
     @InjectMocks BoletaService service;
 
     private final Acceso activo = new Acceso(AccesoConstants.ACTIVO, "Activo");
@@ -171,6 +172,28 @@ class BoletaServiceTest {
         when(notaFinalService.puedeVerSeccion(any(), any(), any())).thenReturn(false);
 
         assertThrows(ResourceNotFoundException.class, () -> service.boletas(26, 2, 7, roles));
+    }
+
+    @Test
+    void laNotaDelAnioSoloVaEnLaBoletaDelUltimoPeriodo() {
+        NotaFinalAnual anual = new NotaFinalAnual();
+        anual.setMatricula(ana);
+        anual.setCompetencia(c1);
+        anual.setCalificacion("A");
+        anual.setConclusionDescriptiva("Logra lo esperado");
+        when(notaAnualRepository.findByMatriculaGradoSeccionIdGradoSeccionAndAccesoNot(26, eliminado)).thenReturn(List.of(anual));
+        assertFalse(service.boletas(26, 2, 7, roles).conFinal());
+
+        PeriodoEvaluacion tercero = new PeriodoEvaluacion();
+        tercero.setNumero((byte) 3);
+        tercero.setFechaInicio(hoy.minusDays(5));
+        tercero.setFechaFin(hoy.minusDays(1));
+        when(configuracionService.periodos(any(), any())).thenReturn(List.of(tercero));
+        BoletaResponse boleta = service.boletas(26, 3, 7, roles);
+
+        assertTrue(boleta.conFinal());
+        assertEquals("A", boleta.alumnos().get(0).finales().get(11));
+        assertEquals("Logra lo esperado", boleta.alumnos().get(0).conclusionesFinales().get(11));
     }
 
     @Test

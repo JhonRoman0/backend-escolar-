@@ -1,17 +1,13 @@
 package com.example.Escolar.Service;
 
-import com.example.Escolar.Exception.AutorizacionRequeridaException;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.GradoSeccion;
 import com.example.Escolar.Model.Matricula;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.CompetenciaRepository;
-import com.example.Escolar.Repository.DocenteRepository;
 import com.example.Escolar.Repository.MatriculaRepository;
-import com.example.Escolar.Repository.NotaAutorizacionRepository;
 import com.example.Escolar.Repository.NotaRepository;
-import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Service.AccesoContextoService.Alcance;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,12 +43,6 @@ class NotaServiceTest {
     private MatriculaRepository matriculaRepository;
     @Mock
     private AccesoContextoService accesoContextoService;
-    @Mock
-    private NotaAutorizacionRepository notaAutorizacionRepository;
-    @Mock
-    private DocenteRepository docenteRepository;
-    @Mock
-    private UsuarioRepository usuarioRepository;
     @Mock
     private AccesoRepository accesoRepository;
     @InjectMocks
@@ -90,11 +80,5 @@ class NotaServiceTest {
     @Test
     void elDocenteNoVeLasNotasDeOtraSeccion() {
         assertThrows(ResourceNotFoundException.class, () -> notaService.getPorMatricula(2, USUARIO, ROLES));
-    }
-
-    @Test
-    void sinElPermisoDeAutorizarNoGeneraCodigos() {
-        when(accesoContextoService.tieneAccion("NOTAS", "AUTORIZAR", USUARIO, ROLES)).thenReturn(false);
-        assertThrows(AutorizacionRequeridaException.class, () -> notaService.generarAutorizacion(USUARIO, ROLES, null));
     }
 }

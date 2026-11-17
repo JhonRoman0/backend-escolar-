@@ -15,4 +15,6 @@ public interface EvaluacionRepository extends JpaRepository<Evaluacion, Integer>
 
     List<Evaluacion> findByAsignacionGradoSeccionIdGradoSeccionAndPeriodoAndAccesoNot(
             Integer idGradoSeccion, byte periodo, Acceso acceso);
+
+    List<Evaluacion> findByAsignacionGradoSeccionIdGradoSeccionAndAccesoNot(Integer idGradoSeccion, Acceso acceso);
 }

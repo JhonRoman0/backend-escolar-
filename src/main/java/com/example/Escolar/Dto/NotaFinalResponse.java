@@ -28,9 +28,19 @@ public final class NotaFinalResponse {
     public record Guia(String evaluacion, String curso, LocalDate fecha, String calificacion) {
     }
 
-    /** promedio: solo en escala vigesimal, redondeado desde ,5. */
+    /** Nota de un alumno trasladado puesta en otra sección y no usada aquí: solo de referencia. */
+    public record Referencia(String evaluacion, String curso, String seccion, LocalDate fecha, String calificacion) {
+    }
+
+    /**
+     * promedio: solo en escala vigesimal, redondeado desde ,5. seccionOrigen: la nota
+     * final se registró cuando el alumno estaba en otra sección. soloDireccion: periodo
+     * cerrado que el alumno cursó en otra sección sin nota final; la registra quien corrige.
+     * conNotaAnual: ya tiene la nota del año en la competencia; no se corrige ni reabre.
+     */
     public record Celda(Integer idCompetencia, String calificacion, String conclusionDescriptiva, String registradoPor,
-                        List<Guia> guia, Integer promedio) {
+                        List<Guia> guia, Integer promedio, String seccionOrigen, List<Referencia> referencias,
+                        boolean soloDireccion, boolean conNotaAnual) {
     }
 
     public record Alumno(Integer idMatricula, String codigo, String nombre, List<Celda> notas) {
@@ -38,11 +48,12 @@ public final class NotaFinalResponse {
 
     /**
      * periodoEditable: año vigente con el periodo abierto o cerrado. puedeRegistrar y
-     * puedeCorregir: además, el permiso de cada acción. requiereCodigo: periodo cerrado.
+     * puedeCorregir: además, el permiso de cada acción. Con el periodo cerrado solo
+     * escribe quien corrige.
      */
     public record Detalle(Curso curso, EscalaCalificacion escala, Periodo periodo, boolean periodoEditable,
                           boolean puedeRegistrar,
-                          boolean requiereCodigo, boolean puedeCorregir, List<CompetenciaFinal> competencias,
+                          boolean puedeCorregir, List<CompetenciaFinal> competencias,
                           List<Alumno> alumnos) {
     }
 }

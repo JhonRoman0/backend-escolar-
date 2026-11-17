@@ -178,16 +178,6 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
-    @ExceptionHandler(AutorizacionRequeridaException.class)
-    public ResponseEntity<Map<String, Object>> handleAutorizacionRequerida(AutorizacionRequeridaException ex) {
-        Map<String, Object> body = new HashMap<>();
-        body.put("timestamp", LocalDateTime.now());
-        body.put("status", HttpStatus.FORBIDDEN.value());
-        body.put("error", "Forbidden");
-        body.put("message", ex.getMessage());
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
-    }
-
     @ExceptionHandler(BatchDeleteNotAllowedException.class)
     public ResponseEntity<Map<String, Object>> handleBatchDelete(BatchDeleteNotAllowedException ex) {
         Map<String, Object> body = new HashMap<>();

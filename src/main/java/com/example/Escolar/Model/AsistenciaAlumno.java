@@ -39,6 +39,13 @@ public class AsistenciaAlumno {
     LocalTime horaEntrada;
     @Column(name = "hora_salida")
     LocalTime horaSalida;
+    // Ingreso justificado (pasado el límite de tardanza): quién lo trajo y la foto de evidencia.
+    @Column(name = "acompanante", length = 150)
+    String acompanante;
+    @Column(name = "url_evidencia", length = 500)
+    String urlEvidencia;
+    @Column(name = "pk_evidencia")
+    String pkEvidencia;
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "id_acceso", nullable = false)
     Acceso acceso;

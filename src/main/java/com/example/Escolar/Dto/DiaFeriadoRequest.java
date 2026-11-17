@@ -16,6 +16,7 @@ public class DiaFeriadoRequest {
     private LocalDate fecha;
     @NotBlank(message = "El motivo es obligatorio")
     private String motivo;
+    @NotNull(message = "Elige el año escolar del feriado")
     private Integer idAnioEscolar;
     private Long accesoId;
 }

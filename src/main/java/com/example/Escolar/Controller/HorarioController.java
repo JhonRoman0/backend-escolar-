@@ -1,6 +1,8 @@
 package com.example.Escolar.Controller;
 
 import com.example.Escolar.Dto.HorarioPlanoResponse;
+import com.example.Escolar.Dto.MiHorarioResponse;
+import com.example.Escolar.Dto.RecreoHorarioResponse;
 import com.example.Escolar.Service.AccesoContextoService;
 import com.example.Escolar.Service.HorarioService;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +40,18 @@ public class HorarioController {
         return horarioService.listar(grado, seccion, docente, anioEfectivo,
                 idNivel, idGrado, idSeccion, idTurno, idGradoSeccion,
                 accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados(), pageable);
+    }
+
+    /** El horario del docente con sesión iniciada. */
+    @GetMapping("/mio")
+    public MiHorarioResponse mio(@RequestParam(required = false) Integer idAnio) {
+        return horarioService.mio(idAnio, accesoContextoService.idUsuarioAutenticado());
+    }
+
+    /** Recreos del grado y turno de la sección, para pintarlos en su horario. */
+    @GetMapping("/seccion/{idGradoSeccion}/recreos")
+    public List<RecreoHorarioResponse> recreosDeSeccion(@PathVariable Integer idGradoSeccion) {
+        return horarioService.recreosDeSeccion(idGradoSeccion);
     }
 
     @GetMapping("/docente/{idDocente}")

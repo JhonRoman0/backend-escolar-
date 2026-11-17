@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Service
@@ -33,8 +34,7 @@ public class JustificacionService {
     public JustificacionResponse create(JustificacionRequest request) {
         Justificacion justificacion = new Justificacion();
         justificacion.setMotivo(request.getMotivo().trim());
-        justificacion.setDocumentoUrl(request.getDocumentoUrl());
-        justificacion.setFechaJustificacion(request.getFechaJustificacion());
+        justificacion.setFechaRegistro(LocalDate.now());
         justificacion.setAcceso(accesoRepository.findById(request.getAccesoId() == null ? AccesoConstants.ACTIVO : request.getAccesoId()).orElseThrow());
         return toResponse(justificacionRepository.save(justificacion));
     }
@@ -42,9 +42,8 @@ public class JustificacionService {
     @Transactional
     public JustificacionResponse update(Integer id, JustificacionRequest request) {
         Justificacion justificacion = findJustificacion(id);
+        // La fecha de registro no cambia al editar.
         justificacion.setMotivo(request.getMotivo().trim());
-        justificacion.setDocumentoUrl(request.getDocumentoUrl());
-        justificacion.setFechaJustificacion(request.getFechaJustificacion());
         if (request.getAccesoId() != null) {
             justificacion.setAcceso(accesoRepository.findById(request.getAccesoId()).orElseThrow());
         }
@@ -67,8 +66,7 @@ public class JustificacionService {
         JustificacionResponse response = new JustificacionResponse();
         response.setIdJustificacion(justificacion.getIdJustificacion());
         response.setMotivo(justificacion.getMotivo());
-        response.setDocumentoUrl(justificacion.getDocumentoUrl());
-        response.setFechaJustificacion(justificacion.getFechaJustificacion());
+        response.setFechaRegistro(justificacion.getFechaRegistro());
         response.setAccesoId(justificacion.getAcceso().getIdAcceso().longValue());
         return response;
     }

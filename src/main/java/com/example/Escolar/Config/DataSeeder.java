@@ -63,6 +63,7 @@ public class DataSeeder implements CommandLineRunner {
     private final ExclusividadDniService exclusividadDni;
     private final PlatformTransactionManager transactionManager;
     private final RetiroPaginaWeb retiroPaginaWeb;
+    private final MigracionJustificacion migracionJustificacion;
     private final AccionRepository accionRepository;
     private final AccesoRepository accesoRepository;
     private final EstadoAsistenciaRepository estadoAsistenciaRepository;
@@ -125,6 +126,7 @@ public class DataSeeder implements CommandLineRunner {
         seedRoles();
         seedModulosRbac();
         retiroPaginaWeb.retirar();
+        migracionJustificacion.migrar();
         catalogoPermisosSync.sincronizar();
         if (seedAdminEnabled) {
             seedAdmin();

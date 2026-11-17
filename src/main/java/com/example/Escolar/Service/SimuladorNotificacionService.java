@@ -13,13 +13,8 @@ public class SimuladorNotificacionService implements NotificacionService {
 
     @Async
     @Override
-    public void notificarMarcado(NotificacionAsistenciaDto evento) {
-        evento.celulares().forEach(celular ->
-                log.info("[SIMULADOR NOTIFICACION] Alumno {} marcó {} el {} a las {}. Mensaje simulado para el celular {}.",
-                        evento.alumnoNombre(),
-                        evento.estado(),
-                        evento.fecha(),
-                        evento.horaEntrada(),
-                        celular));
+    public void notificar(NotificacionAsistenciaDto evento) {
+        log.info("[SIMULADOR NOTIFICACION] {} → correos {} celulares {}", MensajeAsistencia.texto(evento),
+                evento.correos(), evento.celulares());
     }
 }

@@ -12,8 +12,6 @@ import com.example.Escolar.Model.Parentesco;
 import com.example.Escolar.Model.Permiso;
 import com.example.Escolar.Model.PermisoAccion;
 import com.example.Escolar.Model.Rol;
-import com.example.Escolar.Model.RolPermiso;
-import com.example.Escolar.Model.RolPermisoAccion;
 import com.example.Escolar.Model.Seccion;
 import com.example.Escolar.Model.TipoContrato;
 import com.example.Escolar.Model.Turno;
@@ -30,8 +28,6 @@ import com.example.Escolar.Repository.NivelRepository;
 import com.example.Escolar.Repository.ParentescoRepository;
 import com.example.Escolar.Repository.PermisoAccionRepository;
 import com.example.Escolar.Repository.PermisoRepository;
-import com.example.Escolar.Repository.RolPermisoAccionRepository;
-import com.example.Escolar.Repository.RolPermisoRepository;
 import com.example.Escolar.Repository.RolRepository;
 import com.example.Escolar.Repository.SeccionRepository;
 import com.example.Escolar.Repository.TipoContratoRepository;
@@ -75,8 +71,6 @@ public class DataSeeder implements CommandLineRunner {
     private final ModuloRepository moduloRepository;
     private final PermisoRepository permisoRepository;
     private final PermisoAccionRepository permisoAccionRepository;
-    private final RolPermisoRepository rolPermisoRepository;
-    private final RolPermisoAccionRepository rolPermisoAccionRepository;
     private final CatalogoPermisosSync catalogoPermisosSync;
     private final NivelRepository nivelRepository;
     private final TurnoRepository turnoRepository;
@@ -130,7 +124,6 @@ public class DataSeeder implements CommandLineRunner {
         seedRoles();
         seedModulosRbac();
         catalogoPermisosSync.sincronizar();
-        seedMatrizRbac();
         if (seedAdminEnabled) {
             seedAdmin();
         }
@@ -386,6 +379,7 @@ public class DataSeeder implements CommandLineRunner {
         crearAccionSiFalta("IMPRIMIR_BOLETA", "Imprimir boleta");
         crearAccionSiFalta("VER_RESUMEN", "Ver resumen");
         crearAccionSiFalta("VER_COLEGIO", "Ver colegio");
+        crearAccionSiFalta("CONFIGURAR", "Configurar");
     }
 
     private void crearAccionSiFalta(String codigo, String nombre) {
@@ -399,6 +393,7 @@ public class DataSeeder implements CommandLineRunner {
         accionRepository.save(accion);
     }
 
+    // Roles base, vacíos: sus módulos y acciones se configuran en Accesos.
     private void seedRoles() {
         crearRolSiFalta("Administrador");
         crearRolSiFalta("Secretaria");
@@ -466,106 +461,10 @@ public class DataSeeder implements CommandLineRunner {
                 new PermisoSeed("COLEGIOS", "Datos del Colegio", crud()))));
 
         crearModuloSiFalta(new ModuloSeed("Asistencia", "user-check", List.of(
-                new PermisoSeed("ASISTENCIAS", "Asistencia", List.of("CREAR", "ACTUALIZAR", "ELIMINAR", "IMPRIMIR_EXPORTAR")))));
+                new PermisoSeed("ASISTENCIAS", "Asistencia", List.of("CREAR", "ACTUALIZAR", "ELIMINAR", "CONFIGURAR", "IMPRIMIR_EXPORTAR")))));
 
         crearModuloSiFalta(new ModuloSeed("Horario", "horario", List.of(
                 new PermisoSeed("HORARIOS", "Horarios", List.of("VER_COLEGIO", "IMPRIMIR_EXPORTAR")))));
-    }
-
-    private void seedMatrizRbac() {
-        asignarPermiso("Administrador", "USUARIOS", crudWithExport());
-        asignarPermiso("Administrador", "ROLES", crud());
-        asignarPermiso("Administrador", "MODULOS", crud());
-        asignarPermiso("Administrador", "PERMISOS", crud());
-        asignarPermiso("Administrador", "ACCIONES", crud());
-        asignarPermiso("Administrador", "ROLES_PERMISOS", crud());
-        asignarPermiso("Administrador", "DOCENTES", crudWithExport());
-        asignarPermiso("Administrador", "CURSOS", crud());
-        asignarPermiso("Administrador", "TURNOS", crud());
-        asignarPermiso("Administrador", "GRADOS", crud());
-        asignarPermiso("Administrador", "ORDEN_GRADOS", List.of("ACTUALIZAR"));
-        asignarPermiso("Administrador", "ANIOS_ESCOLARES", crud());
-        asignarPermiso("Administrador", "AULAS", crud());
-        asignarPermiso("Administrador", "ASIGNACIONES", crud());
-        asignarPermiso("Administrador", "RECREOS", crud());
-        asignarPermiso("Administrador", "CONFIGURACION_ACADEMICA", List.of("ACTUALIZAR"));
-        asignarPermiso("Administrador", "SUSPENSIONES_DOCENTE", List.of("CREAR"));
-        asignarPermiso("Administrador", "CAMBIOS_DOCENTE", List.of());
-        asignarPermiso("Administrador", "ALUMNOS", crudWithExport());
-        asignarPermiso("Administrador", "APODERADOS", List.of("CREAR", "ACTUALIZAR"));
-        asignarPermiso("Administrador", "MATRICULAS", crudWithExport());
-        asignarPermiso("Administrador", "PAGOS_MATRICULA", crud());
-        asignarPermiso("Administrador", "COMPETENCIAS", crud());
-        asignarPermiso("Administrador", "NOTAS", List.of("CREAR", "IMPRIMIR_EXPORTAR"));
-        asignarPermiso("Administrador", "PUBLICACIONES", crud());
-        asignarPermiso("Administrador", "EVENTOS", crud());
-        asignarPermiso("Administrador", "GALERIAS", crud());
-        asignarPermiso("Administrador", "CONTACTOS", List.of("CREAR", "ACTUALIZAR"));
-        asignarPermiso("Administrador", "AJUSTES", crud());
-        asignarPermiso("Administrador", "COLEGIOS", crud());
-        asignarPermiso("Administrador", "ASISTENCIAS", List.of("CREAR", "ACTUALIZAR", "ELIMINAR", "IMPRIMIR_EXPORTAR"));
-
-        asignarPermiso("Secretaria", "USUARIOS", List.of());
-        asignarPermiso("Secretaria", "ROLES", List.of());
-        asignarPermiso("Secretaria", "DOCENTES", List.of("CREAR", "ACTUALIZAR"));
-        asignarPermiso("Secretaria", "CURSOS", List.of("CREAR", "ACTUALIZAR"));
-        asignarPermiso("Secretaria", "TURNOS", List.of("CREAR", "ACTUALIZAR"));
-        asignarPermiso("Secretaria", "GRADOS", List.of("CREAR", "ACTUALIZAR"));
-        asignarPermiso("Secretaria", "ANIOS_ESCOLARES", List.of("CREAR", "ACTUALIZAR"));
-        asignarPermiso("Secretaria", "AULAS", List.of("CREAR", "ACTUALIZAR"));
-        asignarPermiso("Secretaria", "ASIGNACIONES", List.of("CREAR", "ACTUALIZAR"));
-        asignarPermiso("Secretaria", "RECREOS", List.of("CREAR", "ACTUALIZAR"));
-        asignarPermiso("Secretaria", "SUSPENSIONES_DOCENTE", List.of("CREAR"));
-        asignarPermiso("Secretaria", "CAMBIOS_DOCENTE", List.of());
-        asignarPermiso("Secretaria", "ALUMNOS", List.of("CREAR", "ACTUALIZAR"));
-        asignarPermiso("Secretaria", "APODERADOS", List.of("CREAR", "ACTUALIZAR"));
-        asignarPermiso("Secretaria", "MATRICULAS", List.of("CREAR", "ACTUALIZAR"));
-        asignarPermiso("Secretaria", "COMPETENCIAS", List.of());
-        asignarPermiso("Secretaria", "NOTAS", List.of());
-        asignarPermiso("Secretaria", "PUBLICACIONES", List.of("CREAR", "ACTUALIZAR"));
-        asignarPermiso("Secretaria", "EVENTOS", List.of("CREAR", "ACTUALIZAR"));
-        asignarPermiso("Secretaria", "GALERIAS", List.of("CREAR", "ACTUALIZAR"));
-        asignarPermiso("Secretaria", "CONTACTOS", List.of("CREAR", "ACTUALIZAR"));
-        asignarPermiso("Secretaria", "AJUSTES", List.of("CREAR", "ACTUALIZAR"));
-        asignarPermiso("Secretaria", "COLEGIOS", List.of());
-        asignarPermiso("Secretaria", "ASISTENCIAS", List.of("CREAR", "ACTUALIZAR"));
-
-        asignarPermiso("Auxiliar", "ASISTENCIAS", List.of("CREAR", "ACTUALIZAR"));
-        asignarPermiso("Apoderado", "ALUMNOS", List.of());
-        asignarPermiso("Apoderado", "APODERADOS", List.of());
-        asignarPermiso("Apoderado", "ASIGNACIONES", List.of());
-        asignarPermiso("Apoderado", "RECREOS", List.of());
-        asignarPermiso("Apoderado", "MATRICULAS", List.of());
-        asignarPermiso("Apoderado", "COMPETENCIAS", List.of());
-        asignarPermiso("Apoderado", "NOTAS", List.of());
-        asignarPermiso("Apoderado", "COLEGIOS", List.of());
-        asignarPermiso("Apoderado", "ASISTENCIAS", List.of());
-
-        asignarPermiso("Docente", "DOCENTES", List.of());
-        asignarPermiso("Docente", "CURSOS", List.of());
-        asignarPermiso("Docente", "TURNOS", List.of());
-        asignarPermiso("Docente", "GRADOS", List.of());
-        asignarPermiso("Docente", "ANIOS_ESCOLARES", List.of());
-        asignarPermiso("Docente", "AULAS", List.of());
-        asignarPermiso("Docente", "ALUMNOS", List.of());
-        asignarPermiso("Docente", "APODERADOS", List.of());
-        asignarPermiso("Docente", "ASIGNACIONES", List.of());
-        asignarPermiso("Docente", "RECREOS", List.of());
-        asignarPermiso("Docente", "SUSPENSIONES_DOCENTE", List.of());
-        asignarPermiso("Docente", "CAMBIOS_DOCENTE", List.of());
-        asignarPermiso("Docente", "MATRICULAS", List.of());
-        asignarPermiso("Docente", "COMPETENCIAS", List.of());
-        asignarPermiso("Docente", "NOTAS", List.of("CREAR"));
-        asignarPermiso("Docente", "COLEGIOS", List.of());
-        asignarPermiso("Docente", "ASISTENCIAS", List.of());
-
-        asignarPermiso("Administrador", "HORARIOS", List.of("VER_COLEGIO", "IMPRIMIR_EXPORTAR"));
-        asignarPermiso("Secretaria", "HORARIOS", List.of("VER_COLEGIO", "IMPRIMIR_EXPORTAR"));
-        asignarPermiso("Docente", "HORARIOS", List.of("IMPRIMIR_EXPORTAR"));
-        asignarPermiso("Apoderado", "HORARIOS", List.of("IMPRIMIR_EXPORTAR"));
-        asignarPermiso("Auxiliar", "HORARIOS", List.of("VER_COLEGIO", "IMPRIMIR_EXPORTAR"));
-        asignarPermiso("Auxiliar", "RECREOS", List.of());
-
     }
 
     private List<String> crud() {
@@ -621,43 +520,6 @@ public class DataSeeder implements CommandLineRunner {
         pa.setAccion(accion);
         pa.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         permisoAccionRepository.save(pa);
-    }
-
-    private void asignarPermiso(String nombreRol, String codigoPermiso, List<String> acciones) {
-        Rol rol = rolRepository.findByNombre(nombreRol).orElse(null);
-        Permiso permiso = permisoRepository.findByCodigoAndAccesoNot(codigoPermiso, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).orElse(null);
-        if (rol == null || permiso == null) {
-            return;
-        }
-        RolPermiso rolPermiso = rolPermisoRepository.findByRolIdRolAndPermisoIdPermiso(rol.getIdRol(), permiso.getIdPermiso())
-                .orElseGet(() -> {
-                    RolPermiso rp = new RolPermiso();
-                    rp.setRol(rol);
-                    rp.setPermiso(permiso);
-                    rp.setFechaAsignacion(LocalDateTime.now());
-                    rp.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
-                    return rolPermisoRepository.save(rp);
-                });
-        // Una accion que el catalogo ya no tiene no se vuelve a conceder.
-        acciones.stream()
-                .filter(a -> CatalogoPermisos.acciones(codigoPermiso).map(c -> c.containsKey(a)).orElse(true))
-                .forEach(a -> asignarAccionConcedidaSiFalta(rolPermiso, a));
-    }
-
-    private void asignarAccionConcedidaSiFalta(RolPermiso rolPermiso, String codigoAccion) {
-        Accion accion = accionRepository.findByCodigoAndAccesoNot(codigoAccion, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).orElse(null);
-        if (accion == null) {
-            return;
-        }
-        if (rolPermisoAccionRepository.findByRolPermisoIdRolPermisoAndAccionIdAccionAndAccesoNot(
-                rolPermiso.getIdRolPermiso(), accion.getIdAccion(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).isPresent()) {
-            return;
-        }
-        RolPermisoAccion rpa = new RolPermisoAccion();
-        rpa.setRolPermiso(rolPermiso);
-        rpa.setAccion(accion);
-        rpa.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
-        rolPermisoAccionRepository.save(rpa);
     }
 
     public void seedAdmin() {

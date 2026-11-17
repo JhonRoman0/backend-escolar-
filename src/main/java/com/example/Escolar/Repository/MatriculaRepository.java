@@ -26,6 +26,8 @@ public interface MatriculaRepository extends JpaRepository<Matricula, Integer> {
 
     List<Matricula> findByAccesoNot(Acceso acceso);
 
+    List<Matricula> findByGradoSeccionAnioEscolarIdAnioAndAccesoNot(Integer idAnio, Acceso acceso);
+
     Page<Matricula> findByAccesoNot(Acceso acceso, Pageable pageable);
 
     Page<Matricula> findByAcceso(Acceso acceso, Pageable pageable);

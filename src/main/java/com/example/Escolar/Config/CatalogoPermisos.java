@@ -96,6 +96,13 @@ public final class CatalogoPermisos {
                 "IMPRIMIR_EXPORTAR", "Exportar reporte",
                 "EXPORTAR_SIAGIE", "Exportar Excel con formato SIAGIE",
                 "IMPRIMIR_BOLETA", "Imprimir boletas de notas");
+        // Asistencia de entrada: tener el permiso es ver; cada acción, una tarea.
+        permiso("ASISTENCIAS", "Asistencia",
+                "CREAR", "Registrar asistencia",
+                "ACTUALIZAR", "Justificar asistencias",
+                "ELIMINAR", "Anular marcas del día",
+                "CONFIGURAR", "Gestionar motivos y feriados",
+                "IMPRIMIR_EXPORTAR", "Generar reportes");
         // Horarios solo se consultan (se arman en Asignaciones). Un docente con
         // VER_COLEGIO ve además los de cualquier sección.
         permiso("HORARIOS", "Horario",

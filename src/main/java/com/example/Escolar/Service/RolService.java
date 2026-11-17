@@ -80,14 +80,14 @@ public class RolService {
     }
 
     private void validarRolNoProtegido(Rol rol) {
-        if (RolConstants.esAdmin(rol.getNombre())) {
-            throw new IllegalArgumentException("El rol " + RolConstants.ADMIN + " está protegido y no puede modificarse ni eliminarse");
+        if (RolConstants.esProtegido(rol.getNombre())) {
+            throw new IllegalArgumentException("El rol " + rol.getNombre().trim() + " está protegido y no puede modificarse ni eliminarse");
         }
     }
 
     private void validarNombreNoProtegido(String nombre) {
-        if (RolConstants.esAdmin(nombre)) {
-            throw new IllegalArgumentException("No se puede usar el nombre " + RolConstants.ADMIN + " porque pertenece al rol protegido del sistema");
+        if (RolConstants.esProtegido(nombre)) {
+            throw new IllegalArgumentException("No se puede usar el nombre " + nombre.trim() + " porque pertenece a un rol protegido del sistema");
         }
     }
 

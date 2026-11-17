@@ -248,23 +248,24 @@ public class ApiPermisoRegistro {
 
         registrarLectura("GET", "/asistencias", "ASISTENCIAS");
         registrarLectura("GET", "/asistencias/**", "ASISTENCIAS");
+        // Anular va antes que el registro general (gana la primera ruta que coincide).
+        registrar("POST", "/asistencias/*/anulacion", "ASISTENCIAS", "ELIMINAR");
         registrar("POST", "/asistencias/**", "ASISTENCIAS", "CREAR");
         registrar("PUT", "/asistencias/**", "ASISTENCIAS", "ACTUALIZAR");
-        registrar("DELETE", "/asistencias/**", "ASISTENCIAS", "ELIMINAR");
 
-        registrarLectura("GET", "/reportes/**", "ASISTENCIAS");
+        registrar("GET", "/reportes/**", "ASISTENCIAS", "IMPRIMIR_EXPORTAR");
 
         registrarLectura("GET", "/justificaciones", "ASISTENCIAS");
         registrarLectura("GET", "/justificaciones/**", "ASISTENCIAS");
-        registrar("POST", "/justificaciones", "ASISTENCIAS", "CREAR");
-        registrar("PUT", "/justificaciones/**", "ASISTENCIAS", "ACTUALIZAR");
-        registrar("DELETE", "/justificaciones/**", "ASISTENCIAS", "ELIMINAR");
+        registrar("POST", "/justificaciones", "ASISTENCIAS", "CONFIGURAR");
+        registrar("PUT", "/justificaciones/**", "ASISTENCIAS", "CONFIGURAR");
+        registrar("DELETE", "/justificaciones/**", "ASISTENCIAS", "CONFIGURAR");
 
         registrarLectura("GET", "/dias-feriados", "ASISTENCIAS");
         registrarLectura("GET", "/dias-feriados/**", "ASISTENCIAS");
-        registrar("POST", "/dias-feriados", "ASISTENCIAS", "CREAR");
-        registrar("PUT", "/dias-feriados/**", "ASISTENCIAS", "ACTUALIZAR");
-        registrar("DELETE", "/dias-feriados/**", "ASISTENCIAS", "ELIMINAR");
+        registrar("POST", "/dias-feriados", "ASISTENCIAS", "CONFIGURAR");
+        registrar("PUT", "/dias-feriados/**", "ASISTENCIAS", "CONFIGURAR");
+        registrar("DELETE", "/dias-feriados/**", "ASISTENCIAS", "CONFIGURAR");
 
         // El horario del colegio pide VER_COLEGIO; el propio y el del hijo solo la lectura.
         registrar("GET", "/horarios", "HORARIOS", "VER_COLEGIO");

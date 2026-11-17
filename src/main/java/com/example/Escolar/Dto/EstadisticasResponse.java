@@ -10,6 +10,8 @@ public class EstadisticasResponse {
     private Long tardanzas;
     private Long justificados;
     private Long inasistencias;
+    /** Hoy, aún dentro del límite de tardanza de su turno y sin marcar. */
+    private Long pendientes;
     private Long totalEsperado;
     private Double porcentajeAsistencia;
 }

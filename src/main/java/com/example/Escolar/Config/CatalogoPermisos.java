@@ -103,6 +103,8 @@ public final class CatalogoPermisos {
                 "ELIMINAR", "Anular marcas del día",
                 "CONFIGURAR", "Gestionar motivos y feriados",
                 "IMPRIMIR_EXPORTAR", "Generar reportes");
+        // Portal del apoderado: solo lectura de sus hijos, sin acciones.
+        permiso("PORTAL_APODERADO", "Portal");
         // Horarios solo se consultan (se arman en Asignaciones). Un docente con
         // VER_COLEGIO ve además los de cualquier sección.
         permiso("HORARIOS", "Horario",

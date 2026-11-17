@@ -4,6 +4,7 @@ import com.example.Escolar.Dto.AsistenciaDiaResponse;
 import com.example.Escolar.Dto.AsistenciaRequest;
 import com.example.Escolar.Dto.AsistenciaResponse;
 import com.example.Escolar.Dto.EstadisticasResponse;
+import com.example.Escolar.Dto.PortalApoderadoDtos;
 import com.example.Escolar.Dto.EstadoAsistenciaResponse;
 import com.example.Escolar.Dto.JustificarRequest;
 import com.example.Escolar.Dto.MatrizSemanalResponse;
@@ -313,26 +314,27 @@ public class AsistenciaService {
         return paginar(contenido, pageable);
     }
 
-    /** Resumen del mes de cada hijo (para el portal del apoderado). */
+    /**
+     * Cada día del rango para una matrícula: su marca o, sin marca, Sin clases,
+     * Pendiente o Falta (null si es futuro). Quien llama ya verificó el acceso.
+     */
     @Transactional(readOnly = true)
-    public List<ResumenMensualResponse> asistenciasDeHijos(Integer idUsuarioAutenticado, List<String> roles) {
-        Apoderado apoderado = accesoContextoService.apoderadoDeUsuario(idUsuarioAutenticado).orElse(null);
-        if (apoderado == null) {
-            return List.of();
+    public List<PortalApoderadoDtos.DiaAsistencia> diasDeMatricula(Matricula m, LocalDate inicio, LocalDate fin) {
+        Set<LocalDate> clases = calendario.diasDeClase(m.getGradoSeccion().getAnioEscolar(),
+                m.getGradoSeccion().getGrado().getNivel(), inicio, fin);
+        Map<LocalDate, AsistenciaAlumno> marcas = new HashMap<>();
+        asistenciaAlumnoRepository.findByMatriculaIdMatriculaAndFechaBetweenAndAccesoNot(m.getIdMatricula(), inicio, fin, eliminado())
+                .forEach(a -> marcas.putIfAbsent(a.getFecha(), a));
+        List<PortalApoderadoDtos.DiaAsistencia> dias = new ArrayList<>();
+        for (LocalDate d = inicio; !d.isAfter(fin); d = d.plusDays(1)) {
+            AsistenciaAlumno a = marcas.get(d);
+            dias.add(a != null
+                    ? new PortalApoderadoDtos.DiaAsistencia(d, a.getEstado().getNombre(), a.getHoraEntrada(),
+                            a.getJustificacion() != null ? a.getJustificacion().getMotivo() : null, a.getAcompanante(),
+                            a.getUrlEvidencia())
+                    : new PortalApoderadoDtos.DiaAsistencia(d, estadoSinMarca(m, d, clases), null, null, null, null));
         }
-        LocalDate hoy = LocalDate.now();
-        LocalDate inicio = hoy.withDayOfMonth(1);
-        LocalDate fin = hoy.withDayOfMonth(hoy.lengthOfMonth());
-        Map<Integer, Set<LocalDate>> dias = new HashMap<>();
-        List<ResumenMensualResponse> resultado = new ArrayList<>();
-        for (AlumnoApoderado vinculo : alumnoApoderadoRepository.findByApoderado(apoderado)) {
-            accesoContextoService.matriculaActual(vinculo.getAlumno().getIdAlumno()).ifPresent(m -> {
-                List<AsistenciaAlumno> marcas = asistenciaAlumnoRepository
-                        .findByMatriculaIdMatriculaAndFechaBetweenAndAccesoNot(m.getIdMatricula(), inicio, fin, eliminado());
-                resultado.add(resumenDeMatricula(m, inicio, fin, marcas, dias));
-            });
-        }
-        return resultado;
+        return dias;
     }
 
     /** KPIs del rango (hoy, semana o mes) en el año. Los días futuros no cuentan. */

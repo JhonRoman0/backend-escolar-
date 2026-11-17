@@ -62,6 +62,7 @@ public class DataSeeder implements CommandLineRunner {
 
     private final ExclusividadDniService exclusividadDni;
     private final PlatformTransactionManager transactionManager;
+    private final RetiroPaginaWeb retiroPaginaWeb;
     private final AccionRepository accionRepository;
     private final AccesoRepository accesoRepository;
     private final EstadoAsistenciaRepository estadoAsistenciaRepository;
@@ -123,6 +124,7 @@ public class DataSeeder implements CommandLineRunner {
         seedParentescos();
         seedRoles();
         seedModulosRbac();
+        retiroPaginaWeb.retirar();
         catalogoPermisosSync.sincronizar();
         if (seedAdminEnabled) {
             seedAdmin();
@@ -450,12 +452,9 @@ public class DataSeeder implements CommandLineRunner {
                 new PermisoSeed("EVALUACIONES", "Evaluaciones", crud()),
                 new PermisoSeed("NOTAS_ANUALES", "Notas finales anuales", List.of("CREAR", "ACTUALIZAR")))));
 
+        // La página web pública se retiró (RetiroPaginaWeb); el portal ahora es del apoderado.
         crearModuloSiFalta(new ModuloSeed("Portal", "globe", List.of(
-                new PermisoSeed("PUBLICACIONES", "Publicaciones", crud()),
-                new PermisoSeed("EVENTOS", "Eventos", crud()),
-                new PermisoSeed("GALERIAS", "Galerías", crud()),
-                new PermisoSeed("CONTACTOS", "Contactos", List.of("CREAR", "ACTUALIZAR")),
-                new PermisoSeed("AJUSTES", "Ajustes", crud()))));
+                new PermisoSeed("PORTAL_APODERADO", "Portal de apoderado", List.of()))));
 
         crearModuloSiFalta(new ModuloSeed("Colegio", "school", List.of(
                 new PermisoSeed("COLEGIOS", "Datos del Colegio", crud()))));

@@ -203,39 +203,8 @@ public class ApiPermisoRegistro {
         registrarLectura("GET", "/notas/matricula/**", "NOTAS");
         registrar("GET", "/notas/reporte", "NOTAS", "IMPRIMIR_EXPORTAR");
 
-        registrarLectura("GET", "/publicaciones", "PUBLICACIONES");
-        registrarLectura("GET", "/publicaciones/**", "PUBLICACIONES");
-        registrar("POST", "/publicaciones", "PUBLICACIONES", "CREAR");
-        registrar("PUT", "/publicaciones/**", "PUBLICACIONES", "ACTUALIZAR");
-        registrar("DELETE", "/publicaciones/**", "PUBLICACIONES", "ELIMINAR");
-        registrar("POST", "/publicaciones/**/imagen", "PUBLICACIONES", "ACTUALIZAR");
-        registrar("DELETE", "/publicaciones/**/imagen", "PUBLICACIONES", "ACTUALIZAR");
-
-        registrarLectura("GET", "/eventos", "EVENTOS");
-        registrarLectura("GET", "/eventos/**", "EVENTOS");
-        registrar("POST", "/eventos", "EVENTOS", "CREAR");
-        registrar("PUT", "/eventos/**", "EVENTOS", "ACTUALIZAR");
-        registrar("DELETE", "/eventos/**", "EVENTOS", "ELIMINAR");
-        registrar("POST", "/eventos/**/imagen", "EVENTOS", "ACTUALIZAR");
-        registrar("DELETE", "/eventos/**/imagen", "EVENTOS", "ACTUALIZAR");
-
-        registrarLectura("GET", "/galerias", "GALERIAS");
-        registrarLectura("GET", "/galerias/**", "GALERIAS");
-        registrar("POST", "/galerias", "GALERIAS", "CREAR");
-        registrar("PUT", "/galerias/**", "GALERIAS", "ACTUALIZAR");
-        registrar("DELETE", "/galerias/**", "GALERIAS", "ELIMINAR");
-        registrar("POST", "/galerias/**/fotos", "GALERIAS", "ACTUALIZAR");
-        registrar("DELETE", "/galerias/fotos/**", "GALERIAS", "ACTUALIZAR");
-
-        registrarLectura("GET", "/contactos", "CONTACTOS");
-        registrarLectura("GET", "/contactos/**", "CONTACTOS");
-        registrar("PUT", "/contactos/**", "CONTACTOS", "ACTUALIZAR");
-
-        registrarLectura("GET", "/ajustes", "AJUSTES");
-        registrarLectura("GET", "/ajustes/**", "AJUSTES");
-        registrar("POST", "/ajustes", "AJUSTES", "CREAR");
-        registrar("PUT", "/ajustes/**", "AJUSTES", "ACTUALIZAR");
-        registrar("DELETE", "/ajustes/**", "AJUSTES", "ELIMINAR");
+        // Portal del apoderado: el servicio limita cada consulta a sus hijos.
+        registrarLectura("GET", "/portal-apoderado/**", "PORTAL_APODERADO");
 
         registrarLectura("GET", "/colegios", "COLEGIOS");
         registrarLectura("GET", "/colegios/**", "COLEGIOS");

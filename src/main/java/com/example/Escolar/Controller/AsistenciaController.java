@@ -113,12 +113,6 @@ public class AsistenciaController {
         return asistenciaService.estadisticas(rango, fecha, idAnio, usuario(), roles());
     }
 
-    /** Para el portal del apoderado. */
-    @GetMapping("/hijos")
-    public List<ResumenMensualResponse> asistenciasDeHijos() {
-        return asistenciaService.asistenciasDeHijos(usuario(), roles());
-    }
-
     @GetMapping("/estados")
     public List<EstadoAsistenciaResponse> listarEstados() {
         return asistenciaService.listarEstados();

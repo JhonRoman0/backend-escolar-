@@ -26,7 +26,6 @@ public class SecurityConfig {
             "/auth/forgot-password",
             "/auth/verify-reset-code",
             "/auth/reset-password",
-            "/portal/**",
             "/swagger-ui.html",
             "/swagger-ui/**",
             "/v3/api-docs/**");
@@ -35,6 +34,8 @@ public class SecurityConfig {
             "/auth/me",
             "/auth/change-password",
             "/auth/permisos",
+            // Datos del colegio (nombre, logo) para los PDF de cualquier módulo.
+            "/colegios/actual",
             "/consulta/dni/**");
 
     private final JwtAuthFilter jwtAuthFilter;

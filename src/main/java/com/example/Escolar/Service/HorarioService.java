@@ -182,6 +182,13 @@ public class HorarioService {
         return horarios.stream().map(this::toPlanoResponse).toList();
     }
 
+    /** Horario de una sección en un año; quien llama ya verificó el acceso (portal del apoderado). */
+    public List<HorarioPlanoResponse> planoDeSeccion(Integer idAnio, Integer idGradoSeccion) {
+        return horarioClaseRepository
+                .findPlanosPorGradoSeccionYAnio(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow(), idAnio, idGradoSeccion)
+                .stream().map(this::toPlanoResponse).toList();
+    }
+
     private Integer resolverAnio(Integer idAnioParam) {
         if (idAnioParam != null) {
             return idAnioParam;

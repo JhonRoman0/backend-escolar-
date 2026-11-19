@@ -57,14 +57,37 @@ public class EvaluacionService {
 
     @Transactional(readOnly = true)
     public List<EvaluacionResponse.Curso> cursos(Integer idAnio, Integer idUsuario, List<String> roles) {
-        return asignacionesVisibles(idUsuario, roles).stream()
+        List<Asignacion> delAnio = asignacionesVisibles(idUsuario, roles).stream()
                 .filter(a -> a.getAnioEscolar().getIdAnio().equals(idAnio))
+                .toList();
+        // Lo que comparten las filas se calcula una vez: configuración por nivel,
+        // competencias por curso, feriados del año y los días de clase en una consulta.
+        Memo memo = new Memo(new HashMap<>(), new HashMap<>(), new HashMap<>(), diasClase(delAnio));
+        return delAnio.stream()
                 .sorted(Comparator.comparing((Asignacion a) -> orden(a.getGradoSeccion().getGrado().getNivel().getOrden()))
                         .thenComparing(a -> orden(a.getGradoSeccion().getGrado().getOrden()))
                         .thenComparing(a -> MatriculaService.gradoYSeccion(a.getGradoSeccion()))
                         .thenComparing(a -> a.getCurso().getNombre()))
-                .map(this::aCurso)
+                .map(a -> aCurso(a, memo))
                 .toList();
+    }
+
+    private record Memo(Map<String, ConfiguracionAcademicaResponse> configs,
+                        Map<Integer, List<Competencia>> competencias,
+                        Map<Integer, List<LocalDate>> feriados,
+                        Map<Integer, List<Integer>> dias) {
+    }
+
+    /** Días de clase de varias asignaciones con una sola consulta. */
+    private Map<Integer, List<Integer>> diasClase(List<Asignacion> asignaciones) {
+        if (asignaciones.isEmpty()) {
+            return Map.of();
+        }
+        return horarioRepository.findByAsignacionIdAsignacionInAndAccesoNot(
+                        asignaciones.stream().map(Asignacion::getIdAsignacion).toList(), eliminado()).stream()
+                .collect(Collectors.groupingBy(h -> h.getAsignacion().getIdAsignacion(),
+                        Collectors.collectingAndThen(Collectors.toList(), hs -> hs.stream()
+                                .map(h -> (int) h.getDiaSemana()).distinct().sorted().toList())));
     }
 
     @Transactional(readOnly = true)
@@ -472,9 +495,10 @@ public class EvaluacionService {
                 asignacion.getGradoSeccion().getGrado().getNivel().getIdNivel());
     }
 
-    private EvaluacionResponse.Curso aCurso(Asignacion a) {
+    private EvaluacionResponse.Curso aCurso(Asignacion a, Memo memo) {
         GradoSeccion gs = a.getGradoSeccion();
-        ConfiguracionAcademicaResponse config = configuracion(a);
+        ConfiguracionAcademicaResponse config = memo.configs().computeIfAbsent(
+                a.getAnioEscolar().getIdAnio() + "-" + gs.getGrado().getNivel().getIdNivel(), k -> configuracion(a));
         Curso curso = a.getCurso();
         return new EvaluacionResponse.Curso(a.getIdAsignacion(), curso.getNombre(),
                 curso.getCursoPadre() != null ? curso.getCursoPadre().getNombre() : null,
@@ -483,9 +507,11 @@ public class EvaluacionService {
                 a.getDocente().getUsuario().getNombre() + " " + a.getDocente().getUsuario().getApellidoPat(),
                 a.getAnioEscolar().getIdAnio(), a.getAnioEscolar().getEstado() == AnioEscolarService.ESTADO_VIGENTE,
                 config.getEscala(), config.getTipoPeriodo(), config.getPeriodos(),
-                competenciasDe(curso).stream().map(EvaluacionService::aCompetencia).toList(),
-                diasClase(a),
-                feriadosDe(a.getAnioEscolar()).stream().map(DiaFeriado::getFecha).sorted().toList());
+                memo.competencias().computeIfAbsent(curso.getIdCurso(), k -> competenciasDe(curso)).stream()
+                        .map(EvaluacionService::aCompetencia).toList(),
+                memo.dias().getOrDefault(a.getIdAsignacion(), List.of()),
+                memo.feriados().computeIfAbsent(a.getAnioEscolar().getIdAnio(), k -> feriadosDe(a.getAnioEscolar()).stream()
+                        .map(DiaFeriado::getFecha).sorted().toList()));
     }
 
     private Map<Integer, Long> contarNotasActuales(List<NotaEvaluacion> notas, Set<Integer> actuales) {

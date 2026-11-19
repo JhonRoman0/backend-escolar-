@@ -22,11 +22,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.text.Normalizer;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
+import java.util.function.Predicate;
 
 @Service
 @RequiredArgsConstructor
@@ -41,32 +45,44 @@ public class AlumnoService {
     private final AccesoRepository accesoRepository;
 
     public Page<AlumnoResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles,
-                                        Integer idNivel, Integer idGrado, Integer idSeccion,
-                                        Integer idTurno, Integer idGradoSeccion, Integer idAnio) {
-        boolean filtrando = idNivel != null || idGrado != null || idSeccion != null || idTurno != null || idGradoSeccion != null || idAnio != null;
+                                         Integer idNivel, Integer idGrado, Integer idSeccion,
+                                         Integer idTurno, Integer idGradoSeccion, Integer idAnio,
+                                         String search) {
+        String buscado = normalizarBusqueda(search);
+        List<String> tokens = buscado.isEmpty() ? List.of() : Arrays.asList(buscado.split("\\s+"));
         Set<Integer> visibles = idsAlumnosVisibles(idUsuario, roles);
         boolean esGestion = visibles == null;
+        Predicate<Matricula> contexto = contextoAcademico(idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio);
+
+        if (!tokens.isEmpty()) {
+            if (!esGestion && visibles.isEmpty()) {
+                return new PageImpl<>(List.of(), pageable, 0);
+            }
+            Page<Alumno> page = alumnoRepository.buscar(
+                    tokens,
+                    AccesoConstants.ACTIVO,
+                    AccesoConstants.ELIMINADO,
+                    idNivel,
+                    idGrado,
+                    idSeccion,
+                    idTurno,
+                    idGradoSeccion,
+                    idAnio,
+                    esGestion ? null : visibles,
+                    pageable);
+            List<AlumnoResponse> respuestas = toResponseEnriquecidoBatch(page.getContent(), contexto);
+            return new PageImpl<>(respuestas, pageable, page.getTotalElements());
+        }
+
+        boolean filtrando = idNivel != null || idGrado != null || idSeccion != null || idTurno != null || idGradoSeccion != null || idAnio != null;
 
         if (filtrando) {
-            // La matrícula activa que enriquece la respuesta debe cumplir el mismo contexto que la consulta.
-            java.util.function.Predicate<Matricula> contexto = m -> {
-                var gs = m.getGradoSeccion();
-                // No depende del apoderado: una matrícula antigua sigue apuntando a quien la hizo.
-                return !AccesoConstants.ELIMINADO.equals(gs.getAcceso().getIdAcceso())
-                        && (idAnio == null || idAnio.equals(gs.getAnioEscolar().getIdAnio()))
-                        && (idNivel == null || idNivel.equals(gs.getGrado().getNivel().getIdNivel()))
-                        && (idGrado == null || idGrado.equals(gs.getGrado().getIdGrado()))
-                        && (idSeccion == null || (gs.getSeccion() != null && idSeccion.equals(gs.getSeccion().getIdSeccion())))
-                        && (idTurno == null || idTurno.equals(gs.getTurno().getIdTurno()))
-                        && (idGradoSeccion == null || idGradoSeccion.equals(gs.getIdGradoSeccion()));
-            };
             if (esGestion) {
                 Page<Alumno> page = alumnoRepository.findFiltrados(
                         AccesoConstants.ACTIVO, AccesoConstants.ELIMINADO,
                         idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio, pageable);
                 return new PageImpl<>(toResponseEnriquecidoBatch(page.getContent(), contexto), pageable, page.getTotalElements());
             } else {
-                // Docente/Apoderado: filtra en BD, luego por visibilidad y paginación en memoria
                 List<Alumno> filtrados = alumnoRepository.findFiltradosList(
                         AccesoConstants.ACTIVO, AccesoConstants.ELIMINADO,
                         idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio);
@@ -79,10 +95,8 @@ public class AlumnoService {
             }
         }
 
-        // Sin filtros académicos: listado clásico + enriquecimiento batch, con paginación corregida
         if (esGestion) {
             Page<Alumno> page = alumnoRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow(), pageable);
-            // Enriquecimiento batch de la página
             List<AlumnoResponse> respuestas = toResponseEnriquecidoBatch(page.getContent());
             return new PageImpl<>(respuestas, pageable, page.getTotalElements());
         } else {
@@ -94,9 +108,38 @@ public class AlumnoService {
         }
     }
 
-    // Compatibilidad: firma antigua sin filtros
     public Page<AlumnoResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles) {
-        return getAll(pageable, idUsuario, roles, null, null, null, null, null, null);
+        return getAll(pageable, idUsuario, roles, null, null, null, null, null, null, null);
+    }
+
+    public Page<AlumnoResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles,
+                                       Integer idNivel, Integer idGrado, Integer idSeccion,
+                                       Integer idTurno, Integer idGradoSeccion, Integer idAnio) {
+        return getAll(pageable, idUsuario, roles, idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio, null);
+    }
+
+    private Predicate<Matricula> contextoAcademico(Integer idNivel, Integer idGrado, Integer idSeccion,
+                                                    Integer idTurno, Integer idGradoSeccion, Integer idAnio) {
+        return m -> {
+            var gs = m.getGradoSeccion();
+            return !AccesoConstants.ELIMINADO.equals(gs.getAcceso().getIdAcceso())
+                    && (idAnio == null || idAnio.equals(gs.getAnioEscolar().getIdAnio()))
+                    && (idNivel == null || idNivel.equals(gs.getGrado().getNivel().getIdNivel()))
+                    && (idGrado == null || idGrado.equals(gs.getGrado().getIdGrado()))
+                    && (idSeccion == null || (gs.getSeccion() != null && idSeccion.equals(gs.getSeccion().getIdSeccion())))
+                    && (idTurno == null || idTurno.equals(gs.getTurno().getIdTurno()))
+                    && (idGradoSeccion == null || idGradoSeccion.equals(gs.getIdGradoSeccion()));
+        };
+    }
+
+    private static String normalizarBusqueda(String texto) {
+        if (texto == null) {
+            return "";
+        }
+        return Normalizer.normalize(texto, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toLowerCase(Locale.ROOT)
+                .trim();
     }
 
     private Page<AlumnoResponse> paginarEnMemoria(List<Alumno> lista, Pageable pageable) {

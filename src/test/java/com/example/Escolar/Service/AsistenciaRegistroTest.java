@@ -112,7 +112,11 @@ class AsistenciaRegistroTest {
         when(justificacionRepository.findByIdJustificacionAndAccesoNot(4, eliminado)).thenReturn(Optional.of(cita));
         when(asistenciaAlumnoRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(anioEscolarRepository.findByEstadoAndAccesoNot(AnioEscolarService.ESTADO_VIGENTE, eliminado)).thenReturn(Optional.of(anio));
-        when(matriculaRepository.findByGradoSeccionAnioEscolarIdAnioAndAccesoNot(1, eliminado)).thenReturn(List.of(matricula));
+        // Los listados leen las matrículas del año en columnas sueltas, y sus secciones aparte.
+        List<Object[]> filas = new java.util.ArrayList<>();
+        filas.add(new Object[]{5, AccesoConstants.ACTIVO, 30, 9, "ANA", "PEREZ", "RUIZ", "A2026001", "71234567", null});
+        when(matriculaRepository.ligerasDelAnio(1, eliminado)).thenReturn(filas);
+        when(matriculaRepository.seccionesConMatriculas(1, eliminado)).thenReturn(List.of(gs));
     }
 
     private static EstadoAsistencia estado(String nombre) {

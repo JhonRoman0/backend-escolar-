@@ -60,7 +60,9 @@ public class NotaFinalService {
 
     @Transactional(readOnly = true)
     public List<NotaFinalResponse.Curso> cursos(Integer idAnio, Integer idUsuario, List<String> roles) {
-        return alcances(idAnio, idUsuario, roles).stream().map(this::aCurso).toList();
+        // La configuración es la misma para todo el nivel: se calcula una vez por nivel.
+        Map<String, ConfiguracionAcademicaResponse> configs = new HashMap<>();
+        return alcances(idAnio, idUsuario, roles).stream().map(a -> aCurso(a, configs)).toList();
     }
 
     @Transactional(readOnly = true)
@@ -354,19 +356,26 @@ public class NotaFinalService {
                     .filter(a -> a.getAnioEscolar().getIdAnio().equals(idAnio))
                     .collect(Collectors.groupingBy(a -> a.getGradoSeccion().getIdGradoSeccion() + "-" + area(a.getCurso()).getIdCurso(),
                             LinkedHashMap::new, Collectors.toList()));
+            Map<Integer, List<Competencia>> competenciasPorCurso = new HashMap<>();
             porArea.values().forEach(asignaciones -> {
                 Set<Competencia> comp = new HashSet<>();
-                asignaciones.forEach(a -> comp.addAll(competenciasDe(a.getCurso())));
+                asignaciones.forEach(a -> comp.addAll(competenciasPorCurso.computeIfAbsent(
+                        a.getCurso().getIdCurso(), k -> competenciasDe(a.getCurso()))));
                 Asignacion primera = asignaciones.get(0);
                 lista.add(new Alcance(primera.getGradoSeccion(), area(primera.getCurso()), ordenar(comp)));
             });
         } else {
+            // Las áreas y sus competencias son las mismas para todas las secciones del nivel.
+            Map<Integer, List<Curso>> areasPorNivel = new HashMap<>();
+            Map<Integer, List<Competencia>> competenciasPorArea = new HashMap<>();
             for (GradoSeccion gs : gradoSeccionRepository.findByAnioEscolarIdAnioAndAccesoNot(idAnio, eliminado)) {
-                cursoRepository.findByAnioEscolarIdAnioAndNivelIdNivelAndAccesoNot(idAnio,
-                                gs.getGrado().getNivel().getIdNivel(), eliminado).stream()
-                        .filter(c -> c.getTipo() != TipoCurso.SUBCURSO)
-                        .filter(c -> AccesoConstants.ACTIVO.equals(c.getAcceso().getIdAcceso()))
-                        .forEach(area -> lista.add(new Alcance(gs, area, competenciasDe(area))));
+                areasPorNivel.computeIfAbsent(gs.getGrado().getNivel().getIdNivel(), idNivel ->
+                                cursoRepository.findByAnioEscolarIdAnioAndNivelIdNivelAndAccesoNot(idAnio, idNivel, eliminado).stream()
+                                        .filter(c -> c.getTipo() != TipoCurso.SUBCURSO)
+                                        .filter(c -> AccesoConstants.ACTIVO.equals(c.getAcceso().getIdAcceso()))
+                                        .toList())
+                        .forEach(area -> lista.add(new Alcance(gs, area,
+                                competenciasPorArea.computeIfAbsent(area.getIdCurso(), k -> competenciasDe(area)))));
             }
         }
         return lista.stream()
@@ -588,8 +597,13 @@ public class NotaFinalService {
     }
 
     NotaFinalResponse.Curso aCurso(Alcance a) {
+        return aCurso(a, new HashMap<>());
+    }
+
+    private NotaFinalResponse.Curso aCurso(Alcance a, Map<String, ConfiguracionAcademicaResponse> configs) {
         GradoSeccion gs = a.gradoSeccion();
-        ConfiguracionAcademicaResponse config = configuracion(gs);
+        ConfiguracionAcademicaResponse config = configs.computeIfAbsent(
+                gs.getAnioEscolar().getIdAnio() + "-" + gs.getGrado().getNivel().getIdNivel(), k -> configuracion(gs));
         return new NotaFinalResponse.Curso(gs.getIdGradoSeccion(), a.area().getIdCurso(), a.area().getNombre(),
                 a.area().getTipo() == TipoCurso.TRANSVERSAL, gs.getGrado().getNivel().getNombre(), gs.getGrado().getNombre(),
                 gs.getSeccion() != null ? gs.getSeccion().getNombre() : null, gs.getTurno().getNombre(),

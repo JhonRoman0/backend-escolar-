@@ -4,6 +4,7 @@ import com.example.Escolar.Dto.AsistenciaDiaResponse;
 import com.example.Escolar.Dto.AsistenciaRequest;
 import com.example.Escolar.Dto.AsistenciaResponse;
 import com.example.Escolar.Dto.EstadisticasResponse;
+import com.example.Escolar.Dto.MarcaAsistencia;
 import com.example.Escolar.Dto.PortalApoderadoDtos;
 import com.example.Escolar.Dto.EstadoAsistenciaResponse;
 import com.example.Escolar.Dto.JustificarRequest;
@@ -245,20 +246,20 @@ public class AsistenciaService {
     public Page<AsistenciaDiaResponse> asistenciasHoy(Integer idUsuario, List<String> roles, Filtro filtro, Pageable pageable) {
         LocalDate hoy = LocalDate.now();
         List<Matricula> matriculas = matriculasVisibles(idUsuario, roles, filtro);
-        Map<Integer, AsistenciaAlumno> marcas = marcasPorMatricula(matriculas, hoy, hoy).entrySet().stream()
+        Map<Integer, MarcaAsistencia> marcas = marcasPorMatricula(matriculas, hoy, hoy).entrySet().stream()
                 .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().get(0)));
         Map<Integer, Set<LocalDate>> dias = new HashMap<>();
         List<AsistenciaDiaResponse> contenido = matriculas.stream().map(m -> {
             AsistenciaDiaResponse row = filaDia(m);
-            AsistenciaAlumno a = marcas.get(m.getIdMatricula());
+            MarcaAsistencia a = marcas.get(m.getIdMatricula());
             if (a != null) {
-                row.setIdAsistencia(a.getIdAsistencia());
-                row.setEstado(a.getEstado().getNombre());
-                row.setHoraEntrada(a.getHoraEntrada());
-                row.setMarcadoPor(marcadoPor(a));
-                row.setJustificacion(a.getJustificacion() != null ? a.getJustificacion().getMotivo() : null);
-                row.setAcompanante(a.getAcompanante());
-                row.setUrlEvidencia(a.getUrlEvidencia());
+                row.setIdAsistencia(a.idAsistencia());
+                row.setEstado(a.estado());
+                row.setHoraEntrada(a.horaEntrada());
+                row.setMarcadoPor(a.registradoPor());
+                row.setJustificacion(a.justificacion());
+                row.setAcompanante(a.acompanante());
+                row.setUrlEvidencia(a.urlEvidencia());
             } else {
                 row.setEstado(estadoSinMarca(m, hoy, diasDe(m, hoy, hoy, dias)));
             }
@@ -274,7 +275,7 @@ public class AsistenciaService {
         LocalDate lunes = fecha.with(DayOfWeek.MONDAY);
         LocalDate viernes = lunes.plusDays(4);
         List<Matricula> matriculas = matriculasVisibles(idUsuario, roles, filtro);
-        Map<Integer, List<AsistenciaAlumno>> marcas = marcasPorMatricula(matriculas, lunes, viernes);
+        Map<Integer, List<MarcaAsistencia>> marcas = marcasPorMatricula(matriculas, lunes, viernes);
         Map<Integer, Set<LocalDate>> dias = new HashMap<>();
         List<MatrizSemanalResponse> contenido = matriculas.stream().map(m -> {
             Alumno alumno = alumnoDe(m);
@@ -287,7 +288,7 @@ public class AsistenciaService {
             completarAcademico(gs, row::setIdGradoSeccion, row::setIdTurno, row::setTurno, row::setIdAnio, row::setAnio,
                     row::setIdGrado, row::setIdNivel, row::setNivel, row::setIdSeccion);
             Map<LocalDate, String> delAlumno = marcas.getOrDefault(m.getIdMatricula(), List.of()).stream()
-                    .collect(Collectors.toMap(AsistenciaAlumno::getFecha, a -> a.getEstado().getNombre(), (x, y) -> x));
+                    .collect(Collectors.toMap(MarcaAsistencia::fecha, MarcaAsistencia::estado, (x, y) -> x));
             Set<LocalDate> deClase = diasDe(m, lunes, viernes, dias);
             List<String> estados = new ArrayList<>();
             for (int i = 0; i < 5; i++) {
@@ -306,7 +307,7 @@ public class AsistenciaService {
         LocalDate inicio = fecha.withDayOfMonth(1);
         LocalDate fin = fecha.withDayOfMonth(fecha.lengthOfMonth());
         List<Matricula> matriculas = matriculasVisibles(idUsuario, roles, filtro);
-        Map<Integer, List<AsistenciaAlumno>> marcas = marcasPorMatricula(matriculas, inicio, fin);
+        Map<Integer, List<MarcaAsistencia>> marcas = marcasPorMatricula(matriculas, inicio, fin);
         Map<Integer, Set<LocalDate>> dias = new HashMap<>();
         List<ResumenMensualResponse> contenido = matriculas.stream()
                 .map(m -> resumenDeMatricula(m, inicio, fin, marcas.getOrDefault(m.getIdMatricula(), List.of()), dias))
@@ -350,11 +351,11 @@ public class AsistenciaService {
             fin = fecha.withDayOfMonth(fecha.lengthOfMonth());
         }
         List<Matricula> matriculas = matriculasVisibles(idUsuario, roles, Filtro.delAnio(idAnio));
-        Map<Integer, List<AsistenciaAlumno>> marcas = marcasPorMatricula(matriculas, inicio, fin);
+        Map<Integer, List<MarcaAsistencia>> marcas = marcasPorMatricula(matriculas, inicio, fin);
         Map<Integer, Set<LocalDate>> dias = new HashMap<>();
         long esperados = 0;
         long pendientes = 0;
-        List<AsistenciaAlumno> registros = new ArrayList<>();
+        List<MarcaAsistencia> registros = new ArrayList<>();
         for (Matricula m : matriculas) {
             Cuenta c = contar(m, inicio, fin, marcas.getOrDefault(m.getIdMatricula(), List.of()), dias);
             esperados += c.esperados();
@@ -388,12 +389,12 @@ public class AsistenciaService {
         LocalDate hasta = fin != null ? fin : LocalDate.now();
         List<Matricula> matriculas = matriculasVisibles(idUsuario, roles,
                 new Filtro(idAnio, idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, null, null));
-        Map<Integer, List<AsistenciaAlumno>> marcas = marcasPorMatricula(matriculas, desde, hasta);
+        Map<Integer, List<MarcaAsistencia>> marcas = marcasPorMatricula(matriculas, desde, hasta);
         Map<Integer, Set<LocalDate>> dias = new HashMap<>();
         List<ReporteGeneralResponse> contenido = new ArrayList<>();
         for (Matricula m : matriculas) {
             Cuenta c = contar(m, desde, hasta, marcas.getOrDefault(m.getIdMatricula(), List.of()), dias);
-            c.registros().forEach(a -> contenido.add(filaReporte(m, a.getFecha(), a)));
+            c.registros().forEach(a -> contenido.add(filaReporte(m, a.fecha(), a)));
             // Los días de clase ya vencidos sin marca son faltas.
             c.faltas().forEach(dia -> contenido.add(filaReporte(m, dia, null)));
         }
@@ -456,10 +457,10 @@ public class AsistenciaService {
     // ======================== REGLAS ========================
 
     /** Esperados (días de clase ya vencidos), registros en ellos, faltas y pendiente de hoy. */
-    record Cuenta(long esperados, long pendientes, List<AsistenciaAlumno> registros, List<LocalDate> faltas) {
+    record Cuenta(long esperados, long pendientes, List<MarcaAsistencia> registros, List<LocalDate> faltas) {
     }
 
-    private Cuenta contar(Matricula m, LocalDate inicio, LocalDate fin, List<AsistenciaAlumno> marcas,
+    private Cuenta contar(Matricula m, LocalDate inicio, LocalDate fin, List<MarcaAsistencia> marcas,
                           Map<Integer, Set<LocalDate>> cache) {
         LocalDate hoy = LocalDate.now();
         LocalDate hasta = fin.isAfter(hoy) ? hoy : fin;
@@ -467,9 +468,9 @@ public class AsistenciaService {
             return new Cuenta(0, 0, List.of(), List.of());
         }
         Set<LocalDate> deClase = diasDe(m, inicio, hasta, cache);
-        Map<LocalDate, AsistenciaAlumno> porDia = marcas.stream()
-                .filter(a -> deClase.contains(a.getFecha()))
-                .collect(Collectors.toMap(AsistenciaAlumno::getFecha, Function.identity(), (x, y) -> x));
+        Map<LocalDate, MarcaAsistencia> porDia = marcas.stream()
+                .filter(a -> deClase.contains(a.fecha()))
+                .collect(Collectors.toMap(MarcaAsistencia::fecha, Function.identity(), (x, y) -> x));
         long esperados = 0;
         long pendientes = 0;
         List<LocalDate> faltas = new ArrayList<>();
@@ -581,14 +582,42 @@ public class AsistenciaService {
         };
     }
 
+    /**
+     * Matrículas del año armadas solo para leer en los listados: alumno con sus datos
+     * básicos y la sección (compartida). Cargar las entidades completas arrastraba
+     * ~20 tablas por matrícula. No se guardan: son de solo lectura.
+     */
+    private List<Matricula> delAnioParaListar(Integer idAnio) {
+        Map<Integer, GradoSeccion> secciones = matriculaRepository.seccionesConMatriculas(idAnio, eliminado()).stream()
+                .collect(Collectors.toMap(GradoSeccion::getIdGradoSeccion, Function.identity(), (x, y) -> x));
+        return matriculaRepository.ligerasDelAnio(idAnio, eliminado()).stream().map(f -> {
+            Alumno alumno = new Alumno();
+            alumno.setIdAlumno((Integer) f[3]);
+            alumno.setNombre((String) f[4]);
+            alumno.setApellidoPat((String) f[5]);
+            alumno.setApellidoMat((String) f[6]);
+            alumno.setCodigo((String) f[7]);
+            alumno.setDocumentoIdentidad((String) f[8]);
+            alumno.setUrlFoto((String) f[9]);
+            AlumnoApoderado vinculo = new AlumnoApoderado();
+            vinculo.setAlumno(alumno);
+            Matricula m = new Matricula();
+            m.setIdMatricula((Integer) f[0]);
+            m.setAcceso(acceso((Long) f[1]));
+            m.setGradoSeccion(secciones.get((Integer) f[2]));
+            m.setAlumnoApoderado(vinculo);
+            return m;
+        }).toList();
+    }
+
     /** Matrículas activas del año (el vigente si no se elige) que el usuario puede ver, con los filtros. */
     private List<Matricula> matriculasVisibles(Integer idUsuario, List<String> roles, Filtro filtro) {
         Optional<AnioEscolar> anio = resolverAnio(filtro.idAnio());
         if (anio.isEmpty()) {
             return List.of();
         }
-        List<Matricula> delAnio = matriculaRepository.findByGradoSeccionAnioEscolarIdAnioAndAccesoNot(anio.get().getIdAnio(), eliminado())
-                .stream().filter(m -> AccesoConstants.ACTIVO.equals(m.getAcceso().getIdAcceso())).toList();
+        List<Matricula> delAnio = delAnioParaListar(anio.get().getIdAnio()).stream()
+                .filter(m -> AccesoConstants.ACTIVO.equals(m.getAcceso().getIdAcceso())).toList();
         List<Matricula> porRol = switch (alcanceLectura(idUsuario, roles)) {
             case TODO -> delAnio;
             case DOCENTE -> {
@@ -646,13 +675,13 @@ public class AsistenciaService {
         return asistenciaAlumnoRepository.findByMatriculaIdMatriculaAndFechaAndAccesoNot(m.getIdMatricula(), dia, eliminado());
     }
 
-    private Map<Integer, List<AsistenciaAlumno>> marcasPorMatricula(List<Matricula> matriculas, LocalDate inicio, LocalDate fin) {
+    private Map<Integer, List<MarcaAsistencia>> marcasPorMatricula(List<Matricula> matriculas, LocalDate inicio, LocalDate fin) {
         if (matriculas.isEmpty()) {
             return Map.of();
         }
-        return asistenciaAlumnoRepository.findByMatriculaIdMatriculaInAndFechaBetweenAndAccesoNot(
+        return asistenciaAlumnoRepository.marcas(
                         matriculas.stream().map(Matricula::getIdMatricula).toList(), inicio, fin, eliminado()).stream()
-                .collect(Collectors.groupingBy(a -> a.getMatricula().getIdMatricula()));
+                .collect(Collectors.groupingBy(MarcaAsistencia::idMatricula));
     }
 
     /** Días de clase del nivel de la matrícula, calculados una vez por nivel en cada consulta. */
@@ -663,7 +692,7 @@ public class AsistenciaService {
     }
 
     private ResumenMensualResponse resumenDeMatricula(Matricula matricula, LocalDate inicio, LocalDate fin,
-                                                      List<AsistenciaAlumno> marcas, Map<Integer, Set<LocalDate>> cache) {
+                                                      List<MarcaAsistencia> marcas, Map<Integer, Set<LocalDate>> cache) {
         Alumno alumno = alumnoDe(matricula);
         GradoSeccion gs = matricula.getGradoSeccion();
         Cuenta c = contar(matricula, inicio, fin, marcas, cache);
@@ -697,18 +726,18 @@ public class AsistenciaService {
         return row;
     }
 
-    private ReporteGeneralResponse filaReporte(Matricula m, LocalDate fecha, AsistenciaAlumno a) {
+    private ReporteGeneralResponse filaReporte(Matricula m, LocalDate fecha, MarcaAsistencia a) {
         Alumno alumno = alumnoDe(m);
         GradoSeccion gs = m.getGradoSeccion();
         ReporteGeneralResponse r = new ReporteGeneralResponse();
         r.setFecha(fecha);
-        r.setHoraEntrada(a != null ? a.getHoraEntrada() : null);
+        r.setHoraEntrada(a != null ? a.horaEntrada() : null);
         r.setCodigo(alumno.getCodigo());
         r.setAlumno(nombreCompleto(alumno));
         r.setGradoSeccion(gs.getGrado().getNombre() + " - " + nombreSeccion(gs));
-        r.setEstado(a != null ? a.getEstado().getNombre() : ESTADO_INASISTENCIA);
-        r.setJustificacion(a != null && a.getJustificacion() != null ? a.getJustificacion().getMotivo() : "-");
-        r.setRegistradoPor(a != null ? marcadoPor(a) : "-");
+        r.setEstado(a != null ? a.estado() : ESTADO_INASISTENCIA);
+        r.setJustificacion(a != null && a.justificacion() != null ? a.justificacion() : "-");
+        r.setRegistradoPor(a != null ? a.registradoPor() : "-");
         r.setGrado(gs.getGrado().getNombre());
         if (gs.getSeccion() != null) {
             r.setSeccion(gs.getSeccion().getNombre());
@@ -838,8 +867,8 @@ public class AsistenciaService {
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con id " + idUsuario));
     }
 
-    private static long contarEstado(List<AsistenciaAlumno> registros, String estado) {
-        return registros.stream().filter(a -> estado.equals(a.getEstado().getNombre())).count();
+    private static long contarEstado(List<MarcaAsistencia> registros, String estado) {
+        return registros.stream().filter(a -> estado.equals(a.estado())).count();
     }
 
     private static <T> Page<T> paginar(List<T> contenido, Pageable pageable) {

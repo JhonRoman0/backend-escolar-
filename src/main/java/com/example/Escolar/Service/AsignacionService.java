@@ -37,6 +37,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
 
@@ -63,12 +64,28 @@ public class AsignacionService {
     private final RecreoRepository recreoRepository;
     private final ConfiguracionAcademicaService configuracionAcademicaService;
 
+    // En una transacción, los horarios reutilizan las asignaciones ya cargadas.
+    @Transactional(readOnly = true)
     public List<AsignacionResponse> getAll(Integer idUsuario, List<String> roles) {
         Predicate<Asignacion> visible = visibles(idUsuario, roles);
-        return asignacionRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
+        List<Asignacion> asignaciones = asignacionRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
                 .filter(visible)
-                .map(this::toResponse)
                 .toList();
+        Map<Integer, List<HorarioClase>> horarios = horariosDe(asignaciones);
+        return asignaciones.stream()
+                .map(a -> toResponse(a, horarios.getOrDefault(a.getIdAsignacion(), List.of())))
+                .toList();
+    }
+
+    /** Horarios de varias asignaciones con una sola consulta (antes era una por fila). */
+    private Map<Integer, List<HorarioClase>> horariosDe(List<Asignacion> asignaciones) {
+        if (asignaciones.isEmpty()) {
+            return Map.of();
+        }
+        return horarioClaseRepository.findByAsignacionIdAsignacionInAndAccesoNot(
+                        asignaciones.stream().map(Asignacion::getIdAsignacion).toList(),
+                        accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
+                .collect(java.util.stream.Collectors.groupingBy(h -> h.getAsignacion().getIdAsignacion()));
     }
 
     public List<AsignacionResponse> getByDocente(Integer idDocente, Integer idUsuario, List<String> roles) {
@@ -408,6 +425,11 @@ public class AsignacionService {
     }
 
     private AsignacionResponse toResponse(Asignacion asignacion) {
+        return toResponse(asignacion, horarioClaseRepository.findByAsignacionIdAsignacionAndAccesoNot(
+                asignacion.getIdAsignacion(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()));
+    }
+
+    private AsignacionResponse toResponse(Asignacion asignacion, List<HorarioClase> horarios) {
         AsignacionResponse response = new AsignacionResponse();
         response.setIdAsignacion(asignacion.getIdAsignacion());
         response.setIdCurso(asignacion.getCurso().getIdCurso());
@@ -427,10 +449,7 @@ public class AsignacionService {
         response.setIdAnio(asignacion.getAnioEscolar().getIdAnio());
         response.setAnio(asignacion.getAnioEscolar().getAnio());
         response.setAccesoId(asignacion.getAcceso().getIdAcceso().longValue());
-        response.setHorarios(horarioClaseRepository
-                .findByAsignacionIdAsignacionAndAccesoNot(asignacion.getIdAsignacion(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
-                .map(this::toHorarioResponse)
-                .toList());
+        response.setHorarios(horarios.stream().map(this::toHorarioResponse).toList());
         return response;
     }
 

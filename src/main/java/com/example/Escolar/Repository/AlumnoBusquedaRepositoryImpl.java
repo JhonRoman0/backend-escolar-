@@ -1,6 +1,7 @@
 package com.example.Escolar.Repository;
 
 import com.example.Escolar.Model.Alumno;
+import com.example.Escolar.Util.TextoBusqueda;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.TypedQuery;
 import org.springframework.data.domain.Page;
@@ -17,8 +18,6 @@ public class AlumnoBusquedaRepositoryImpl implements AlumnoBusquedaRepository {
 
     private static final Set<String> SORT_PERMITIDOS = Set.of(
             "idAlumno", "nombre", "apellidoPat", "apellidoMat", "codigo", "fechaIngreso");
-
-    private static final String LIKE_ESCAPE = "!";
 
     private final EntityManager entityManager;
 
@@ -63,7 +62,7 @@ public class AlumnoBusquedaRepositoryImpl implements AlumnoBusquedaRepository {
             if (idAnio != null) condiciones.add("anio.idAnio = :idAnio");
         }
         if (idsVisibles != null) condiciones.add("a.idAlumno IN :visibles");
-        String escapeLike = " ESCAPE '" + LIKE_ESCAPE + "'";
+        String escapeLike = TextoBusqueda.ESCAPE_CLAUSE;
         for (int i = 0; i < tokens.size(); i++) {
             String parametro = ":t" + i + escapeLike;
             condiciones.add("(LOWER(a.nombre) LIKE " + parametro
@@ -131,15 +130,7 @@ public class AlumnoBusquedaRepositoryImpl implements AlumnoBusquedaRepository {
         }
         if (idsVisibles != null) consulta.setParameter("visibles", idsVisibles);
         for (int i = 0; i < tokens.size(); i++) {
-            consulta.setParameter("t" + i, patronLike(tokens.get(i)));
+            consulta.setParameter("t" + i, TextoBusqueda.patronLike(tokens.get(i)));
         }
-    }
-
-    private static String patronLike(String token) {
-        String escapado = token
-                .replace(LIKE_ESCAPE, LIKE_ESCAPE + LIKE_ESCAPE)
-                .replace("%", LIKE_ESCAPE + "%")
-                .replace("_", LIKE_ESCAPE + "_");
-        return "%" + escapado + "%";
     }
 }

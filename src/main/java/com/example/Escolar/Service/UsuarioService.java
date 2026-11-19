@@ -31,6 +31,7 @@ import com.example.Escolar.Repository.TipoContratoRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
 import com.example.Escolar.Service.EmailService.TipoEnvioCredenciales;
+import com.example.Escolar.Util.TextoBusqueda;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -77,9 +78,9 @@ public class UsuarioService {
     }
 
     public Page<UsuarioResponse> getAll(Pageable pageable, String q, Integer idRol, Long idAcceso) {
-        String patron = (q == null || q.isBlank()) ? null : "%" + q.trim().toLowerCase() + "%";
+        List<String> tokens = TextoBusqueda.tokens(q);
         return usuarioRepository
-                .buscarFiltrados(AccesoConstants.ELIMINADO, null, null, patron, idRol, idAcceso, pageable)
+                .buscar(AccesoConstants.ELIMINADO, null, null, tokens, idRol, idAcceso, pageable)
                 .map(this::toResponse);
     }
 
@@ -312,7 +313,7 @@ public class UsuarioService {
     @Transactional(readOnly = true)
     public List<UsuarioReporteResponse> reporte(LocalDate inicio, LocalDate fin, Integer idRol, Long idAcceso) {
         return usuarioRepository
-                .buscarFiltrados(AccesoConstants.ELIMINADO, inicio, fin, null, idRol, idAcceso, Pageable.unpaged())
+                .buscar(AccesoConstants.ELIMINADO, inicio, fin, List.of(), idRol, idAcceso, Pageable.unpaged())
                 .getContent().stream()
                 .sorted(Comparator.comparing(u -> u.getApellidoPat() + " " + u.getApellidoMat() + " " + u.getNombre(),
                         String.CASE_INSENSITIVE_ORDER))

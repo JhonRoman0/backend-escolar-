@@ -14,6 +14,7 @@ import com.example.Escolar.Repository.AlumnoApoderadoRepository;
 import com.example.Escolar.Repository.AlumnoRepository;
 import com.example.Escolar.Repository.MatriculaRepository;
 import com.example.Escolar.Service.AccesoContextoService.Alcance;
+import com.example.Escolar.Util.TextoBusqueda;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -22,13 +23,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.text.Normalizer;
-import java.time.LocalDate;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import java.util.function.Predicate;
 
@@ -48,8 +45,7 @@ public class AlumnoService {
                                          Integer idNivel, Integer idGrado, Integer idSeccion,
                                          Integer idTurno, Integer idGradoSeccion, Integer idAnio,
                                          String search) {
-        String buscado = normalizarBusqueda(search);
-        List<String> tokens = buscado.isEmpty() ? List.of() : Arrays.asList(buscado.split("\\s+"));
+        List<String> tokens = TextoBusqueda.tokens(search);
         Set<Integer> visibles = idsAlumnosVisibles(idUsuario, roles);
         boolean esGestion = visibles == null;
         Predicate<Matricula> contexto = contextoAcademico(idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio);
@@ -132,15 +128,6 @@ public class AlumnoService {
         };
     }
 
-    private static String normalizarBusqueda(String texto) {
-        if (texto == null) {
-            return "";
-        }
-        return Normalizer.normalize(texto, Normalizer.Form.NFD)
-                .replaceAll("\\p{M}", "")
-                .toLowerCase(Locale.ROOT)
-                .trim();
-    }
 
     private Page<AlumnoResponse> paginarEnMemoria(List<Alumno> lista, Pageable pageable) {
         int total = lista.size();

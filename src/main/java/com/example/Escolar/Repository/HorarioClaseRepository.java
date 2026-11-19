@@ -13,6 +13,8 @@ public interface HorarioClaseRepository extends JpaRepository<HorarioClase, Inte
 
     List<HorarioClase> findByAsignacionIdAsignacionAndAccesoNot(Integer idAsignacion, Acceso acceso);
 
+    List<HorarioClase> findByAsignacionIdAsignacionInAndAccesoNot(java.util.Collection<Integer> idsAsignacion, Acceso acceso);
+
     List<HorarioClase> findByAulaIdAulaAndAccesoNot(Integer idAula, Acceso acceso);
 
     long countByAulaIdAulaAndAccesoNot(Integer idAula, Acceso acceso);

@@ -10,7 +10,9 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 
 @Entity
-@Table(name = "asistenciaAlumno")
+// Las marcas siempre se buscan por matrícula y rango de fechas (día, semana, mes):
+// sin este índice se leían todas las del año de cada matrícula.
+@Table(name = "asistenciaAlumno", indexes = @Index(name = "idx_asistencia_matricula_fecha", columnList = "id_matricula, fecha"))
 
 @Getter
 @Setter

@@ -14,11 +14,16 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-/** Permisos activos del usuario (sumando todos sus roles) con las acciones concedidas en cada uno. */
+/**
+ * Permisos activos del usuario (sumando todos sus roles) con las acciones concedidas en cada uno.
+ * Una misma petición los consulta varias veces (autorización y alcance), así que se recuerdan
+ * unos segundos: un cambio en Accesos se aplica, como mucho, VIGENCIA_MS después.
+ */
 @Service
 @RequiredArgsConstructor
 public class ConcesionesService {
@@ -27,11 +32,36 @@ public class ConcesionesService {
     private final RolPermisoRepository rolPermisoRepository;
     private final RolPermisoAccionRepository rolPermisoAccionRepository;
 
+    static final long VIGENCIA_MS = 5_000;
+
+    private record Guardado(long hasta, Map<String, Set<String>> acciones) {
+    }
+
+    private final Map<Integer, Guardado> recientes = new ConcurrentHashMap<>();
+
     public Map<String, Set<String>> accionesPorPermiso(Integer idUsuario) {
-        Map<String, Set<String>> accionesPorPermiso = new HashMap<>();
         if (idUsuario == null) {
-            return accionesPorPermiso;
+            return new HashMap<>();
         }
+        long ahora = System.currentTimeMillis();
+        Guardado guardado = recientes.get(idUsuario);
+        if (guardado != null && guardado.hasta() > ahora) {
+            return copia(guardado.acciones());
+        }
+        Map<String, Set<String>> acciones = calcular(idUsuario);
+        recientes.put(idUsuario, new Guardado(ahora + VIGENCIA_MS, acciones));
+        return copia(acciones);
+    }
+
+    /** Copia: quien la recibe puede modificarla sin tocar lo guardado. */
+    private static Map<String, Set<String>> copia(Map<String, Set<String>> acciones) {
+        Map<String, Set<String>> c = new HashMap<>();
+        acciones.forEach((k, v) -> c.put(k, new HashSet<>(v)));
+        return c;
+    }
+
+    private Map<String, Set<String>> calcular(Integer idUsuario) {
+        Map<String, Set<String>> accionesPorPermiso = new HashMap<>();
         for (UsuarioRol usuarioRol : usuarioRolRepository.findByUsuarioIdUsuario(idUsuario)) {
             Rol rol = usuarioRol.getRol();
             if (rol.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO)) {

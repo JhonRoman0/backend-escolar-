@@ -507,8 +507,8 @@ public class GradoSeccionService {
             response.setIdAula(gs.getAula().getIdAula());
             response.setAula(gs.getAula().getNombre());
         }
-        response.setTieneMatriculas(!matriculaRepository
-                .findByGradoSeccionIdGradoSeccionAndAccesoNot(gs.getIdGradoSeccion(), accesoNoEliminado()).isEmpty());
+        response.setTieneMatriculas(matriculaRepository
+                .existsByGradoSeccionIdGradoSeccionAndAccesoNot(gs.getIdGradoSeccion(), accesoNoEliminado()));
         response.setTieneAsignaciones(asignacionRepository
                 .existsByGradoSeccionIdGradoSeccionAndAccesoNot(gs.getIdGradoSeccion(), accesoNoEliminado()));
         return response;

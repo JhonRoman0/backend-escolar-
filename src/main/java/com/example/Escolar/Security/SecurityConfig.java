@@ -1,5 +1,6 @@
 package com.example.Escolar.Security;
 
+import jakarta.servlet.DispatcherType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -36,6 +37,8 @@ public class SecurityConfig {
             "/auth/permisos",
             // Datos del colegio (nombre, logo) para los PDF de cualquier módulo.
             "/colegios/actual",
+            // Avisos en vivo de cambios (Server-Sent Events).
+            "/eventos",
             "/consulta/dni/**");
 
     private final JwtAuthFilter jwtAuthFilter;
@@ -56,6 +59,9 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // Los avisos en vivo siguen en un hilo asíncrono, y si el navegador se va
+                        // Tomcat hace una pasada de error: ambas son de una petición ya autorizada.
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(RUTAS_PUBLICAS.toArray(new String[0])).permitAll()
                         .requestMatchers(RUTAS_SOLO_AUTENTICADAS.toArray(new String[0])).authenticated()

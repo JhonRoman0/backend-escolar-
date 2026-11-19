@@ -1,5 +1,6 @@
 package com.example.Escolar.Repository;
 
+import com.example.Escolar.Model.GradoSeccion;
 import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.AlumnoApoderado;
 import com.example.Escolar.Model.Matricula;
@@ -40,6 +41,8 @@ public interface MatriculaRepository extends JpaRepository<Matricula, Integer> {
 
 
     List<Matricula> findByGradoSeccionIdGradoSeccionAndAccesoNot(Integer idGradoSeccion, Acceso acceso);
+
+    boolean existsByGradoSeccionIdGradoSeccionAndAccesoNot(Integer idGradoSeccion, Acceso acceso);
 
     long countByGradoSeccionIdGradoSeccionAndAccesoNot(Integer idGradoSeccion, Acceso acceso);
 
@@ -110,4 +113,19 @@ public interface MatriculaRepository extends JpaRepository<Matricula, Integer> {
             @Param("idGradoSeccion") Integer idGradoSeccion,
             @Param("idAnio") Integer idAnio,
             @Param("idAcceso") Long idAcceso);
+
+    /**
+     * Matrículas del año con solo lo que usan los listados de asistencia (sin cargar
+     * sus relaciones EAGER): id, estado, sección y datos del alumno.
+     */
+    @Query("select m.idMatricula, m.acceso.idAcceso, m.gradoSeccion.idGradoSeccion, a.idAlumno, a.nombre, "
+            + "a.apellidoPat, a.apellidoMat, a.codigo, a.documentoIdentidad, a.urlFoto "
+            + "from Matricula m join m.alumnoApoderado aa join aa.alumno a "
+            + "where m.gradoSeccion.anioEscolar.idAnio = :idAnio and m.acceso <> :eliminado")
+    List<Object[]> ligerasDelAnio(@Param("idAnio") Integer idAnio, @Param("eliminado") Acceso eliminado);
+
+    /** Las secciones que tienen matrículas en el año (unas decenas, se cargan una vez). */
+    @Query("select distinct m.gradoSeccion from Matricula m "
+            + "where m.gradoSeccion.anioEscolar.idAnio = :idAnio and m.acceso <> :eliminado")
+    List<GradoSeccion> seccionesConMatriculas(@Param("idAnio") Integer idAnio, @Param("eliminado") Acceso eliminado);
 }

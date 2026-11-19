@@ -290,8 +290,8 @@ class GradoSeccionServiceTest {
         GradoSeccion conAlumnos = seccionExistente("A", manana, 55);
         when(gradoSeccionRepository.findByGradoAndAccesoNot(any(), any()))
                 .thenReturn(new ArrayList<>(List.of(conAlumnos)));
-        when(matriculaRepository.findByGradoSeccionIdGradoSeccionAndAccesoNot(eq(55), any()))
-                .thenReturn(new ArrayList<>(List.of(new Matricula())));
+        // Basta saber si hay alguna matrícula: ya no se cargan todas.
+        when(matriculaRepository.existsByGradoSeccionIdGradoSeccionAndAccesoNot(eq(55), any())).thenReturn(true);
 
         List<GradoSeccionResponse> res = service.getSeccionesByGrado(10);
 

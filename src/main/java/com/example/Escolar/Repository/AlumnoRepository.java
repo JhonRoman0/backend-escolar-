@@ -10,7 +10,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
-public interface AlumnoRepository extends JpaRepository<Alumno, Integer> {
+public interface AlumnoRepository extends JpaRepository<Alumno, Integer>, AlumnoBusquedaRepository {
 
     List<Alumno> findByAccesoNot(Acceso acceso);
 

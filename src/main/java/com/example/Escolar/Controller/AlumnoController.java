@@ -35,9 +35,10 @@ public class AlumnoController {
                                        @RequestParam(required = false) Integer idSeccion,
                                        @RequestParam(required = false) Integer idTurno,
                                        @RequestParam(required = false) Integer idGradoSeccion,
-                                       @RequestParam(required = false) Integer idAnio) {
+                                       @RequestParam(required = false) Integer idAnio,
+                                       @RequestParam(required = false) String search) {
         return alumnoService.getAll(pageable, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados(),
-                idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio);
+                idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio, search);
     }
 
     @GetMapping("/{id}")

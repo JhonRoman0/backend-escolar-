@@ -180,6 +180,7 @@ public class ApiPermisoRegistro {
         registrar("PUT", "/evaluaciones/*/notas", "EVALUACIONES", "CREAR");
         registrar("PUT", "/evaluaciones/**", "EVALUACIONES", "ACTUALIZAR");
         registrar("DELETE", "/evaluaciones/**", "EVALUACIONES", "ELIMINAR");
+        registrarDePantalla("EVALUACIONES", "IMPRIMIR_EXPORTAR");
 
         registrarLectura("GET", "/competencias", "COMPETENCIAS", "CURSOS", "NOTAS");
         registrarLectura("GET", "/competencias/**", "COMPETENCIAS", "CURSOS", "NOTAS");

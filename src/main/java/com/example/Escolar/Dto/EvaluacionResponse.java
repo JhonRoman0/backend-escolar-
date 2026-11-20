@@ -62,7 +62,7 @@ public final class EvaluacionResponse {
                                java.util.Map<Integer, ReconocimientoCalificacionResponse.Procedencia> procedencias) {
     }
 
-    public record Registro(EscalaCalificacion escala, List<Resumen> evaluaciones, List<Competencia> competencias,
-                           List<FilaRegistro> alumnos) {
+    public record Registro(EscalaCalificacion escala, String notaMinima, List<Resumen> evaluaciones,
+                           List<Competencia> competencias, List<FilaRegistro> alumnos) {
     }
 }

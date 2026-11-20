@@ -502,6 +502,7 @@ class EvaluacionServiceTest {
     @Test
     void elRegistroAuxiliarJuntaLasNotasPorCompetencia() {
         config.setEscala(EscalaCalificacion.VIGESIMAL);
+        config.setNotaMinima("13");
         Evaluacion e = evaluacionGuardada();
         e.setCompetencias(Set.of(c1));
         Matricula ana = matricula(1);
@@ -515,6 +516,7 @@ class EvaluacionServiceTest {
 
         var registro = service.registro(10, 1, 7, roles);
 
+        assertEquals("13", registro.notaMinima());
         var fila = registro.alumnos().stream().filter(f -> f.idMatricula() == 1).findFirst().orElseThrow();
         assertEquals("15", fila.notas().get(50));
         assertEquals(15, fila.competencias().get(0).promedio());

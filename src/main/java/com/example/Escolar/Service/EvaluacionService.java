@@ -259,7 +259,9 @@ public class EvaluacionService {
     @Transactional(readOnly = true)
     public EvaluacionResponse.Registro registro(Integer idAsignacion, Integer periodo, Integer idUsuario, List<String> roles) {
         Asignacion asignacion = asignacionAccesible(idAsignacion, idUsuario, roles);
-        EscalaCalificacion escala = configuracion(asignacion).getEscala();
+        ConfiguracionAcademicaResponse config = configuracion(asignacion);
+        EscalaCalificacion escala = config.getEscala();
+        String notaMinima = config.getNotaMinima() != null ? config.getNotaMinima() : Calificaciones.minimaPorDefecto(escala);
         List<Evaluacion> evaluaciones = evaluacionRepository
                 .findByAsignacionIdAsignacionAndPeriodoAndAccesoNotOrderByFechaAscIdEvaluacionAsc(
                         idAsignacion, periodo.byteValue(), eliminado());
@@ -292,7 +294,7 @@ public class EvaluacionService {
 
         Map<Integer, Long> conNota = contarNotasActuales(notas, alumnos.stream().map(Matricula::getIdMatricula).collect(Collectors.toSet()));
         Set<Integer> conHistoricas = notas.stream().map(n -> n.getEvaluacion().getIdEvaluacion()).collect(Collectors.toSet());
-        return new EvaluacionResponse.Registro(escala,
+        return new EvaluacionResponse.Registro(escala, notaMinima,
                 evaluaciones.stream().map(e -> aResumen(e, conNota.getOrDefault(e.getIdEvaluacion(), 0L).intValue(), alumnos.size(), conHistoricas.contains(e.getIdEvaluacion()))).toList(),
                 competencias.stream().map(EvaluacionService::aCompetencia).toList(),
                 filas);

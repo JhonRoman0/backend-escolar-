@@ -224,6 +224,14 @@ class EvaluacionServiceTest {
         return new EvaluacionRequest(10, 1, "Examen 1", hoy, Set.of(competencias));
     }
 
+    private Evaluacion evaluacion(int id) {
+        Evaluacion e = new Evaluacion();
+        e.setIdEvaluacion(id);
+        e.setAsignacion(asignacion);
+        e.setFecha(hoy);
+        return e;
+    }
+
     @Test
     void creaConLasCompetenciasDelSubcurso() {
         service.crear(request(1, 3), 7, roles);
@@ -272,6 +280,30 @@ class EvaluacionServiceTest {
                 () -> service.crear(new EvaluacionRequest(10, 1, "Examen", hoy.plusDays(30), Set.of(1)), 7, roles));
 
         assertTrue(ex.getMessage().contains("dentro del periodo"));
+    }
+
+    @Test
+    void laTerceraEvaluacionDelMismoDiaSeRechaza() {
+        when(evaluacionRepository.findByAsignacionCursoIdCursoAndAsignacionGradoSeccionIdGradoSeccionAndFechaAndAccesoNot(
+                any(), eq(30), eq(hoy), eq(eliminado))).thenReturn(List.of(evaluacion(51), evaluacion(52)));
+
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.crear(request(1), 7, roles));
+
+        assertTrue(ex.getMessage().contains("Máximo 2 evaluaciones por día"), ex.getMessage());
+        verify(evaluacionRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void soloCuentaElCursoLaSeccionYLaFecha() {
+        asignacion.getCurso().setIdCurso(20);
+        when(evaluacionRepository.findByAsignacionCursoIdCursoAndAsignacionGradoSeccionIdGradoSeccionAndFechaAndAccesoNot(
+                any(), eq(30), eq(hoy), eq(eliminado))).thenReturn(List.of());
+
+        service.crear(request(1), 7, roles);
+
+        verify(evaluacionRepository).findByAsignacionCursoIdCursoAndAsignacionGradoSeccionIdGradoSeccionAndFechaAndAccesoNot(
+                eq(20), eq(30), eq(hoy), eq(eliminado));
+        verify(evaluacionRepository).saveAndFlush(any());
     }
 
     private Matricula matricula(int id) {
@@ -395,6 +427,32 @@ class EvaluacionServiceTest {
         service.editar(50, new EvaluacionRequest(null, null, "Examen final", hoy, Set.of(1)), 7, roles);
 
         assertEquals("Examen final", e.getNombre());
+    }
+
+    @Test
+    void editarNoCuentaDosVecesLaEvaluacionActual() {
+        Evaluacion actual = evaluacionGuardada();
+        actual.setCompetencias(Set.of(c1));
+        when(evaluacionRepository.findByAsignacionCursoIdCursoAndAsignacionGradoSeccionIdGradoSeccionAndFechaAndAccesoNot(
+                any(), eq(30), eq(hoy), eq(eliminado))).thenReturn(List.of(actual, evaluacion(51)));
+
+        service.editar(50, new EvaluacionRequest(null, null, "Examen final", hoy, Set.of(1)), 7, roles);
+
+        verify(evaluacionRepository).save(any());
+    }
+
+    @Test
+    void editarHaciaUnaFechaConDosEvaluacionesSeRechaza() {
+        evaluacionGuardada().setCompetencias(Set.of(c1));
+        LocalDate otraFecha = hoy.plusDays(1);
+        when(evaluacionRepository.findByAsignacionCursoIdCursoAndAsignacionGradoSeccionIdGradoSeccionAndFechaAndAccesoNot(
+                any(), eq(30), eq(otraFecha), eq(eliminado))).thenReturn(List.of(evaluacion(51), evaluacion(52)));
+
+        var ex = assertThrows(IllegalArgumentException.class,
+                () -> service.editar(50, new EvaluacionRequest(null, null, "Examen final", otraFecha, Set.of(1)), 7, roles));
+
+        assertTrue(ex.getMessage().contains("Máximo 2 evaluaciones por día"), ex.getMessage());
+        verify(evaluacionRepository, never()).save(any());
     }
 
     @Test

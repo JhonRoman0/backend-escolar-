@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -18,6 +19,12 @@ public interface MatriculaRepository extends JpaRepository<Matricula, Integer> {
     interface PrimerAnioAlumno {
         Integer getIdAlumno();
         String getPrimerAnio();
+    }
+
+    interface OcupacionSeccion {
+        Integer getIdGradoSeccion();
+
+        long getTotal();
     }
 
     @Query("SELECT m.alumnoApoderado.alumno.idAlumno AS idAlumno, MIN(m.gradoSeccion.anioEscolar.anio) AS primerAnio " +
@@ -45,6 +52,12 @@ public interface MatriculaRepository extends JpaRepository<Matricula, Integer> {
     boolean existsByGradoSeccionIdGradoSeccionAndAccesoNot(Integer idGradoSeccion, Acceso acceso);
 
     long countByGradoSeccionIdGradoSeccionAndAccesoNot(Integer idGradoSeccion, Acceso acceso);
+
+    @Query("select m.gradoSeccion.idGradoSeccion as idGradoSeccion, count(m) as total " +
+            "from Matricula m where m.gradoSeccion.idGradoSeccion in :ids and m.acceso <> :eliminado " +
+            "group by m.gradoSeccion.idGradoSeccion")
+    List<OcupacionSeccion> ocupacionPorSecciones(@Param("ids") Collection<Integer> ids,
+                                                 @Param("eliminado") Acceso eliminado);
 
     List<Matricula> findByAlumnoApoderadoAlumnoIdAlumnoAndAccesoNot(Integer idAlumno, Acceso acceso);
 

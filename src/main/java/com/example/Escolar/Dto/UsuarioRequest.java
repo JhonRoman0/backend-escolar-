@@ -1,5 +1,6 @@
 package com.example.Escolar.Dto;
 
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -38,6 +39,9 @@ public class UsuarioRequest {
     private String celular;
     @NotNull(message = "La fecha de nacimiento es obligatoria")
     private LocalDate fechaNaci;
+    @NotNull(message = "La fecha de inicio de vigencia es obligatoria")
+    private LocalDate fechaInicioVigencia;
+    private LocalDate fechaFinVigencia;
     private String urlFoto;
     private String pkUrlFoto;
     private List<Integer> rolIds;
@@ -47,4 +51,9 @@ public class UsuarioRequest {
     private Integer tipoContratoId;
     private LocalDate fechaContratacion;
     private List<Integer> niveles;
+
+    @AssertTrue(message = "La fecha fin de vigencia no puede ser anterior a la fecha de inicio")
+    public boolean isRangoVigenciaValido() {
+        return fechaInicioVigencia == null || fechaFinVigencia == null || !fechaInicioVigencia.isAfter(fechaFinVigencia);
+    }
 }

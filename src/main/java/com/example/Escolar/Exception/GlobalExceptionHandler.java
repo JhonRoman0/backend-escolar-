@@ -117,6 +117,20 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
     }
 
+    @ExceptionHandler(VigenciaNoValidaException.class)
+    public ResponseEntity<Map<String, Object>> handleVigenciaNoValida(VigenciaNoValidaException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.FORBIDDEN.value());
+        body.put("error", "Forbidden");
+        body.put("codigo", ex.getCodigo());
+        body.put("message", ex.getMessage());
+        body.put("fechaInicio", ex.getFechaInicio());
+        body.put("fechaFin", ex.getFechaFin());
+        body.put("estado", ex.getEstado() == null ? null : ex.getEstado().name());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
+    }
+
     @ExceptionHandler(CodigoRecuperacionAgotadoException.class)
     public ResponseEntity<Map<String, Object>> handleCodigoAgotado(CodigoRecuperacionAgotadoException ex) {
         Map<String, Object> body = new HashMap<>();

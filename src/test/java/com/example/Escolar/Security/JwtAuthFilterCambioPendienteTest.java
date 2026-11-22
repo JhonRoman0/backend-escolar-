@@ -1,28 +1,88 @@
 package com.example.Escolar.Security;
 
+import com.example.Escolar.Repository.UsuarioRepository;
+import com.example.Escolar.Repository.UsuarioVigenciaSesion;
+import com.example.Escolar.Service.AccesoConstants;
+import com.example.Escolar.Service.VigenciaService;
+import com.example.Escolar.Util.FechaColegio;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class JwtAuthFilterCambioPendienteTest {
 
     private final JwtService jwtService = new JwtService("clave-secreta-de-pruebas-con-32-bytes-o-mas!!", 3_600_000);
-    private final JwtAuthFilter filter = new JwtAuthFilter(jwtService);
+    @Mock
+    private UsuarioRepository usuarioRepository;
+    @Mock
+    private ObjectProvider<UsuarioRepository> usuarioRepositoryProvider;
+    private JwtAuthFilter filter;
+
+    @BeforeEach
+    void prepararSesion() {
+        when(usuarioRepositoryProvider.getObject()).thenReturn(usuarioRepository);
+        filter = new JwtAuthFilter(jwtService, usuarioRepositoryProvider, new VigenciaService());
+        when(usuarioRepository.findVigenciaSesion(eq(1), eq(AccesoConstants.ELIMINADO)))
+                .thenReturn(Optional.of(sesionValida(0)));
+    }
 
     @AfterEach
     void limpiarContexto() {
         SecurityContextHolder.clearContext();
+    }
+
+    private UsuarioVigenciaSesion sesionValida(Integer versionToken) {
+        LocalDate inicio = FechaColegio.hoy().minusDays(1);
+        return new UsuarioVigenciaSesion() {
+            @Override
+            public Integer getIdUsuario() {
+                return 1;
+            }
+
+            @Override
+            public LocalDate getFechaInicioVigencia() {
+                return inicio;
+            }
+
+            @Override
+            public LocalDate getFechaFinVigencia() {
+                return null;
+            }
+
+            @Override
+            public Integer getVersionToken() {
+                return versionToken;
+            }
+
+            @Override
+            public Long getAccesoId() {
+                return AccesoConstants.ACTIVO;
+            }
+        };
     }
 
     private MockHttpServletResponse ejecutar(String metodo, String ruta, boolean cambioPendiente, MockFilterChain chain)

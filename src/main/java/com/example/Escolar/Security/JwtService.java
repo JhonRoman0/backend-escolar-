@@ -1,5 +1,7 @@
 package com.example.Escolar.Security;
 
+import com.example.Escolar.Util.FechaColegio;
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
@@ -7,13 +9,16 @@ import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Date;
 import java.util.List;
 
 @Component
 public class JwtService {
 
-    private static final String CLAIM_CAMBIO_PENDIENTE = "cambioContrasenaPendiente";
+    public static final String CLAIM_CAMBIO_PENDIENTE = "cambioContrasenaPendiente";
+    public static final String CLAIM_VERSION_TOKEN = "versionToken";
 
     private final SecretKey secretKey;
     private final long expiration;
@@ -29,48 +34,53 @@ public class JwtService {
     }
 
     public String generarToken(Integer idUsuario, String codigo, List<String> roles, boolean cambioContrasenaPendiente) {
+        return generarToken(idUsuario, codigo, roles, cambioContrasenaPendiente, null, 0);
+    }
+
+    public String generarToken(Integer idUsuario, String codigo, List<String> roles,
+                               boolean cambioContrasenaPendiente, LocalDate fechaFinVigencia, Integer versionToken) {
         Date ahora = new Date();
         return Jwts.builder()
                 .subject(String.valueOf(idUsuario))
                 .claim("codigo", codigo)
                 .claim("roles", roles)
                 .claim(CLAIM_CAMBIO_PENDIENTE, cambioContrasenaPendiente)
+                .claim(CLAIM_VERSION_TOKEN, versionToken == null ? 0 : versionToken)
                 .issuedAt(ahora)
-                .expiration(new Date(ahora.getTime() + expiration))
+                .expiration(calcularExpiracion(ahora, fechaFinVigencia))
                 .signWith(secretKey)
                 .compact();
     }
 
-    public boolean esTokenValido(String token) {
-        try {
-            extraerClaims(token);
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
+    public boolean isCambioContrasenaPendiente(Claims claims) {
+        return Boolean.TRUE.equals(claims.get(CLAIM_CAMBIO_PENDIENTE, Boolean.class));
     }
 
-    public Integer getIdUsuario(String token) {
-        return Integer.valueOf(extraerClaims(token).getSubject());
+    public Integer getVersionToken(String token) {
+        return getVersionToken(parse(token));
     }
 
-    public String getCodigo(String token) {
-        return extraerClaims(token).get("codigo", String.class);
+    public Integer getVersionToken(Claims claims) {
+        Object valor = claims.get(CLAIM_VERSION_TOKEN);
+        return valor instanceof Number numero ? numero.intValue() : 0;
     }
 
-    public List<String> getRoles(String token) {
-        return extraerClaims(token).get("roles", List.class);
-    }
-
-    public boolean isCambioContrasenaPendiente(String token) {
-        return Boolean.TRUE.equals(extraerClaims(token).get(CLAIM_CAMBIO_PENDIENTE, Boolean.class));
-    }
-
-    private io.jsonwebtoken.Claims extraerClaims(String token) {
+    public Claims parse(String token) {
         return Jwts.parser()
                 .verifyWith(secretKey)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
+    }
+
+    private Date calcularExpiracion(Date ahora, LocalDate fechaFinVigencia) {
+        Instant limite = ahora.toInstant().plusMillis(expiration);
+        if (fechaFinVigencia != null) {
+            Instant fin = fechaFinVigencia.plusDays(1).atStartOfDay(FechaColegio.ZONA).toInstant();
+            if (fin.isBefore(limite)) {
+                limite = fin;
+            }
+        }
+        return Date.from(limite);
     }
 }

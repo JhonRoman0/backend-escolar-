@@ -31,6 +31,8 @@ import com.example.Escolar.Repository.TipoContratoRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
 import com.example.Escolar.Service.EmailService.TipoEnvioCredenciales;
+import com.example.Escolar.Service.VigenciaService.EstadoVigencia;
+import com.example.Escolar.Util.FechaColegio;
 import com.example.Escolar.Util.TextoBusqueda;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -46,6 +48,7 @@ import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 @Service
@@ -72,6 +75,7 @@ public class UsuarioService {
     private final DocenteService docenteService;
     private final ApoderadoRepository apoderadoRepository;
     private final AlumnoApoderadoRepository alumnoApoderadoRepository;
+    private final VigenciaService vigenciaService;
 
     public Page<UsuarioResponse> getAll(Pageable pageable) {
         return getAll(pageable, null, null, null);
@@ -102,9 +106,13 @@ public class UsuarioService {
             request.setAccesoId(AccesoConstants.ACTIVO.longValue());
         }
         applyRequest(usuario, request);
+        if (usuario.getFechaInicioVigencia() == null) {
+            usuario.setFechaInicioVigencia(FechaColegio.hoy());
+        }
+        usuario.setVersionToken(0);
         String temporal = asignarContrasenaTemporal(usuario);
         usuario.setCodigo(generarCodigo(request.getRolIds()));
-        usuario.setFechaCreacion(LocalDate.now());
+        usuario.setFechaCreacion(FechaColegio.hoy());
         Usuario saved = usuarioRepository.save(usuario);
         assignRoles(saved, request.getRolIds());
         if (seleccionaRol(request.getRolIds(), ROL_DOCENTE)) {
@@ -173,7 +181,15 @@ public class UsuarioService {
         // nuevos datos fueran de otra cuenta activa, aqui se detectaria el choque.
         validarDocumentoUnico(request.getDocumentoIdentidad(), id);
         validarGmailUnico(request.getGmail(), id);
+        LocalDate inicioAnterior = usuario.getFechaInicioVigencia();
+        LocalDate finAnterior = usuario.getFechaFinVigencia();
         applyRequest(usuario, request);
+        validarNoQuedarSinAdminVigente(usuario);
+        if (!Objects.equals(inicioAnterior, usuario.getFechaInicioVigencia())
+                || !Objects.equals(finAnterior, usuario.getFechaFinVigencia())) {
+            int versionToken = usuario.getVersionToken() == null ? 0 : usuario.getVersionToken();
+            usuario.setVersionToken(versionToken + 1);
+        }
 
         if (request.getRolIds() != null) {
             Optional<Docente> docenteExistente = docenteRepository.findByUsuarioIdUsuario(id);
@@ -287,13 +303,32 @@ public class UsuarioService {
                     boolean hayOtro = usuarioRolRepository.findByRolIdRol(rolAdmin.getIdRol()).stream()
                             .map(UsuarioRol::getUsuario)
                             .anyMatch(u -> !u.getIdUsuario().equals(usuario.getIdUsuario())
-                                    && AccesoConstants.ACTIVO.equals(u.getAcceso().getIdAcceso()));
+                                    && AccesoConstants.ACTIVO.equals(u.getAcceso().getIdAcceso())
+                                    && vigenciaService.esAdministrable(u));
                     if (!hayOtro) {
                         throw new UsuarioConDependenciasException(String.format(
                                 "No se puede %s %s %s: es el único usuario activo con rol ADMIN.",
                                 accion, usuario.getNombre(), usuario.getApellidoPat()));
                     }
                 });
+    }
+
+    private void validarNoQuedarSinAdminVigente(Usuario usuario) {
+        Optional<UsuarioRol> rolAdmin = usuarioRolRepository.findByUsuarioIdUsuario(usuario.getIdUsuario()).stream()
+                .filter(ur -> ROL_ADMIN.equalsIgnoreCase(ur.getRol().getNombre()))
+                .findFirst();
+        if (rolAdmin.isEmpty() || vigenciaService.esAdministrable(usuario)) {
+            return;
+        }
+        boolean hayOtro = usuarioRolRepository.findByRolIdRol(rolAdmin.get().getRol().getIdRol()).stream()
+                .map(UsuarioRol::getUsuario)
+                .anyMatch(u -> !u.getIdUsuario().equals(usuario.getIdUsuario())
+                        && vigenciaService.esAdministrable(u));
+        if (!hayOtro) {
+            throw new UsuarioConDependenciasException(String.format(
+                    "No se puede dejar a %s %s sin ningún usuario con rol ADMIN activo y vigente.",
+                    usuario.getNombre(), usuario.getApellidoPat()));
+        }
     }
 
     private boolean esApoderadoVigente(Apoderado apoderado) {
@@ -327,6 +362,11 @@ public class UsuarioService {
                     r.setCelular(u.getCelular());
                     r.setEstado(u.getAcceso().getNombre());
                     r.setFechaCreacion(u.getFechaCreacion());
+                    r.setFechaInicioVigencia(u.getFechaInicioVigencia());
+                    r.setFechaFinVigencia(u.getFechaFinVigencia());
+                    EstadoVigencia estadoVigencia = vigenciaService.evaluar(
+                            u.getFechaInicioVigencia(), u.getFechaFinVigencia());
+                    r.setEstadoVigencia(estadoVigencia.name());
                     r.setRoles(usuarioRolRepository.findByUsuarioIdUsuario(u.getIdUsuario()).stream()
                             .map(UsuarioRol::getRol)
                             .filter(rol -> !rol.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
@@ -571,6 +611,10 @@ public class UsuarioService {
         usuario.setGmail(request.getGmail());
         usuario.setCelular(request.getCelular());
         usuario.setFechaNaci(request.getFechaNaci());
+        if (request.getFechaInicioVigencia() != null) {
+            usuario.setFechaInicioVigencia(request.getFechaInicioVigencia());
+        }
+        usuario.setFechaFinVigencia(request.getFechaFinVigencia());
         if (request.getUrlFoto() != null) {
             usuario.setUrlFoto(request.getUrlFoto());
         }
@@ -603,6 +647,10 @@ public class UsuarioService {
         response.setIntentosFallidos(usuario.getIntentosFallidos());
         response.setFechaBloqueo(usuario.getFechaBloqueo());
         response.setDebeCambiarContrasena(Boolean.TRUE.equals(usuario.getDebeCambiarContrasena()));
+        response.setFechaInicioVigencia(usuario.getFechaInicioVigencia());
+        response.setFechaFinVigencia(usuario.getFechaFinVigencia());
+        response.setEstadoVigencia(vigenciaService.evaluar(
+                usuario.getFechaInicioVigencia(), usuario.getFechaFinVigencia()).name());
         return response;
     }
 

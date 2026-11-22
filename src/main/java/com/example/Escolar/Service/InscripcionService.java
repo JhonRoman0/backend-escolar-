@@ -35,6 +35,7 @@ import com.example.Escolar.Repository.RolRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
 import com.example.Escolar.Service.EmailService.TipoEnvioCredenciales;
+import com.example.Escolar.Util.FechaColegio;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -526,7 +527,9 @@ public class InscripcionService {
             usuario.setFechaBloqueo(null);
             if (!reactivado) {
                 usuario.setCodigo(generarCodigoApoderado());
-                usuario.setFechaCreacion(LocalDate.now());
+                usuario.setFechaCreacion(FechaColegio.hoy());
+                usuario.setFechaInicioVigencia(FechaColegio.hoy());
+                usuario.setVersionToken(0);
             }
             usuario.setAcceso(acceso(AccesoConstants.ACTIVO));
             usuario = usuarioRepository.save(usuario);

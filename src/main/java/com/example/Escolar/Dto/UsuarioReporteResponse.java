@@ -17,5 +17,8 @@ public class UsuarioReporteResponse {
     private String celular;
     private String estado;
     private LocalDate fechaCreacion;
+    private LocalDate fechaInicioVigencia;
+    private LocalDate fechaFinVigencia;
+    private String estadoVigencia;
     private List<String> roles;
 }

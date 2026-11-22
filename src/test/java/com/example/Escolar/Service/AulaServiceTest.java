@@ -3,6 +3,7 @@ package com.example.Escolar.Service;
 import com.example.Escolar.Dto.AulaRequest;
 import com.example.Escolar.Dto.AulaResponse;
 import com.example.Escolar.Model.Acceso;
+import com.example.Escolar.Model.Asignacion;
 import com.example.Escolar.Model.Aula;
 import com.example.Escolar.Model.AnioEscolar;
 import com.example.Escolar.Model.Grado;
@@ -16,6 +17,7 @@ import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.AulaRepository;
 import com.example.Escolar.Repository.GradoSeccionRepository;
 import com.example.Escolar.Repository.HorarioClaseRepository;
+import com.example.Escolar.Repository.MatriculaRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,17 +27,22 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.dao.DataRetrievalFailureException;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -52,11 +59,14 @@ class AulaServiceTest {
     private HorarioClaseRepository horarioClaseRepository;
     @Mock
     private GradoSeccionRepository gradoSeccionRepository;
+    @Mock
+    private MatriculaRepository matriculaRepository;
     @InjectMocks
     private AulaService aulaService;
 
     private Acceso activo;
     private Acceso eliminado;
+    private Acceso inactivo;
 
     @BeforeEach
     void setUp() {
@@ -64,9 +74,12 @@ class AulaServiceTest {
         activo.setIdAcceso(AccesoConstants.ACTIVO);
         eliminado = new Acceso();
         eliminado.setIdAcceso(AccesoConstants.ELIMINADO);
+        inactivo = new Acceso();
+        inactivo.setIdAcceso(AccesoConstants.INACTIVO);
 
         when(accesoRepository.findById(AccesoConstants.ACTIVO)).thenReturn(Optional.of(activo));
         when(accesoRepository.findById(AccesoConstants.ELIMINADO)).thenReturn(Optional.of(eliminado));
+        when(accesoRepository.findById(AccesoConstants.INACTIVO)).thenReturn(Optional.of(inactivo));
         when(aulaRepository.findByAccesoNot(eliminado)).thenReturn(new ArrayList<>());
         when(aulaRepository.save(any(Aula.class))).thenAnswer(inv -> inv.getArgument(0));
         when(aulaRepository.findByNombreIgnoreCase(any())).thenReturn(Optional.empty());
@@ -171,6 +184,10 @@ class AulaServiceTest {
 
     /** El Aula 101 es el salon de 3.° A en la mañana de 2027. */
     private void esSalonDeTercerA() {
+        esSalonDeTercerA(AnioEscolarService.ESTADO_VIGENTE);
+    }
+
+    private void esSalonDeTercerA(byte estadoAnio) {
         Grado grado = new Grado();
         grado.setNombre("3.° grado");
         Nivel primaria = new Nivel();
@@ -183,12 +200,40 @@ class AulaServiceTest {
         AnioEscolar anio = new AnioEscolar();
         anio.setIdAnio(2);
         anio.setAnio("2027");
+        anio.setEstado(estadoAnio);
         GradoSeccion tercerA = new GradoSeccion();
+        tercerA.setIdGradoSeccion(5);
         tercerA.setGrado(grado);
         tercerA.setSeccion(a);
         tercerA.setTurno(manana);
         tercerA.setAnioEscolar(anio);
+        tercerA.setAcceso(activo);
         when(gradoSeccionRepository.findByAulaIdAulaAndAccesoNot(any(), any())).thenReturn(List.of(tercerA));
+    }
+
+    private void conHorarioEn(String anioTexto, byte estadoAnio) {
+        conHorarioEn(anioTexto, estadoAnio, activo, activo, activo);
+    }
+
+    private void conHorarioEn(String anioTexto, byte estadoAnio, Acceso accesoHorario,
+                              Acceso accesoAsignacion, Acceso accesoSeccion) {
+        AnioEscolar anio = new AnioEscolar();
+        anio.setIdAnio(10);
+        anio.setAnio(anioTexto);
+        anio.setEstado(estadoAnio);
+        GradoSeccion seccion = new GradoSeccion();
+        seccion.setIdGradoSeccion(6);
+        seccion.setAcceso(accesoSeccion);
+        Asignacion asignacion = new Asignacion();
+        asignacion.setAnioEscolar(anio);
+        asignacion.setGradoSeccion(seccion);
+        asignacion.setAcceso(accesoAsignacion);
+        HorarioClase horario = new HorarioClase();
+        horario.setAula(aula(1, "Aula 101", 30));
+        horario.setAsignacion(asignacion);
+        horario.setAcceso(accesoHorario);
+        when(horarioClaseRepository.findByAulaIdAulaAndAccesoNot(1, eliminado))
+                .thenReturn(List.of(horario));
     }
 
     @Test
@@ -211,5 +256,235 @@ class AulaServiceTest {
         esSalonDeTercerA();
         assertEquals(List.of(new AulaResponse.SeccionDelAula(2, "2027", "Primaria", "3.° grado", "A", "Mañana")),
                 aulaService.getById(1).getSecciones());
+    }
+
+    // ---- Inactivación con asignaciones vigentes ----
+
+    @Test
+    void actualizarRechazaInactivarSiSeccionVigente() {
+        esSalonDeTercerA();
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> aulaService.update(1, request("Aula 101", 30, AccesoConstants.INACTIVO)));
+
+        assertTrue(error.getMessage().contains("No se puede inactivar el aula «Aula 101»"));
+        assertTrue(error.getMessage().contains("es el salón de 3.° grado A"));
+        assertTrue(error.getMessage().contains("Cambia el salón en Secciones"));
+        verify(aulaRepository, never()).save(any(Aula.class));
+    }
+
+    @Test
+    void actualizarPermiteInactivarSiSeccionEsDeAnioCerrado() {
+        esSalonDeTercerA(AnioEscolarService.ESTADO_CERRADO);
+
+        AulaResponse respuesta = aulaService.update(1, request("Aula 101", 30, AccesoConstants.INACTIVO));
+
+        assertEquals(AccesoConstants.INACTIVO, respuesta.getAccesoId());
+    }
+
+    @Test
+    void actualizarRechazaInactivarSiHorarioVigente() {
+        conHorarioEn("2026", AnioEscolarService.ESTADO_VIGENTE);
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> aulaService.update(1, request("Aula 101", 30, AccesoConstants.INACTIVO)));
+
+        assertTrue(error.getMessage().contains("tiene 1 clase programada (2026: 1)"));
+        verify(horarioClaseRepository).findByAulaIdAulaAndAccesoNot(1, eliminado);
+        verify(aulaRepository, never()).save(any(Aula.class));
+    }
+
+    @Test
+    void actualizarPermiteInactivarSiHorarioEsDeAnioCerrado() {
+        conHorarioEn("2020", AnioEscolarService.ESTADO_CERRADO);
+
+        assertDoesNotThrow(() -> aulaService.update(1, request("Aula 101", 30, AccesoConstants.INACTIVO)));
+    }
+
+    @Test
+    void actualizarNoCuentaHorarioEliminado() {
+        conHorarioEn("2026", AnioEscolarService.ESTADO_VIGENTE, eliminado, activo, activo);
+
+        assertDoesNotThrow(() -> aulaService.update(1, request("Aula 101", 30, AccesoConstants.INACTIVO)));
+    }
+
+    @Test
+    void actualizarNoCuentaAsignacionEliminada() {
+        conHorarioEn("2026", AnioEscolarService.ESTADO_VIGENTE, activo, eliminado, activo);
+
+        assertDoesNotThrow(() -> aulaService.update(1, request("Aula 101", 30, AccesoConstants.INACTIVO)));
+    }
+
+    @Test
+    void actualizarNoCuentaSeccionEliminadaDelHorario() {
+        conHorarioEn("2026", AnioEscolarService.ESTADO_VIGENTE, activo, activo, eliminado);
+
+        assertDoesNotThrow(() -> aulaService.update(1, request("Aula 101", 30, AccesoConstants.INACTIVO)));
+    }
+
+    @Test
+    void getByIdExponeSoloAsignacionesVigentes() {
+        esSalonDeTercerA();
+        conHorarioEn("2027", AnioEscolarService.ESTADO_POR_COMENZAR);
+
+        AulaResponse respuesta = aulaService.getById(1);
+
+        assertTrue(respuesta.getTieneAsignacionesVigentes());
+        assertEquals(List.of(new AulaResponse.SeccionDelAula(2, "2027", "Primaria", "3.° grado", "A", "Mañana")),
+                respuesta.getSeccionesVigentes());
+        assertEquals(Map.of("2027", 1L), respuesta.getHorariosVigentesPorAnio());
+    }
+
+    @Test
+    void getByIdNoCuentaAniosCerradosYPreservaElHistorial() {
+        esSalonDeTercerA(AnioEscolarService.ESTADO_CERRADO);
+        conHorarioEn("2020", AnioEscolarService.ESTADO_CERRADO);
+
+        AulaResponse respuesta = aulaService.getById(1);
+
+        assertFalse(respuesta.getTieneAsignacionesVigentes());
+        assertTrue(respuesta.getSeccionesVigentes().isEmpty());
+        assertTrue(respuesta.getHorariosVigentesPorAnio().isEmpty());
+        assertEquals(1, respuesta.getSecciones().size());
+        assertEquals(0, respuesta.getOcupacionActual());
+    }
+
+    @Test
+    void actualizarConservaInactivoConAsignacionesVigentes() {
+        Aula inactiva = aula(1, "Aula 101", 30);
+        inactiva.setAcceso(inactivo);
+        when(aulaRepository.findByIdAulaAndAccesoNot(1, eliminado)).thenReturn(Optional.of(inactiva));
+        esSalonDeTercerA();
+
+        AulaResponse respuesta = aulaService.update(1, request("Aula 101", 30, AccesoConstants.INACTIVO));
+
+        assertEquals(AccesoConstants.INACTIVO, respuesta.getAccesoId());
+    }
+
+    @Test
+    void actualizarPermiteReactivarConAsignacionesVigentes() {
+        Aula inactiva = aula(1, "Aula 101", 30);
+        inactiva.setAcceso(inactivo);
+        when(aulaRepository.findByIdAulaAndAccesoNot(1, eliminado)).thenReturn(Optional.of(inactiva));
+        esSalonDeTercerA();
+
+        AulaResponse respuesta = aulaService.update(1, request("Aula 101", 30, AccesoConstants.ACTIVO));
+
+        assertEquals(AccesoConstants.ACTIVO, respuesta.getAccesoId());
+    }
+
+    @Test
+    void listadoNoConsultaHorariosPorAula() {
+        when(aulaRepository.findByAccesoNot(eliminado))
+                .thenReturn(new ArrayList<>(List.of(aula(1, "Aula 101", 30))));
+
+        aulaService.getAll();
+
+        verify(horarioClaseRepository, never()).findByAulaIdAulaAndAccesoNot(any(), any());
+    }
+
+    @Test
+    void actualizarRechazaReducirCapacidadPorDebajoDeLaOcupacion() {
+        esSalonDeTercerA();
+        when(matriculaRepository.countByGradoSeccionIdGradoSeccionAndAccesoNot(5, eliminado)).thenReturn(25L);
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> aulaService.update(1, request("Aula 101", 20, AccesoConstants.ACTIVO)));
+
+        assertTrue(error.getMessage().contains("No se puede reducir la capacidad del aula «Aula 101» a 20"));
+        assertTrue(error.getMessage().contains("25 alumnos matriculados"));
+        verify(aulaRepository, never()).save(any(Aula.class));
+    }
+
+    @Test
+    void actualizarPermiteReducirCapacidadHastaLaOcupacion() {
+        esSalonDeTercerA();
+        when(matriculaRepository.countByGradoSeccionIdGradoSeccionAndAccesoNot(5, eliminado)).thenReturn(20L);
+
+        AulaResponse respuesta = aulaService.update(1, request("Aula 101", 20, AccesoConstants.ACTIVO));
+
+        assertEquals(20, respuesta.getCapacidad());
+        verify(aulaRepository).save(any(Aula.class));
+    }
+
+    @Test
+    void actualizarPermiteEditarOtrosCamposSinConsultarOcupacionSiNoBajaLaCapacidad() {
+        esSalonDeTercerA();
+        when(matriculaRepository.countByGradoSeccionIdGradoSeccionAndAccesoNot(5, eliminado)).thenReturn(35L);
+
+        AulaResponse respuesta = aulaService.update(1, request("Aula 101 bis", 30, AccesoConstants.ACTIVO));
+
+        assertEquals("Aula 101 bis", respuesta.getNombre());
+        verify(matriculaRepository, never()).countByGradoSeccionIdGradoSeccionAndAccesoNot(any(), any());
+        verify(matriculaRepository, never()).ocupacionPorSecciones(any(), any());
+    }
+
+    @Test
+    void actualizarNoReduceCapacidadSiFallaLaConsultaDeOcupacion() {
+        esSalonDeTercerA();
+        when(matriculaRepository.countByGradoSeccionIdGradoSeccionAndAccesoNot(5, eliminado))
+                .thenThrow(new DataRetrievalFailureException("sin ocupación"));
+
+        assertThrows(DataRetrievalFailureException.class,
+                () -> aulaService.update(1, request("Aula 101", 20, AccesoConstants.ACTIVO)));
+        verify(aulaRepository, never()).save(any(Aula.class));
+    }
+
+    @Test
+    void getByIdDistingueOcupacionCeroDeDesconocida() {
+        esSalonDeTercerA();
+        when(matriculaRepository.countByGradoSeccionIdGradoSeccionAndAccesoNot(5, eliminado)).thenReturn(0L);
+        assertEquals(0, aulaService.getById(1).getOcupacionActual());
+
+        when(matriculaRepository.countByGradoSeccionIdGradoSeccionAndAccesoNot(5, eliminado))
+                .thenThrow(new DataRetrievalFailureException("sin ocupación"));
+        AulaResponse respuesta = aulaService.getById(1);
+        assertNull(respuesta.getOcupacionActual());
+        assertTrue(respuesta.getTieneAsignacionesVigentes());
+    }
+
+    @Test
+    void getByIdCalculaMaximoPorSeccionSinSumarTurnosNiAnios() {
+        esSalonDeTercerA();
+        conHorarioEn("2028", AnioEscolarService.ESTADO_POR_COMENZAR);
+        List<MatriculaRepository.OcupacionSeccion> conteos =
+                List.of(ocupacionSeccion(5, 18), ocupacionSeccion(6, 25));
+        when(matriculaRepository.ocupacionPorSecciones(any(), any())).thenReturn(conteos);
+
+        assertEquals(25, aulaService.getById(1).getOcupacionActual());
+    }
+
+    @Test
+    void getByIdNoCuentaOcupacionDeHorarioEliminado() {
+        conHorarioEn("2026", AnioEscolarService.ESTADO_VIGENTE, eliminado, activo, activo);
+
+        assertEquals(0, aulaService.getById(1).getOcupacionActual());
+        verify(matriculaRepository, never()).countByGradoSeccionIdGradoSeccionAndAccesoNot(any(), any());
+        verify(matriculaRepository, never()).ocupacionPorSecciones(any(), any());
+    }
+
+    @Test
+    void getByIdNoCuentaOcupacionDeAsignacionEliminada() {
+        conHorarioEn("2026", AnioEscolarService.ESTADO_VIGENTE, activo, eliminado, activo);
+
+        assertEquals(0, aulaService.getById(1).getOcupacionActual());
+        verify(matriculaRepository, never()).countByGradoSeccionIdGradoSeccionAndAccesoNot(any(), any());
+        verify(matriculaRepository, never()).ocupacionPorSecciones(any(), any());
+    }
+
+    @Test
+    void getByIdNoCuentaOcupacionDeSeccionEliminadaDelHorario() {
+        conHorarioEn("2026", AnioEscolarService.ESTADO_VIGENTE, activo, activo, eliminado);
+
+        assertEquals(0, aulaService.getById(1).getOcupacionActual());
+        verify(matriculaRepository, never()).countByGradoSeccionIdGradoSeccionAndAccesoNot(any(), any());
+        verify(matriculaRepository, never()).ocupacionPorSecciones(any(), any());
+    }
+
+    private MatriculaRepository.OcupacionSeccion ocupacionSeccion(Integer idGradoSeccion, long total) {
+        MatriculaRepository.OcupacionSeccion ocupacion = mock(MatriculaRepository.OcupacionSeccion.class);
+        when(ocupacion.getIdGradoSeccion()).thenReturn(idGradoSeccion);
+        when(ocupacion.getTotal()).thenReturn(total);
+        return ocupacion;
     }
 }

@@ -8,6 +8,7 @@ import com.example.Escolar.Exception.CuentaBloqueadaException;
 import com.example.Escolar.Exception.CuentaInactivaException;
 import com.example.Escolar.Exception.EsperaReenvioCodigoException;
 import com.example.Escolar.Exception.ResourceNotFoundException;
+import com.example.Escolar.Exception.VigenciaNoValidaException;
 import com.example.Escolar.Model.Rol;
 import com.example.Escolar.Model.Usuario;
 import com.example.Escolar.Model.UsuarioRol;
@@ -51,6 +52,7 @@ public class AuthService {
     private final AccesoRepository accesoRepository;
     private final EmailService emailService;
     private final AccesoContextoService accesoContextoService;
+    private final VigenciaService vigenciaService;
 
     public LoginResponse login(LoginRequest request) {
         Usuario usuario = usuarioRepository.findByCodigoAndAccesoNot(request.getCodigo(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
@@ -67,12 +69,12 @@ public class AuthService {
             registrarIntentoFallido(usuario);
             throw new BadCredentialsException("Credenciales incorrectas");
         }
+        validarVigencia(usuario);
         usuario.setIntentosFallidos(0);
         usuario.setFechaBloqueo(null);
         usuarioRepository.save(usuario);
         List<String> roles = getRoles(usuario);
-        String token = jwtService.generarToken(usuario.getIdUsuario(), usuario.getCodigo(), roles,
-                Boolean.TRUE.equals(usuario.getDebeCambiarContrasena()));
+        String token = generarToken(usuario, Boolean.TRUE.equals(usuario.getDebeCambiarContrasena()));
 
         LoginResponse response = new LoginResponse();
         response.setToken(token);
@@ -152,6 +154,7 @@ public class AuthService {
         Usuario usuario = usuarioRepository.findByIdUsuarioAndAccesoNot(idUsuario,
                         accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontro la cuenta del usuario autenticado"));
+        validarVigencia(usuario);
 
         if (!passwordEncoder.matches(contrasenaActual, usuario.getContraseña())) {
             throw new IllegalArgumentException("La contrasena actual es incorrecta");
@@ -165,7 +168,27 @@ public class AuthService {
         usuario.setFechaBloqueo(null);
         usuario.setDebeCambiarContrasena(false);
         usuarioRepository.save(usuario);
-        return jwtService.generarToken(usuario.getIdUsuario(), usuario.getCodigo(), getRoles(usuario));
+        return generarToken(usuario, false);
+    }
+
+    private void validarVigencia(Usuario usuario) {
+        if (vigenciaService.datosNoDisponibles(usuario.getFechaInicioVigencia(),
+                usuario.getFechaFinVigencia())) {
+            throw new VigenciaNoValidaException(VigenciaNoValidaException.CODIGO_NO_DISPONIBLE,
+                    VigenciaNoValidaException.MENSAJE_NO_DISPONIBLE);
+        }
+        if (!vigenciaService.esValida(usuario.getFechaInicioVigencia(), usuario.getFechaFinVigencia())) {
+            throw new VigenciaNoValidaException(
+                    vigenciaService.evaluar(usuario.getFechaInicioVigencia(), usuario.getFechaFinVigencia()),
+                    usuario.getFechaInicioVigencia(),
+                    usuario.getFechaFinVigencia());
+        }
+    }
+
+    private String generarToken(Usuario usuario, boolean cambioContrasenaPendiente) {
+        Integer versionToken = usuario.getVersionToken() == null ? 0 : usuario.getVersionToken();
+        return jwtService.generarToken(usuario.getIdUsuario(), usuario.getCodigo(), getRoles(usuario),
+                cambioContrasenaPendiente, usuario.getFechaFinVigencia(), versionToken);
     }
 
     private Usuario buscarUsuarioPorGmail(String gmail) {

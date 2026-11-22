@@ -5,6 +5,8 @@ import com.example.Escolar.Model.Usuario;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -34,4 +36,10 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Integer>, Usua
     Optional<Usuario> findByGmailAndAccesoNot(String gmail, Acceso acceso);
 
     boolean existsByGmailAndAccesoNot(String gmail, Acceso acceso);
+
+    @Query("select u.idUsuario as idUsuario, u.fechaInicioVigencia as fechaInicioVigencia, "
+            + "u.fechaFinVigencia as fechaFinVigencia, u.versionToken as versionToken, "
+            + "u.acceso.idAcceso as accesoId from Usuario u "
+            + "where u.idUsuario = :id and u.acceso.idAcceso <> :eliminado")
+    Optional<UsuarioVigenciaSesion> findVigenciaSesion(@Param("id") Integer id, @Param("eliminado") Long eliminado);
 }

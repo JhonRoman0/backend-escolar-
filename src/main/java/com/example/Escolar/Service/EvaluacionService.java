@@ -52,6 +52,7 @@ public class EvaluacionService {
     private final BloqueoCalificaciones bloqueo;
 
     private static final String[] DIAS = {"lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"};
+    private static final int MAX_EVALUACIONES_POR_DIA = 2;
 
     // ── Consultas ──
 
@@ -155,6 +156,7 @@ public class EvaluacionService {
         }
         Asignacion asignacion = asignacionAccesible(request.idAsignacion(), idUsuario, roles);
         PeriodoEvaluacion periodo = periodoAbierto(asignacion, request.periodo());
+        bloqueo.asignacion(asignacion.getIdAsignacion());
         Evaluacion evaluacion = new Evaluacion();
         evaluacion.setAsignacion(asignacion);
         evaluacion.setPeriodo(periodo.getNumero());
@@ -257,7 +259,9 @@ public class EvaluacionService {
     @Transactional(readOnly = true)
     public EvaluacionResponse.Registro registro(Integer idAsignacion, Integer periodo, Integer idUsuario, List<String> roles) {
         Asignacion asignacion = asignacionAccesible(idAsignacion, idUsuario, roles);
-        EscalaCalificacion escala = configuracion(asignacion).getEscala();
+        ConfiguracionAcademicaResponse config = configuracion(asignacion);
+        EscalaCalificacion escala = config.getEscala();
+        String notaMinima = config.getNotaMinima() != null ? config.getNotaMinima() : Calificaciones.minimaPorDefecto(escala);
         List<Evaluacion> evaluaciones = evaluacionRepository
                 .findByAsignacionIdAsignacionAndPeriodoAndAccesoNotOrderByFechaAscIdEvaluacionAsc(
                         idAsignacion, periodo.byteValue(), eliminado());
@@ -290,7 +294,7 @@ public class EvaluacionService {
 
         Map<Integer, Long> conNota = contarNotasActuales(notas, alumnos.stream().map(Matricula::getIdMatricula).collect(Collectors.toSet()));
         Set<Integer> conHistoricas = notas.stream().map(n -> n.getEvaluacion().getIdEvaluacion()).collect(Collectors.toSet());
-        return new EvaluacionResponse.Registro(escala,
+        return new EvaluacionResponse.Registro(escala, notaMinima,
                 evaluaciones.stream().map(e -> aResumen(e, conNota.getOrDefault(e.getIdEvaluacion(), 0L).intValue(), alumnos.size(), conHistoricas.contains(e.getIdEvaluacion()))).toList(),
                 competencias.stream().map(EvaluacionService::aCompetencia).toList(),
                 filas);
@@ -350,6 +354,7 @@ public class EvaluacionService {
                     + periodo.getFechaInicio().format(PeriodoEvaluacion.FECHA) + " al "
                     + periodo.getFechaFin().format(PeriodoEvaluacion.FECHA) + ")");
         }
+        validarMaximoPorFecha(evaluacion.getAsignacion(), request.fecha(), evaluacion.getIdEvaluacion());
         validarDiaDeClase(evaluacion.getAsignacion(), request.fecha());
         Map<Integer, Competencia> disponibles = competenciasDe(evaluacion.getAsignacion().getCurso()).stream()
                 .collect(Collectors.toMap(Competencia::getIdCompetencia, Function.identity()));
@@ -374,6 +379,25 @@ public class EvaluacionService {
         evaluacion.setNombre(request.nombre().trim());
         evaluacion.setFecha(request.fecha());
         evaluacion.setCompetencias(elegidas);
+    }
+
+    private void validarMaximoPorFecha(Asignacion asignacion, LocalDate fecha, Integer idEvaluacionExcluir) {
+        long cantidad = evaluacionRepository
+                .findByAsignacionCursoIdCursoAndAsignacionGradoSeccionIdGradoSeccionAndFechaAndAccesoNot(
+                        asignacion.getCurso().getIdCurso(),
+                        asignacion.getGradoSeccion().getIdGradoSeccion(),
+                        fecha,
+                        eliminado())
+                .stream()
+                .filter(e -> !Objects.equals(e.getIdEvaluacion(), idEvaluacionExcluir))
+                .count();
+        if (cantidad >= MAX_EVALUACIONES_POR_DIA) {
+            throw new IllegalArgumentException("Ya hay " + MAX_EVALUACIONES_POR_DIA + " evaluaciones para "
+                    + asignacion.getCurso().getNombre() + " en "
+                    + MatriculaService.gradoYSeccion(asignacion.getGradoSeccion()) + " el "
+                    + fecha.format(PeriodoEvaluacion.FECHA) + ". Máximo " + MAX_EVALUACIONES_POR_DIA
+                    + " evaluaciones por día.");
+        }
     }
 
     /**

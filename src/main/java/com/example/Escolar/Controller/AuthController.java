@@ -8,6 +8,7 @@ import com.example.Escolar.Dto.PermisosRolResponse;
 import com.example.Escolar.Dto.ResetPasswordRequest;
 import com.example.Escolar.Dto.UsuarioResponse;
 import com.example.Escolar.Dto.VerificarCodigoRequest;
+import com.example.Escolar.Security.JwtService;
 import com.example.Escolar.Security.UsuarioAutenticado;
 import com.example.Escolar.Service.AuthService;
 import com.example.Escolar.Service.UsuarioService;
@@ -38,6 +39,7 @@ public class AuthController {
 
     private final AuthService authService;
     private final UsuarioService usuarioService;
+    private final JwtService jwtService;
 
     @Value("${jwt.expiration}")
     private long jwtExpirationMs;
@@ -111,8 +113,10 @@ public class AuthController {
         UsuarioAutenticado principal = (UsuarioAutenticado) authentication.getPrincipal();
         String token = authService.cambiarContrasena(principal.idUsuario(),
                 request.getContrasenaActual(), request.getNuevaContrasena());
+        long maxAge = Math.max(0L,
+                (jwtService.parse(token).getExpiration().getTime() - System.currentTimeMillis()) / 1000L);
         httpResponse.addHeader(HttpHeaders.SET_COOKIE,
-                cookieSesion(token, jwtExpirationMs / 1000, httpRequest));
+                cookieSesion(token, maxAge, httpRequest));
         return ResponseEntity.ok(Map.of(
                 "mensaje", "Contrasena actualizada correctamente"
         ));

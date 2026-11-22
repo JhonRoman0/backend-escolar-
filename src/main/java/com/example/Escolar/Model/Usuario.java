@@ -64,5 +64,11 @@ public class Usuario {
     // Contraseña asignada por el admin: se exige cambiarla al iniciar sesión.
     @Column(name = "debe_cambiar_contrasena", nullable = false, columnDefinition = "boolean default false")
     Boolean debeCambiarContrasena = false;
+    @Column(name = "fecha_inicio_vigencia", nullable = false)
+    LocalDate fechaInicioVigencia;
+    @Column(name = "fecha_fin_vigencia", nullable = true)
+    LocalDate fechaFinVigencia;
+    @Column(name = "version_token", nullable = false, columnDefinition = "int default 0")
+    Integer versionToken = 0;
 
 }

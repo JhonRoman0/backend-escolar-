@@ -8,12 +8,15 @@ import com.example.Escolar.Exception.CuentaBloqueadaException;
 import com.example.Escolar.Exception.CuentaInactivaException;
 import com.example.Escolar.Exception.EsperaReenvioCodigoException;
 import com.example.Escolar.Exception.ResourceNotFoundException;
+import com.example.Escolar.Exception.VigenciaNoValidaException;
 import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.Usuario;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
 import com.example.Escolar.Security.JwtService;
+import com.example.Escolar.Service.VigenciaService.EstadoVigencia;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -25,6 +28,7 @@ import org.mockito.quality.Strictness;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -62,9 +66,17 @@ class AuthServiceTest {
     private EmailService emailService;
     @Mock
     private AccesoContextoService accesoContextoService;
+    @Mock
+    private VigenciaService vigenciaService;
 
     @InjectMocks
     private AuthService authService;
+
+    @BeforeEach
+    void vigenciaValidaPorDefecto() {
+        when(vigenciaService.esValida(org.mockito.ArgumentMatchers.<LocalDate>any(),
+                org.mockito.ArgumentMatchers.<LocalDate>any())).thenReturn(true);
+    }
 
     private Acceso mockAcceso(Long id) {
         Acceso acceso = new Acceso();
@@ -85,6 +97,8 @@ class AuthServiceTest {
         usuario.setContraseña("$2a$10$hash");
         usuario.setAcceso(mockAcceso(AccesoConstants.ACTIVO));
         usuario.setIntentosFallidos(intentosFallidos);
+        usuario.setFechaInicioVigencia(LocalDate.of(2026, 1, 1));
+        usuario.setVersionToken(0);
         return usuario;
     }
 
@@ -103,7 +117,7 @@ class AuthServiceTest {
         when(usuarioRepository.findByCodigoAndAccesoNot(anyString(), any(Acceso.class))).thenReturn(Optional.of(usuario));
         when(passwordEncoder.matches("clave", "$2a$10$hash")).thenReturn(true);
         when(usuarioRolRepository.findByUsuarioIdUsuario(1)).thenReturn(List.of());
-        when(jwtService.generarToken(1, "ADM20240001", List.of())).thenReturn("token");
+        when(jwtService.generarToken(1, "ADM20240001", List.of(), false, null, 0)).thenReturn("token");
         when(rolPermisoService.obtenerPermisosDelUsuario(1)).thenReturn(new PermisosRolResponse());
         when(accesoContextoService.vinculo(1)).thenReturn(AccesoContextoService.Alcance.TODO);
 
@@ -128,6 +142,26 @@ class AuthServiceTest {
         verify(usuarioRepository).save(captor.capture());
         assertEquals(1, captor.getValue().getIntentosFallidos());
         assertNull(captor.getValue().getFechaBloqueo());
+    }
+
+    @Test
+    void loginConVigenciaVencidaNoCuentaIntentosNiGeneraToken() {
+        stubAccesoRepository();
+        Usuario usuario = usuario(2);
+        usuario.setFechaInicioVigencia(LocalDate.of(2026, 1, 1));
+        usuario.setFechaFinVigencia(LocalDate.of(2026, 1, 31));
+        when(usuarioRepository.findByCodigoAndAccesoNot(anyString(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+        when(passwordEncoder.matches("clave", "$2a$10$hash")).thenReturn(true);
+        when(vigenciaService.esValida(any(), any())).thenReturn(false);
+        when(vigenciaService.evaluar(any(), any())).thenReturn(VigenciaService.EstadoVigencia.VENCIDA);
+
+        VigenciaNoValidaException ex = assertThrows(VigenciaNoValidaException.class, () -> authService.login(request()));
+
+        assertEquals(VigenciaNoValidaException.CODIGO_VIGENCIA_VENCIDA, ex.getCodigo());
+        assertEquals("El período de vigencia de su cuenta ha finalizado. Comuníquese con el administrador.",
+                ex.getMessage());
+        assertEquals(2, usuario.getIntentosFallidos());
+        verify(usuarioRepository, never()).save(any());
     }
 
     @Test
@@ -356,6 +390,41 @@ class AuthServiceTest {
     }
 
     @Test
+    void cambiarContrasenaConVigenciaVencidaNoGuardaNiRenuevaLaVigencia() {
+        stubAccesoRepository();
+        Usuario usuario = usuario(0);
+        LocalDate inicio = usuario.getFechaInicioVigencia();
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(any(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+        when(vigenciaService.datosNoDisponibles(inicio, null)).thenReturn(false);
+        when(vigenciaService.esValida(inicio, null)).thenReturn(false);
+        when(vigenciaService.evaluar(inicio, null)).thenReturn(EstadoVigencia.VENCIDA);
+
+        VigenciaNoValidaException ex = assertThrows(VigenciaNoValidaException.class,
+                () -> authService.cambiarContrasena(1, "claveActual", "ClaveNueva1@"));
+
+        assertEquals(VigenciaNoValidaException.CODIGO_VIGENCIA_VENCIDA, ex.getCodigo());
+        assertEquals(inicio, usuario.getFechaInicioVigencia());
+        assertEquals(0, usuario.getVersionToken());
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    void cambiarContrasenaSinDatosDeVigenciaUsaCodigoNoDisponible() {
+        stubAccesoRepository();
+        Usuario usuario = usuario(0);
+        LocalDate inicio = usuario.getFechaInicioVigencia();
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(any(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+        when(vigenciaService.datosNoDisponibles(inicio, null)).thenReturn(true);
+
+        VigenciaNoValidaException ex = assertThrows(VigenciaNoValidaException.class,
+                () -> authService.cambiarContrasena(1, "claveActual", "ClaveNueva1@"));
+
+        assertEquals(VigenciaNoValidaException.CODIGO_NO_DISPONIBLE, ex.getCodigo());
+        assertEquals(VigenciaNoValidaException.MENSAJE_NO_DISPONIBLE, ex.getMessage());
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
     void cambiarContrasenaConContrasenaActualIncorrectaLanzaIllegalArgument() {
         stubAccesoRepository();
         Usuario usuario = usuario(0);
@@ -376,7 +445,7 @@ class AuthServiceTest {
         when(usuarioRepository.findByCodigoAndAccesoNot(anyString(), any(Acceso.class))).thenReturn(Optional.of(usuario));
         when(passwordEncoder.matches("clave", "$2a$10$hash")).thenReturn(true);
         when(usuarioRolRepository.findByUsuarioIdUsuario(1)).thenReturn(List.of());
-        when(jwtService.generarToken(1, "ADM20240001", List.of(), true)).thenReturn("tokenPendiente");
+        when(jwtService.generarToken(1, "ADM20240001", List.of(), true, null, 0)).thenReturn("tokenPendiente");
         when(rolPermisoService.obtenerPermisosDelUsuario(1)).thenReturn(new PermisosRolResponse());
         when(accesoContextoService.vinculo(1)).thenReturn(AccesoContextoService.Alcance.TODO);
 
@@ -394,7 +463,7 @@ class AuthServiceTest {
         when(passwordEncoder.matches("claveTemporal", "$2a$10$hash")).thenReturn(true);
         when(passwordEncoder.encode("ClaveNueva1@")).thenReturn("$2a$10$nuevo");
         when(usuarioRolRepository.findByUsuarioIdUsuario(1)).thenReturn(List.of());
-        when(jwtService.generarToken(1, "ADM20240001", List.of())).thenReturn("tokenLimpio");
+        when(jwtService.generarToken(1, "ADM20240001", List.of(), false, null, 0)).thenReturn("tokenLimpio");
         when(rolPermisoService.obtenerPermisosDelUsuario(1)).thenReturn(new PermisosRolResponse());
         when(accesoContextoService.vinculo(1)).thenReturn(AccesoContextoService.Alcance.TODO);
 

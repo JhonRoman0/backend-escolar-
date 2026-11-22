@@ -37,6 +37,12 @@ class ApiPermisoRegistroReportesTest {
     }
 
     @org.junit.jupiter.api.Test
+    void exportarEvaluacionTieneSuPropiaAccion() {
+        assertEquals(java.util.Set.of("CREAR", "ACTUALIZAR", "ELIMINAR", "IMPRIMIR_EXPORTAR", "VER_RESUMEN"),
+                new ApiPermisoRegistro().accionesDe("EVALUACIONES"));
+    }
+
+    @org.junit.jupiter.api.Test
     void elHorarioDelColegioPideVerColegioYElPropioSoloLectura() {
         var registro = new ApiPermisoRegistro();
         assertEquals("VER_COLEGIO", registro.buscar("GET", "/horarios").orElseThrow().accionCodigo());

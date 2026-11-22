@@ -35,6 +35,7 @@ import com.example.Escolar.Repository.RolRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
 import com.example.Escolar.Service.EmailService.TipoEnvioCredenciales;
+import com.example.Escolar.Util.FechaColegio;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -288,6 +289,21 @@ class InscripcionServiceTest {
     }
 
     @Test
+    void apoderadoNuevoIniciaSuVigenciaHoyConVersionDeTokenCero() {
+        inscripcionService.inscribir(solicitud(2, null), foto(), null, 1);
+
+        ArgumentCaptor<Usuario> usuarios = ArgumentCaptor.forClass(Usuario.class);
+        verify(usuarioRepository, org.mockito.Mockito.atLeastOnce()).save(usuarios.capture());
+        Usuario nuevo = usuarios.getAllValues().stream()
+                .filter(usuario -> "40000001".equals(usuario.getDocumentoIdentidad()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(FechaColegio.hoy(), nuevo.getFechaCreacion());
+        assertEquals(FechaColegio.hoy(), nuevo.getFechaInicioVigencia());
+        assertEquals(0, nuevo.getVersionToken());
+    }
+
+    @Test
     void siElCorreoFallaLaRespuestaLoAvisa() {
         when(emailService.enviarCredencialesAcceso(any(), any(), any(), any(), any())).thenReturn(false);
 
@@ -311,6 +327,38 @@ class InscripcionServiceTest {
         when(apoderadoRepository.findByUsuarioDocumentoIdentidadAndAccesoNot(eq(dni), any()))
                 .thenReturn(Optional.of(existente));
         return existente;
+    }
+
+    private Usuario apoderadoEliminado(String dni, int id, LocalDate creacion, LocalDate inicio, int versionToken) {
+        Usuario usuario = new Usuario();
+        usuario.setIdUsuario(id + 100);
+        usuario.setDocumentoIdentidad(dni);
+        usuario.setNombre("Guardado");
+        usuario.setApellidoPat("Guardado");
+        usuario.setApellidoMat("Guardado");
+        usuario.setFechaNaci(LocalDate.of(1980, 1, 1));
+        usuario.setGmail("ana@mail.com");
+        usuario.setCelular("911111111");
+        usuario.setCodigo("APO-antiguo");
+        usuario.setFechaCreacion(creacion);
+        usuario.setFechaInicioVigencia(inicio);
+        usuario.setVersionToken(versionToken);
+        when(usuarioRepository.findByDocumentoIdentidad(dni)).thenReturn(Optional.of(usuario));
+        return usuario;
+    }
+
+    @Test
+    void reactivarApoderadoConservaFechaDeCreacionInicioDeVigenciaYVersionDeToken() {
+        LocalDate creacion = LocalDate.of(2024, 1, 10);
+        LocalDate inicio = LocalDate.of(2025, 3, 1);
+        Usuario usuario = apoderadoEliminado("40000001", 41, creacion, inicio, 7);
+
+        inscripcionService.inscribir(solicitud(2, null), foto(), null, 1);
+
+        assertEquals(creacion, usuario.getFechaCreacion());
+        assertEquals(inicio, usuario.getFechaInicioVigencia());
+        assertEquals(7, usuario.getVersionToken());
+        assertEquals("APO-antiguo", usuario.getCodigo());
     }
 
     @Test

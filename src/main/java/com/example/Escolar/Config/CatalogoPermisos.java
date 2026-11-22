@@ -119,7 +119,8 @@ public final class CatalogoPermisos {
                 "CREAR", "Crear evaluaciones y registrar sus notas",
                 "ACTUALIZAR", "Editar evaluaciones",
                 "ELIMINAR", "Eliminar evaluaciones",
-                "VER_RESUMEN", "Ver el resumen de una evaluación");
+                "VER_RESUMEN", "Ver el resumen de una evaluación",
+                "IMPRIMIR_EXPORTAR", "Exportar evaluación en PDF");
         permiso("PAGOS_MATRICULA", "Pagos",
                 "CREAR", "Crear métodos de pago",
                 "ACTUALIZAR", "Editar métodos de pago y montos",

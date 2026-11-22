@@ -28,4 +28,7 @@ public class UsuarioResponse {
     private LocalDateTime fechaBloqueo;
     private Boolean credencialesEnviadas;
     private Boolean debeCambiarContrasena;
+    private LocalDate fechaInicioVigencia;
+    private LocalDate fechaFinVigencia;
+    private String estadoVigencia;
 }

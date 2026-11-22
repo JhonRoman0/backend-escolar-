@@ -37,6 +37,7 @@ import com.example.Escolar.Repository.UsuarioRolRepository;
 import com.example.Escolar.Service.AccesoConstants;
 import com.example.Escolar.Service.ExclusividadDniService;
 import com.example.Escolar.Service.OrdenAcademicoService;
+import com.example.Escolar.Util.FechaColegio;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -541,6 +542,7 @@ public class DataSeeder implements CommandLineRunner {
 
         Optional<Usuario> existente = usuarioRepository.findByCodigoAndAccesoNot(adminCodigo, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
         if (existente.isPresent()) {
+            asegurarVigenciaInicial(existente.get());
             asignarRolSiFalta(existente.get(), rolAdmin);
             return;
         }
@@ -560,8 +562,9 @@ public class DataSeeder implements CommandLineRunner {
             usuario.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
             usuario.setContraseña(passwordEncoder.encode(adminPassword));
             if (usuario.getFechaCreacion() == null) {
-                usuario.setFechaCreacion(LocalDate.now());
+                usuario.setFechaCreacion(FechaColegio.hoy());
             }
+            asegurarVigenciaInicial(usuario);
             usuarioRepository.save(usuario);
             asignarRolSiFalta(usuario, rolAdmin);
             return;
@@ -576,7 +579,8 @@ public class DataSeeder implements CommandLineRunner {
         usuario.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         usuario.setGmail(adminGmail);
         usuario.setFechaNaci(LocalDate.of(2000, 1, 1));
-        usuario.setFechaCreacion(LocalDate.now());
+        usuario.setFechaCreacion(FechaColegio.hoy());
+        asegurarVigenciaInicial(usuario);
         usuarioRepository.save(usuario);
         asignarRolSiFalta(usuario, rolAdmin);
     }
@@ -586,6 +590,15 @@ public class DataSeeder implements CommandLineRunner {
         rol.setNombre(adminRol);
         rol.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
         return rolRepository.save(rol);
+    }
+
+    private void asegurarVigenciaInicial(Usuario usuario) {
+        if (usuario.getFechaInicioVigencia() == null) {
+            usuario.setFechaInicioVigencia(FechaColegio.hoy());
+        }
+        if (usuario.getVersionToken() == null) {
+            usuario.setVersionToken(0);
+        }
     }
 
     private void asignarRolSiFalta(Usuario usuario, Rol rol) {

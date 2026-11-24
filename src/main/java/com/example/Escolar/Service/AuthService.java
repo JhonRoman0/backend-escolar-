@@ -17,6 +17,7 @@ import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
 import com.example.Escolar.Security.JwtService;
 import com.example.Escolar.Service.AccesoContextoService.Alcance;
+import com.example.Escolar.Util.HashSeguro;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -24,10 +25,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -41,7 +38,8 @@ public class AuthService {
     public static final int MINUTOS_TOKEN_RESET = 15;
     public static final int MAX_INTENTOS_CODIGO = 5;
     public static final int SEGUNDOS_REENVIO_CODIGO = 45;
-    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+    public static final String MENSAJE_BLOQUEO =
+            "Tu cuenta está bloqueada por intentos fallidos. Recupera tu contraseña o comunícate con el administrador.";
 
     private final UsuarioRepository usuarioRepository;
     private final UsuarioRolRepository usuarioRolRepository;
@@ -54,7 +52,17 @@ public class AuthService {
     private final AccesoContextoService accesoContextoService;
     private final VigenciaService vigenciaService;
 
+    /** Contraseña y sesión en un paso (sin doble factor). */
     public LoginResponse login(LoginRequest request) {
+        return iniciarSesion(validarCredenciales(request));
+    }
+
+    /**
+     * Valida código y contraseña sin abrir sesión. Los intentos fallidos no se
+     * reinician aquí: con doble factor, los errores del código suman al mismo
+     * contador hasta que el ingreso se completa.
+     */
+    public Usuario validarCredenciales(LoginRequest request) {
         Usuario usuario = usuarioRepository.findByCodigoAndAccesoNot(request.getCodigo(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new BadCredentialsException("Credenciales incorrectas"));
         // Inactivo: no cuenta intentos y solo revela su estado si la contraseña es correcta.
@@ -70,11 +78,21 @@ public class AuthService {
             throw new BadCredentialsException("Credenciales incorrectas");
         }
         validarVigencia(usuario);
+        return usuario;
+    }
+
+    /** Ingreso completo (contraseña y, si aplica, código): reinicia intentos y emite la sesión. */
+    public LoginResponse iniciarSesion(Usuario usuario) {
+        return iniciarSesion(usuario, null);
+    }
+
+    public LoginResponse iniciarSesion(Usuario usuario, Integer idDispositivo) {
+        validarVigencia(usuario);
         usuario.setIntentosFallidos(0);
         usuario.setFechaBloqueo(null);
         usuarioRepository.save(usuario);
         List<String> roles = getRoles(usuario);
-        String token = generarToken(usuario, Boolean.TRUE.equals(usuario.getDebeCambiarContrasena()));
+        String token = generarToken(usuario, Boolean.TRUE.equals(usuario.getDebeCambiarContrasena()), idDispositivo);
 
         LoginResponse response = new LoginResponse();
         response.setToken(token);
@@ -149,8 +167,13 @@ public class AuthService {
      * Devuelve un token nuevo sin la marca de cambio pendiente, para que la
      * sesión actual quede habilitada sin volver a iniciar sesión.
      */
-    @Transactional
     public String cambiarContrasena(Integer idUsuario, String contrasenaActual, String nuevaContrasena) {
+        return cambiarContrasena(idUsuario, contrasenaActual, nuevaContrasena, null);
+    }
+
+    @Transactional
+    public String cambiarContrasena(Integer idUsuario, String contrasenaActual, String nuevaContrasena,
+                                    Integer idDispositivo) {
         Usuario usuario = usuarioRepository.findByIdUsuarioAndAccesoNot(idUsuario,
                         accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontro la cuenta del usuario autenticado"));
@@ -168,7 +191,7 @@ public class AuthService {
         usuario.setFechaBloqueo(null);
         usuario.setDebeCambiarContrasena(false);
         usuarioRepository.save(usuario);
-        return generarToken(usuario, false);
+        return generarToken(usuario, false, idDispositivo);
     }
 
     private void validarVigencia(Usuario usuario) {
@@ -185,10 +208,14 @@ public class AuthService {
         }
     }
 
-    private String generarToken(Usuario usuario, boolean cambioContrasenaPendiente) {
+    private String generarToken(Usuario usuario, boolean cambioContrasenaPendiente, Integer idDispositivo) {
         Integer versionToken = usuario.getVersionToken() == null ? 0 : usuario.getVersionToken();
+        if (idDispositivo == null) {
+            return jwtService.generarToken(usuario.getIdUsuario(), usuario.getCodigo(), getRoles(usuario),
+                    cambioContrasenaPendiente, usuario.getFechaFinVigencia(), versionToken);
+        }
         return jwtService.generarToken(usuario.getIdUsuario(), usuario.getCodigo(), getRoles(usuario),
-                cambioContrasenaPendiente, usuario.getFechaFinVigencia(), versionToken);
+                cambioContrasenaPendiente, usuario.getFechaFinVigencia(), versionToken, idDispositivo);
     }
 
     private Usuario buscarUsuarioPorGmail(String gmail) {
@@ -236,8 +263,7 @@ public class AuthService {
     }
 
     private String generarCodigo6Digitos() {
-        int codigo = 100000 + SECURE_RANDOM.nextInt(900000);
-        return String.valueOf(codigo);
+        return HashSeguro.codigo6Digitos();
     }
 
     private void verificarBloqueo(Usuario usuario) {
@@ -245,7 +271,7 @@ public class AuthService {
             return;
         }
         if (usuario.getIntentosFallidos() != null && usuario.getIntentosFallidos() >= MAX_INTENTOS_FALLIDOS) {
-            throw new CuentaBloqueadaException("Tu cuenta está bloqueada por intentos fallidos. Recupera tu contraseña o comunícate con el administrador.");
+            throw new CuentaBloqueadaException(MENSAJE_BLOQUEO);
         }
         usuario.setFechaBloqueo(null);
         usuario.setIntentosFallidos(0);
@@ -261,17 +287,7 @@ public class AuthService {
     }
 
     private String generarTokenHash(String token) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
-            for (byte b : hash) {
-                hex.append(String.format("%02x", b));
-            }
-            return hex.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalArgumentException("No se pudo generar el hash del token");
-        }
+        return HashSeguro.sha256(token);
     }
 
     private List<String> getRoles(Usuario usuario) {

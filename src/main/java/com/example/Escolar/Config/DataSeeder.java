@@ -62,6 +62,7 @@ import java.util.Optional;
 public class DataSeeder implements CommandLineRunner {
 
     private final ExclusividadDniService exclusividadDni;
+    private final com.example.Escolar.Service.DosFactorService dosFactorService;
     private final PlatformTransactionManager transactionManager;
     private final RetiroPaginaWeb retiroPaginaWeb;
     private final MigracionJustificacion migracionJustificacion;
@@ -132,6 +133,7 @@ public class DataSeeder implements CommandLineRunner {
         if (seedAdminEnabled) {
             seedAdmin();
         }
+        dosFactorService.verificarAdministradores();
     }
 
     private void seedAcceso() {

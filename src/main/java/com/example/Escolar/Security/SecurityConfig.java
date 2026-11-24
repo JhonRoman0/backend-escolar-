@@ -27,6 +27,9 @@ public class SecurityConfig {
             "/auth/forgot-password",
             "/auth/verify-reset-code",
             "/auth/reset-password",
+            // Segundo paso del inicio de sesión (aún sin sesión).
+            "/auth/2fa/verificar",
+            "/auth/2fa/reenviar",
             "/swagger-ui.html",
             "/swagger-ui/**",
             "/v3/api-docs/**");
@@ -35,6 +38,9 @@ public class SecurityConfig {
             "/auth/me",
             "/auth/change-password",
             "/auth/permisos",
+            // Navegadores del propio usuario (Mi perfil).
+            "/auth/dispositivos",
+            "/auth/dispositivos/**",
             // Datos del colegio (nombre, logo) para los PDF de cualquier módulo.
             "/colegios/actual",
             // Avisos en vivo de cambios (Server-Sent Events).

@@ -19,6 +19,7 @@ public class JwtService {
 
     public static final String CLAIM_CAMBIO_PENDIENTE = "cambioContrasenaPendiente";
     public static final String CLAIM_VERSION_TOKEN = "versionToken";
+    public static final String CLAIM_DISPOSITIVO = "dispositivo";
 
     private final SecretKey secretKey;
     private final long expiration;
@@ -39,8 +40,16 @@ public class JwtService {
 
     public String generarToken(Integer idUsuario, String codigo, List<String> roles,
                                boolean cambioContrasenaPendiente, LocalDate fechaFinVigencia, Integer versionToken) {
+        return generarToken(idUsuario, codigo, roles, cambioContrasenaPendiente, fechaFinVigencia, versionToken, null);
+    }
+
+    /** Con idDispositivo, la sesión deja de valer si ese dispositivo se quita de la cuenta. */
+    public String generarToken(Integer idUsuario, String codigo, List<String> roles,
+                               boolean cambioContrasenaPendiente, LocalDate fechaFinVigencia, Integer versionToken,
+                               Integer idDispositivo) {
         Date ahora = new Date();
         return Jwts.builder()
+                .claims(idDispositivo == null ? java.util.Map.of() : java.util.Map.of(CLAIM_DISPOSITIVO, idDispositivo))
                 .subject(String.valueOf(idUsuario))
                 .claim("codigo", codigo)
                 .claim("roles", roles)
@@ -54,6 +63,12 @@ public class JwtService {
 
     public boolean isCambioContrasenaPendiente(Claims claims) {
         return Boolean.TRUE.equals(claims.get(CLAIM_CAMBIO_PENDIENTE, Boolean.class));
+    }
+
+    /** Dispositivo de la sesión; null en sesiones sin dispositivo (sin doble factor o anteriores). */
+    public Integer getDispositivo(Claims claims) {
+        Object valor = claims.get(CLAIM_DISPOSITIVO);
+        return valor instanceof Number numero ? numero.intValue() : null;
     }
 
     public Integer getVersionToken(String token) {

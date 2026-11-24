@@ -33,6 +33,19 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Integer>, Usua
 
     Optional<Usuario> findByResetToken(String resetToken);
 
+    Optional<Usuario> findByDosFactorDesafio(String dosFactorDesafio);
+
+    /** ¿El dispositivo de la sesión sigue registrado para el usuario? (búsqueda por llave primaria) */
+    @Query("select count(d) > 0 from DispositivoUsuario d where d.idDispositivo = :dispositivo "
+            + "and d.usuario.idUsuario = :id")
+    boolean tieneDispositivo(@Param("id") Integer id, @Param("dispositivo") Integer dispositivo);
+
+    /** Códigos de los administradores activos sin correo (no podrían recibir el código). */
+    @Query("select u.codigo from UsuarioRol ur join ur.usuario u join ur.rol r "
+            + "where upper(r.nombre) = 'ADMIN' and r.acceso.idAcceso <> :eliminado "
+            + "and u.acceso.idAcceso = :activo and (u.gmail is null or trim(u.gmail) = '')")
+    List<String> administradoresSinCorreo(@Param("activo") Long activo, @Param("eliminado") Long eliminado);
+
     Optional<Usuario> findByGmailAndAccesoNot(String gmail, Acceso acceso);
 
     boolean existsByGmailAndAccesoNot(String gmail, Acceso acceso);

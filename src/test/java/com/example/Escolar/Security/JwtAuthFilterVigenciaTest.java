@@ -134,6 +134,40 @@ class JwtAuthFilterVigenciaTest {
     }
 
     @Test
+    void sesionDeUnDispositivoQuitadoQuedaSinAutenticar() throws Exception {
+        conSesion(sesion(FechaColegio.hoy().minusDays(1), null, 0));
+        when(usuarioRepository.tieneDispositivo(1, 40)).thenReturn(false);
+        when(usuarioRepository.tieneDispositivo(1, 41)).thenReturn(true);
+        String quitado = jwtService.generarToken(1, "ADM20240001", List.of("ADMIN"), false, null, 0, 40);
+        String otro = jwtService.generarToken(1, "ADM20240001", List.of("ADMIN"), false, null, 0, 41);
+
+        // Sin autenticación: Spring responde 401 y el navegador vuelve al login.
+        ejecutar("/auth/me", quitado, new MockFilterChain());
+        assertNull(org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication());
+
+        // La sesión de otro dispositivo del mismo usuario sigue valiendo.
+        MockFilterChain chain = new MockFilterChain();
+        ejecutar("/usuarios", otro, chain);
+        assertNotNull(chain.getRequest());
+        var principal = (com.example.Escolar.Security.UsuarioAutenticado)
+                org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        assertEquals(41, principal.idDispositivo());
+    }
+
+    @Test
+    void sesionSinDispositivoNoConsultaDispositivos() throws Exception {
+        conSesion(sesion(FechaColegio.hoy().minusDays(1), null, 0));
+        String token = jwtService.generarToken(1, "ADM20240001", List.of("ADMIN"));
+        MockFilterChain chain = new MockFilterChain();
+
+        ejecutar("/usuarios", token, chain);
+
+        assertNotNull(chain.getRequest());
+        org.mockito.Mockito.verify(usuarioRepository, org.mockito.Mockito.never())
+                .tieneDispositivo(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void versionObsoletaBloqueaLaSesion() throws Exception {
         conSesion(sesion(FechaColegio.hoy().minusDays(1), null, 2));
         String token = jwtService.generarToken(1, "ADM20240001", List.of("ADMIN"), false, null, 1);

@@ -10,4 +10,10 @@ public class LoginResponse {
     private UsuarioResponse usuario;
     private PermisosRolResponse permisos;
     private boolean esAdmin;
+    // Contraseña correcta pero falta el código del correo: no hay sesión aún.
+    private boolean requiereDosFactor;
+    private String desafio;
+    private String correoEnmascarado;
+    private Long segundosReenvio;
+    private Integer minutosCodigo;
 }

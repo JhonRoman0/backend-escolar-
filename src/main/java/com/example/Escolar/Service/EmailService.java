@@ -88,10 +88,18 @@ public class EmailService {
     }
 
     private String plantillaRecuperacion(String codigo) {
+        return plantillaCodigo("Recuperación de Contraseña",
+                "Ha solicitado restablecer su contraseña. Use el siguiente código:",
+                codigo,
+                "Este código expira en 15 minutos.<br>Si no solicitó este cambio, ignore este mensaje.");
+    }
+
+    /** Código grande centrado: lo usan la recuperación y el doble factor. */
+    private String plantillaCodigo(String titulo, String introduccion, String codigo, String pie) {
         String contenido = """
-                <h2 style="color: #333; text-align: center;">Recuperación de Contraseña</h2>
+                <h2 style="color: #333; text-align: center;">%s</h2>
                 <p style="color: #555; font-size: 15px; text-align: center;">
-                  Ha solicitado restablecer su contraseña. Use el siguiente código:
+                  %s
                 </p>
                 <div style="text-align: center; margin: 30px 0;">
                   <span style="display: inline-block; background: #2563eb; color: #ffffff; font-size: 32px; font-weight: bold; letter-spacing: 8px; padding: 15px 30px; border-radius: 8px;">
@@ -99,11 +107,73 @@ public class EmailService {
                   </span>
                 </div>
                 <p style="color: #777; font-size: 13px; text-align: center;">
-                  Este código expira en 15 minutos.<br>
-                  Si no solicitó este cambio, ignore este mensaje.
+                  %s
                 </p>
-                """.formatted(codigo);
+                """.formatted(titulo, introduccion, codigo, pie);
         return envolverHtml(contenido);
+    }
+
+    /**
+     * Código para completar el inicio de sesión. Es síncrono: si no sale, el
+     * usuario debe saberlo en el momento en vez de esperar un correo que no llega.
+     */
+    public boolean enviarCodigoDosFactor(String destino, String nombre, String codigo, int minutos,
+                                         String navegador, String cuando) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(fromAddress);
+            helper.setTo(destino);
+            helper.setSubject("Código de verificación - " + NOMBRE_SISTEMA);
+            helper.setText(plantillaCodigo("Código de verificación",
+                    "Hola <strong>" + esc(nombre) + "</strong>, use este código para terminar de iniciar sesión:",
+                    esc(codigo),
+                    "Este código expira en " + minutos + " minutos.<br>"
+                            + "Solicitado desde " + esc(navegador) + " el " + esc(cuando) + ".<br>"
+                            + "Si no fue usted, cambie su contraseña y comuníquese con el administrador."), true);
+            mailSender.send(message);
+            log.info("Código de verificación enviado a {}", destino);
+            return true;
+        } catch (Exception e) {
+            log.error("Error al enviar el código de verificación a {}: {}", destino, e.getMessage());
+            return false;
+        }
+    }
+
+    /** Aviso de inicio de sesión desde un navegador nuevo. No es crítico: va aparte. */
+    @Async
+    public void enviarAvisoNuevoDispositivo(String destino, String nombre, String navegador, String ip, String cuando) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(fromAddress);
+            helper.setTo(destino);
+            helper.setSubject("Nuevo inicio de sesión - " + NOMBRE_SISTEMA);
+            String contenido = """
+                    <h2 style="color: #333; text-align: center;">Nuevo inicio de sesión</h2>
+                    <p style="color: #555; font-size: 15px; text-align: center;">
+                      Hola <strong>%s</strong>, se inició sesión en su cuenta desde un dispositivo nuevo:
+                    </p>
+                    <table style="margin: 24px auto; font-size: 14px; color: #0f172a; border-collapse: collapse;">
+                      <tr><td style="color: #64748b; padding: 4px 12px;">Fecha</td><td style="padding: 4px 12px;"><strong>%s</strong></td></tr>
+                      <tr><td style="color: #64748b; padding: 4px 12px;">Dispositivo</td><td style="padding: 4px 12px;"><strong>%s</strong></td></tr>
+                      <tr><td style="color: #64748b; padding: 4px 12px;">IP aproximada</td><td style="padding: 4px 12px;"><strong>%s</strong></td></tr>
+                    </table>
+                    <p style="color: #777; font-size: 13px; text-align: center;">
+                      Si fue usted, no necesita hacer nada.<br>
+                      Si no fue usted, cambie su contraseña y comuníquese con el administrador.
+                    </p>
+                    """.formatted(esc(nombre), esc(cuando), esc(navegador), esc(ip == null ? "desconocida" : ip));
+            helper.setText(envolverHtml(contenido), true);
+            mailSender.send(message);
+            log.info("Aviso de nuevo inicio de sesión enviado a {}", destino);
+        } catch (Exception e) {
+            log.error("Error al enviar el aviso de nuevo inicio de sesión a {}: {}", destino, e.getMessage());
+        }
+    }
+
+    private static String esc(String valor) {
+        return HtmlUtils.htmlEscape(valor == null ? "" : valor, "UTF-8");
     }
 
     private String plantillaCredenciales(String nombre, String codigo, String contraseñaInicial,

@@ -40,6 +40,7 @@ public class ApiPermisoRegistro {
         registrar("POST", "/usuarios/{id}/foto", "USUARIOS", "ACTUALIZAR");
         registrar("DELETE", "/usuarios/{id}/foto", "USUARIOS", "ACTUALIZAR");
         registrar("POST", "/usuarios/{id}/desbloquear", "USUARIOS", "ACTUALIZAR");
+        registrar("POST", "/usuarios/{id}/cerrar-sesiones", "USUARIOS", "ACTUALIZAR");
         registrar("POST", "/usuarios/**", "USUARIOS", "CREAR");
         registrar("PUT", "/usuarios/**", "USUARIOS", "ACTUALIZAR");
         registrar("DELETE", "/usuarios/**", "USUARIOS", "ELIMINAR");

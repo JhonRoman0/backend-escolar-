@@ -84,6 +84,17 @@ public class EventosService {
         aTodos(() -> SseEmitter.event().name("cambios").data(datos));
     }
 
+    /** Pide a las pestañas abiertas del usuario que revisen su sesión (p. ej. quitó un dispositivo). */
+    public void revisarSesion(Integer idUsuario) {
+        Deque<SseEmitter> suyos = porUsuario.get(idUsuario);
+        if (suyos == null) {
+            return;
+        }
+        for (SseEmitter emisor : List.copyOf(suyos)) {
+            enviar(idUsuario, emisor, SseEmitter.event().name("sesion").data("{}"));
+        }
+    }
+
     /** Latido: evita que CloudFront (60 s) o nginx corten una conexión en silencio. */
     @Scheduled(fixedRate = 20_000, initialDelay = 20_000)
     public void latido() {

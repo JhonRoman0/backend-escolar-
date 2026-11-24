@@ -100,13 +100,6 @@ public class UsuarioController {
         return ResponseEntity.noContent().build();
     }
 
-    /** Cierra sus sesiones abiertas y le vuelve a pedir el código en todos sus navegadores. */
-    @PostMapping("/{id}/cerrar-sesiones")
-    public ResponseEntity<Void> cerrarSesiones(@PathVariable Integer id) {
-        usuarioService.cerrarSesiones(id);
-        return ResponseEntity.noContent().build();
-    }
-
     @GetMapping("/rol/{idRol}")
     public List<UsuarioResponse> getUsuariosPorRol(@PathVariable Integer idRol) {
         return usuarioService.getUsuariosPorRol(idRol);

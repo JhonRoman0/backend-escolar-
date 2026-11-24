@@ -266,15 +266,6 @@ public class UsuarioService {
         usuarioRepository.save(usuario);
     }
 
-    /** Sube la versión de sesión: invalida sus tokens y la confianza de sus navegadores. */
-    @Transactional
-    public void cerrarSesiones(Integer id) {
-        Usuario usuario = findUsuario(id);
-        int versionToken = usuario.getVersionToken() == null ? 0 : usuario.getVersionToken();
-        usuario.setVersionToken(versionToken + 1);
-        usuarioRepository.save(usuario);
-    }
-
     @Transactional
     public void delete(Integer id, Integer idAutenticado) {
         if (id.equals(idAutenticado)) {

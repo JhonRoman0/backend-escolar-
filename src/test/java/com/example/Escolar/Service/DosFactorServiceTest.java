@@ -219,7 +219,7 @@ class DosFactorServiceTest {
     }
 
     @Test
-    void cambiarContrasenaCorreoOCerrarSesionesQuitaLaConfianza() {
+    void cambiarContrasenaCorreoOVersionDeSesionQuitaLaConfianza() {
         buscarPorDesafio();
         DosFactorService.Desafio d = servicio.iniciar(usuario, contexto);
         ArgumentCaptor<DispositivoUsuario> guardado = ArgumentCaptor.forClass(DispositivoUsuario.class);
@@ -273,9 +273,27 @@ class DosFactorServiceTest {
         servicio.olvidar(7, 40);
 
         verify(dispositivoRepository).delete(d);
-        verify(eventosService).revisarSesion(7);
+        verify(eventosService).avisarCuenta(7);
         // Un dispositivo de otro usuario no se puede quitar.
         assertThrows(ResourceNotFoundException.class, () -> servicio.olvidar(8, 40));
+    }
+
+    @Test
+    void iniciarSesionAvisaALasPestanasDelUsuario() {
+        buscarPorDesafio();
+        DosFactorService.Desafio d = servicio.iniciar(usuario, contexto);
+        verify(eventosService, never()).avisarCuenta(any());
+
+        DosFactorService.Verificado v = servicio.verificar(d.desafio(), codigoEnviado.get(), true, null, contexto);
+        verify(eventosService, times(1)).avisarCuenta(7);
+
+        // Entrar por un navegador de confianza también lo avisa (cambia su último uso).
+        ArgumentCaptor<DispositivoUsuario> guardado = ArgumentCaptor.forClass(DispositivoUsuario.class);
+        verify(dispositivoRepository).save(guardado.capture());
+        when(dispositivoRepository.findByUsuarioIdUsuarioAndTokenHash(eq(7), anyString()))
+                .thenReturn(Optional.of(guardado.getValue()));
+        assertTrue(servicio.dispositivoDeConfianza(usuario, v.tokenDispositivo()).isPresent());
+        verify(eventosService, times(2)).avisarCuenta(7);
     }
 
     @Test

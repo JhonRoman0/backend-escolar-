@@ -84,14 +84,18 @@ public class EventosService {
         aTodos(() -> SseEmitter.event().name("cambios").data(datos));
     }
 
-    /** Pide a las pestañas abiertas del usuario que revisen su sesión (p. ej. quitó un dispositivo). */
-    public void revisarSesion(Integer idUsuario) {
+    /**
+     * Aviso solo a las pestañas de un usuario: cambió algo de su cuenta (inició
+     * sesión en un dispositivo o quitó uno). Recargan sus dispositivos y revisan
+     * su sesión; la de un dispositivo quitado se cierra.
+     */
+    public void avisarCuenta(Integer idUsuario) {
         Deque<SseEmitter> suyos = porUsuario.get(idUsuario);
         if (suyos == null) {
             return;
         }
         for (SseEmitter emisor : List.copyOf(suyos)) {
-            enviar(idUsuario, emisor, SseEmitter.event().name("sesion").data("{}"));
+            enviar(idUsuario, emisor, SseEmitter.event().name("cuenta").data("{}"));
         }
     }
 

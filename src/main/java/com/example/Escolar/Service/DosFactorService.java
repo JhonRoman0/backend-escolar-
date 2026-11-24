@@ -103,6 +103,7 @@ public class DosFactorService {
                 .map(d -> {
                     d.setUltimoUso(ahora);
                     dispositivoRepository.save(d);
+                    eventosService.avisarCuenta(usuario.getIdUsuario());
                     return d.getIdDispositivo();
                 });
     }
@@ -177,6 +178,8 @@ public class DosFactorService {
         String token = tokenDispositivo == null || tokenDispositivo.isBlank() || tokenDispositivo.length() > 100
                 ? HashSeguro.tokenAleatorio() : tokenDispositivo;
         DispositivoUsuario dispositivo = registrarDispositivo(guardado, token, recordar, contexto, ahora);
+        // Sus otras pestañas ven el dispositivo (nuevo o con su último uso) en Mi perfil.
+        eventosService.avisarCuenta(guardado.getIdUsuario());
         return new Verificado(guardado, token, dispositivo.getIdDispositivo());
     }
 
@@ -202,7 +205,7 @@ public class DosFactorService {
     public void olvidar(Integer idUsuario, Integer idDispositivo) {
         dispositivoRepository.delete(dispositivoDe(idUsuario, idDispositivo));
         // Las pestañas abiertas del usuario revisan su sesión: la de ese dispositivo se cierra ya.
-        eventosService.revisarSesion(idUsuario);
+        eventosService.avisarCuenta(idUsuario);
     }
 
     // ───────────── Internos ─────────────
@@ -288,7 +291,7 @@ public class DosFactorService {
                 && Objects.equals(d.getHuellaConfianza(), huella(usuario));
     }
 
-    // Cambia si cambian la contraseña, el correo o la versión de sesión ("cerrar sesiones").
+    // Cambia si cambian la contraseña, el correo o la versión de sesión.
     private String huella(Usuario usuario) {
         String correo = usuario.getGmail() == null ? "" : usuario.getGmail().trim().toLowerCase(Locale.ROOT);
         int version = usuario.getVersionToken() == null ? 0 : usuario.getVersionToken();

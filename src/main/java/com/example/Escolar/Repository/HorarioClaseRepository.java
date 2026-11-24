@@ -103,10 +103,10 @@ public interface HorarioClaseRepository extends JpaRepository<HorarioClase, Inte
             "JOIN FETCH d.usuario " +
             "JOIN FETCH a.gradoSeccion gs " +
             "JOIN FETCH gs.grado " +
-            "JOIN FETCH gs.seccion " +
+            "LEFT JOIN FETCH gs.seccion " +
             "JOIN FETCH gs.turno " +
             "JOIN FETCH h.aula " +
-            "WHERE h.acceso <> :eliminado AND a.acceso <> :eliminado " +
+            "WHERE h.acceso <> :eliminado AND a.acceso <> :eliminado AND gs.acceso <> :eliminado " +
             "AND a.anioEscolar.idAnio = :idAnio " +
             "ORDER BY h.diaSemana ASC, h.horaInicio ASC")
     List<HorarioClase> findPlanosPorAnio(@Param("eliminado") Acceso eliminado, @Param("idAnio") Integer idAnio);
@@ -118,10 +118,10 @@ public interface HorarioClaseRepository extends JpaRepository<HorarioClase, Inte
             "JOIN FETCH d.usuario " +
             "JOIN FETCH a.gradoSeccion gs " +
             "JOIN FETCH gs.grado " +
-            "JOIN FETCH gs.seccion " +
+            "LEFT JOIN FETCH gs.seccion " +
             "JOIN FETCH gs.turno " +
             "JOIN FETCH h.aula " +
-            "WHERE h.acceso <> :eliminado AND a.acceso <> :eliminado " +
+            "WHERE h.acceso <> :eliminado AND a.acceso <> :eliminado AND gs.acceso <> :eliminado " +
             "AND a.anioEscolar.idAnio = :idAnio AND d.idDocente = :idDocente " +
             "ORDER BY h.diaSemana ASC, h.horaInicio ASC")
     List<HorarioClase> findPlanosPorDocenteYAnio(@Param("eliminado") Acceso eliminado,
@@ -135,10 +135,10 @@ public interface HorarioClaseRepository extends JpaRepository<HorarioClase, Inte
             "JOIN FETCH d.usuario " +
             "JOIN FETCH a.gradoSeccion gs " +
             "JOIN FETCH gs.grado " +
-            "JOIN FETCH gs.seccion " +
+            "LEFT JOIN FETCH gs.seccion " +
             "JOIN FETCH gs.turno " +
             "JOIN FETCH h.aula " +
-            "WHERE h.acceso <> :eliminado AND a.acceso <> :eliminado " +
+            "WHERE h.acceso <> :eliminado AND a.acceso <> :eliminado AND gs.acceso <> :eliminado " +
             "AND a.anioEscolar.idAnio = :idAnio AND gs.idGradoSeccion = :idGradoSeccion " +
             "ORDER BY h.diaSemana ASC, h.horaInicio ASC")
     List<HorarioClase> findPlanosPorGradoSeccionYAnio(@Param("eliminado") Acceso eliminado,

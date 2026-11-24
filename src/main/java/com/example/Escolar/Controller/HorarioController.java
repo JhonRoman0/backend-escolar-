@@ -27,6 +27,7 @@ public class HorarioController {
             @RequestParam(required = false) String grado,
             @RequestParam(required = false) String seccion,
             @RequestParam(required = false) Integer docente,
+            @RequestParam(required = false) Integer idDocente,
             @RequestParam(required = false) Integer anioEscolar,
             @RequestParam(required = false) Integer idNivel,
             @RequestParam(required = false) Integer idGrado,
@@ -35,9 +36,10 @@ public class HorarioController {
             @RequestParam(required = false) Integer idGradoSeccion,
             @RequestParam(required = false) Integer idAnio,
             @org.springframework.data.web.PageableDefault(size = 20, sort = "idHorario") org.springframework.data.domain.Pageable pageable) {
-        // anioEscolar (legacy) tiene prioridad sobre idAnio
+        // anioEscolar (legacy) tiene prioridad sobre idAnio; docente es el parámetro canónico.
         Integer anioEfectivo = anioEscolar != null ? anioEscolar : idAnio;
-        return horarioService.listar(grado, seccion, docente, anioEfectivo,
+        Integer docenteEfectivo = docente != null ? docente : idDocente;
+        return horarioService.listar(grado, seccion, docenteEfectivo, anioEfectivo,
                 idNivel, idGrado, idSeccion, idTurno, idGradoSeccion,
                 accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados(), pageable);
     }

@@ -54,11 +54,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         String token = extraerToken(request);
         Claims claims = token == null ? null : parsearToken(token);
+        if (claims != null && dispositivoQuitado(claims)) {
+            claims = null;
+        }
         if (claims != null) {
             UsuarioAutenticado principal = new UsuarioAutenticado(
                     Integer.valueOf(claims.getSubject()),
                     claims.get("codigo", String.class),
-                    claims.get("roles", List.class));
+                    claims.get("roles", List.class),
+                    jwtService.getDispositivo(claims));
             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                     principal,
                     null,
@@ -83,6 +87,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             }
         }
         filterChain.doFilter(request, response);
+    }
+
+    // La sesión se abrió desde un dispositivo que el usuario ya quitó de su cuenta.
+    private boolean dispositivoQuitado(Claims claims) {
+        Integer idDispositivo = jwtService.getDispositivo(claims);
+        return idDispositivo != null && !usuarioRepositoryProvider.getObject()
+                .tieneDispositivo(Integer.valueOf(claims.getSubject()), idDispositivo);
     }
 
     private Claims parsearToken(String token) {

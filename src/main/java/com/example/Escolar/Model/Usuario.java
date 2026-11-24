@@ -71,4 +71,22 @@ public class Usuario {
     @Column(name = "version_token", nullable = false, columnDefinition = "int default 0")
     Integer versionToken = 0;
 
+    // Doble factor: el desafío identifica el inicio de sesión a medias; el código
+    // va al correo. Ambos se guardan como hash.
+    @Column(name = "dos_factor_desafio", length = 64, nullable = true)
+    String dosFactorDesafio;
+    @Column(name = "dos_factor_desafio_expiracion", nullable = true)
+    LocalDateTime dosFactorDesafioExpiracion;
+    @Column(name = "dos_factor_codigo", length = 64, nullable = true)
+    String dosFactorCodigo;
+    @Column(name = "dos_factor_codigo_expiracion", nullable = true)
+    LocalDateTime dosFactorCodigoExpiracion;
+    @Column(name = "dos_factor_enviado", nullable = true)
+    LocalDateTime dosFactorEnviado;
+    // Envíos en la hora en curso (tope para no agotar el cupo del correo).
+    @Column(name = "dos_factor_envios", nullable = true)
+    Integer dosFactorEnvios;
+    @Column(name = "dos_factor_ventana", nullable = true)
+    LocalDateTime dosFactorVentana;
+
 }

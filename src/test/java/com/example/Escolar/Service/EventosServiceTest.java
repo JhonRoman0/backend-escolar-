@@ -66,6 +66,23 @@ class EventosServiceTest {
     }
 
     @Test
+    void elAvisoDeCuentaLlegaSoloALasPestanasDeEseUsuario() {
+        servicio.conectar(7);
+        servicio.conectar(7);
+        servicio.conectar(8);
+        int[] antes = creados.stream().mapToInt(e -> e.enviados.size()).toArray();
+
+        servicio.avisarCuenta(7);
+        servicio.avisarCuenta(99); // sin pestañas: no falla
+
+        assertEquals(antes[0] + 1, creados.get(0).enviados.size());
+        assertEquals(antes[1] + 1, creados.get(1).enviados.size());
+        assertEquals(antes[2], creados.get(2).enviados.size());
+        assertTrue(creados.get(0).enviados.get(antes[0]).stream()
+                .anyMatch(d -> String.valueOf(d.getData()).contains("event:cuenta")));
+    }
+
+    @Test
     void laConexionDuraTreintaMinutosYAvisaCuandoReintentar() {
         servicio.conectar(7);
         assertEquals(EventosService.DURACION_MS, creados.get(0).duracion);

@@ -142,6 +142,37 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
+    @ExceptionHandler(EnvioCodigoFallidoException.class)
+    public ResponseEntity<Map<String, Object>> handleEnvioCodigoFallido(EnvioCodigoFallidoException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.SERVICE_UNAVAILABLE.value());
+        body.put("error", "Service Unavailable");
+        body.put("message", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
+    }
+
+    @ExceptionHandler(DosFactorVencidoException.class)
+    public ResponseEntity<Map<String, Object>> handleDosFactorVencido(DosFactorVencidoException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.BAD_REQUEST.value());
+        body.put("error", "Bad Request");
+        body.put("codigo", DosFactorVencidoException.CODIGO);
+        body.put("message", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    @ExceptionHandler(LimiteEnviosCodigoException.class)
+    public ResponseEntity<Map<String, Object>> handleLimiteEnvios(LimiteEnviosCodigoException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.TOO_MANY_REQUESTS.value());
+        body.put("error", "Too Many Requests");
+        body.put("message", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(body);
+    }
+
     @ExceptionHandler(EsperaReenvioCodigoException.class)
     public ResponseEntity<Map<String, Object>> handleEsperaReenvio(EsperaReenvioCodigoException ex) {
         Map<String, Object> body = new HashMap<>();

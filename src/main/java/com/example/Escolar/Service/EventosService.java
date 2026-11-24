@@ -84,6 +84,21 @@ public class EventosService {
         aTodos(() -> SseEmitter.event().name("cambios").data(datos));
     }
 
+    /**
+     * Aviso solo a las pestañas de un usuario: cambió algo de su cuenta (inició
+     * sesión en un dispositivo o quitó uno). Recargan sus dispositivos y revisan
+     * su sesión; la de un dispositivo quitado se cierra.
+     */
+    public void avisarCuenta(Integer idUsuario) {
+        Deque<SseEmitter> suyos = porUsuario.get(idUsuario);
+        if (suyos == null) {
+            return;
+        }
+        for (SseEmitter emisor : List.copyOf(suyos)) {
+            enviar(idUsuario, emisor, SseEmitter.event().name("cuenta").data("{}"));
+        }
+    }
+
     /** Latido: evita que CloudFront (60 s) o nginx corten una conexión en silencio. */
     @Scheduled(fixedRate = 20_000, initialDelay = 20_000)
     public void latido() {

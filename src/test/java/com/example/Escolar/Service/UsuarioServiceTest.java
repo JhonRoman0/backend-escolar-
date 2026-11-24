@@ -53,6 +53,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -106,6 +107,7 @@ class UsuarioServiceTest {
     @BeforeEach
     void vigenciaPorDefecto() {
         when(vigenciaService.evaluar(any(), any())).thenReturn(EstadoVigencia.INDEFINIDA);
+        when(vigenciaService.evaluar(any(), any(), any())).thenReturn(EstadoVigencia.INDEFINIDA);
         when(vigenciaService.esAdministrable(any(Usuario.class))).thenReturn(true);
     }
 
@@ -148,7 +150,7 @@ class UsuarioServiceTest {
         u.setCelular("999999999");
         u.setFechaNaci(LocalDate.of(2004, 11, 16));
         u.setFechaCreacion(LocalDate.of(2026, 1, 5));
-        u.setFechaInicioVigencia(LocalDate.of(2026, 1, 5));
+        u.setFechaInicioVigencia(FechaColegio.hoy());
         u.setFechaFinVigencia(null);
         u.setVersionToken(0);
         u.setAcceso(acceso(accesoId));
@@ -188,7 +190,7 @@ class UsuarioServiceTest {
         r.setGmail("jhoanatanguevaravasquez@gmail.com");
         r.setCelular("999999999");
         r.setFechaNaci(LocalDate.of(2004, 11, 16));
-        r.setFechaInicioVigencia(LocalDate.of(2026, 1, 5));
+        r.setFechaInicioVigencia(FechaColegio.hoy());
         r.setRolIds(List.of(1));
         return r;
     }
@@ -794,7 +796,7 @@ class UsuarioServiceTest {
     void crearGuardaFechasDeVigenciaYVersionCero() {
         stubCreacionBasica();
         UsuarioRequest request = requestSinDocente();
-        request.setFechaInicioVigencia(FechaColegio.hoy().minusDays(2));
+        request.setFechaInicioVigencia(FechaColegio.hoy());
         request.setFechaFinVigencia(FechaColegio.hoy().plusDays(10));
 
         service.create(request);
@@ -811,19 +813,24 @@ class UsuarioServiceTest {
     void renovarVigenciaElevaVersionToken() {
         stubAccesoRepository();
         stubValidacionesUnicas();
+        LocalDate inicioVencido = FechaColegio.hoy().minusDays(10);
         Usuario activo = usuario(1, AccesoConstants.ACTIVO);
+        activo.setFechaInicioVigencia(inicioVencido);
+        activo.setFechaFinVigencia(FechaColegio.hoy().minusDays(1));
         activo.setVersionToken(3);
+        when(vigenciaService.evaluar(eq(inicioVencido), eq(FechaColegio.hoy().minusDays(1)), any()))
+                .thenReturn(EstadoVigencia.VENCIDA);
         stubSaveYRolesActivos(activo, rol(1, "Docente"));
         UsuarioRequest request = requestSinDocente();
         request.setRolIds(null);
-        request.setFechaInicioVigencia(FechaColegio.hoy().minusDays(3));
+        request.setFechaInicioVigencia(inicioVencido);
         request.setFechaFinVigencia(FechaColegio.hoy().plusDays(30));
 
         service.update(1, request);
 
         assertEquals(4, activo.getVersionToken());
-        assertEquals(request.getFechaInicioVigencia(), activo.getFechaInicioVigencia());
-        assertEquals(request.getFechaFinVigencia(), activo.getFechaFinVigencia());
+        assertEquals(inicioVencido, activo.getFechaInicioVigencia());
+        assertEquals(FechaColegio.hoy().plusDays(30), activo.getFechaFinVigencia());
     }
 
     @Test
@@ -857,14 +864,91 @@ class UsuarioServiceTest {
     @Test
     void noDejaAlUltimoAdminConVigenciaVencida() {
         Usuario activo = usuarioConRol("ADMIN");
+        activo.setFechaInicioVigencia(FechaColegio.hoy().minusDays(10));
         when(usuarioRolRepository.findByRolIdRol(4)).thenReturn(List.of(usuarioRol(activo, rol(4, "ADMIN"))));
         when(vigenciaService.esAdministrable(activo)).thenReturn(false);
         UsuarioRequest request = requestSinDocente();
         request.setRolIds(null);
+        request.setFechaInicioVigencia(activo.getFechaInicioVigencia());
         request.setFechaFinVigencia(FechaColegio.hoy().minusDays(1));
 
         assertThrows(UsuarioConDependenciasException.class, () -> service.update(1, request));
 
         verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    void altaRechazaInicioAnteriorYFinInvertido() {
+        UsuarioRequest anterior = requestSinDocente();
+        anterior.setFechaInicioVigencia(FechaColegio.hoy().minusDays(1));
+        assertThrows(IllegalArgumentException.class, () -> service.create(anterior));
+
+        UsuarioRequest invertido = requestSinDocente();
+        invertido.setFechaFinVigencia(FechaColegio.hoy().minusDays(1));
+        assertThrows(IllegalArgumentException.class, () -> service.create(invertido));
+
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    void edicionNoPermiteMoverElInicioCuandoLaVigenciaYaComenzo() {
+        stubAccesoRepository();
+        stubValidacionesUnicas();
+        Usuario activo = usuario(1, AccesoConstants.ACTIVO);
+        stubSaveYRolesActivos(activo, rol(1, "Administrador"));
+        UsuarioRequest request = requestSinDocente();
+        request.setRolIds(null);
+        request.setFechaInicioVigencia(FechaColegio.hoy().plusDays(1));
+
+        assertThrows(IllegalArgumentException.class, () -> service.update(1, request));
+        assertEquals(FechaColegio.hoy(), activo.getFechaInicioVigencia());
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    void edicionPermiteAdelantarElInicioDeUnaVigenciaNoIniciada() {
+        stubAccesoRepository();
+        stubValidacionesUnicas();
+        LocalDate inicioOriginal = FechaColegio.hoy().plusDays(3);
+        LocalDate inicioNuevo = FechaColegio.hoy().plusDays(5);
+        Usuario activo = usuario(1, AccesoConstants.ACTIVO);
+        activo.setFechaInicioVigencia(inicioOriginal);
+        activo.setFechaFinVigencia(null);
+        when(vigenciaService.evaluar(eq(inicioOriginal), isNull(), any()))
+                .thenReturn(EstadoVigencia.NO_INICIADA);
+        stubSaveYRolesActivos(activo, rol(1, "Administrador"));
+        UsuarioRequest request = requestSinDocente();
+        request.setRolIds(null);
+        request.setFechaInicioVigencia(inicioNuevo);
+
+        service.update(1, request);
+
+        assertEquals(inicioNuevo, activo.getFechaInicioVigencia());
+        assertEquals(1, activo.getVersionToken());
+    }
+
+    @Test
+    void editarDatosPersonalesDeUnUsuarioVencidoNoExigeRenovacionNiGuardiaAdmin() {
+        stubAccesoRepository();
+        stubValidacionesUnicas();
+        LocalDate inicio = FechaColegio.hoy().minusDays(10);
+        LocalDate fin = FechaColegio.hoy().minusDays(1);
+        Usuario activo = usuario(1, AccesoConstants.ACTIVO);
+        activo.setFechaInicioVigencia(inicio);
+        activo.setFechaFinVigencia(fin);
+        when(vigenciaService.evaluar(eq(inicio), eq(fin), any())).thenReturn(EstadoVigencia.VENCIDA);
+        stubSaveYRolesActivos(activo, rol(1, "Administrador"));
+        UsuarioRequest request = requestSinDocente();
+        request.setRolIds(null);
+        request.setFechaInicioVigencia(inicio);
+        request.setFechaFinVigencia(fin);
+        request.setCelular("988888888");
+
+        service.update(1, request);
+
+        assertEquals("988888888", activo.getCelular());
+        assertEquals(0, activo.getVersionToken());
+        verify(usuarioRepository).save(activo);
+        verify(vigenciaService, never()).esAdministrable(any(Usuario.class));
     }
 }

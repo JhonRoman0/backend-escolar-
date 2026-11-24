@@ -11,11 +11,14 @@ import com.example.Escolar.Repository.RecreoRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
 import java.time.LocalTime;
 import java.util.List;
@@ -224,5 +227,19 @@ class HorarioServiceTest {
 
         when(accesoContextoService.tieneAccion("HORARIOS", "VER_COLEGIO", 7, List.of("Docente"))).thenReturn(true);
         assertDoesNotThrow(() -> service.porAlumno(4, null, 7, List.of("Docente")));
+    }
+
+    @Test
+    void listarConVerColegioPasaElFiltroDeDocente() {
+        when(accesoContextoService.tieneAccion("HORARIOS", "VER_COLEGIO", 7, List.of("Admin"))).thenReturn(true);
+        when(horarioClaseRepository.findFiltrados(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.listar(null, null, 5, 2, null, null, null, null, null, 7, List.of("Admin"), PageRequest.of(0, 20));
+
+        ArgumentCaptor<Integer> docente = ArgumentCaptor.forClass(Integer.class);
+        verify(horarioClaseRepository).findFiltrados(eq(eliminado), eq(2), any(), any(), any(), any(), any(),
+                docente.capture(), any(), any(), any());
+        assertEquals(5, docente.getValue());
     }
 }

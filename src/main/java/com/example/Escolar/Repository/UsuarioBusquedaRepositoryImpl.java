@@ -1,6 +1,7 @@
 package com.example.Escolar.Repository;
 
 import com.example.Escolar.Model.Usuario;
+import com.example.Escolar.Service.VigenciaService.EstadoVigencia;
 import com.example.Escolar.Util.TextoBusqueda;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.TypedQuery;
@@ -34,6 +35,8 @@ public class UsuarioBusquedaRepositoryImpl implements UsuarioBusquedaRepository 
             List<String> tokens,
             Integer idRol,
             Long idAcceso,
+            EstadoVigencia estadoVigencia,
+            LocalDate hoy,
             Pageable pageable) {
         StringBuilder desde = new StringBuilder(" FROM Usuario u WHERE u.acceso.idAcceso <> :eliminadoId ");
 
@@ -45,6 +48,23 @@ public class UsuarioBusquedaRepositoryImpl implements UsuarioBusquedaRepository 
                 + "AND ur.rol.idRol = :idRol "
                 + "AND ur.rol.acceso.idAcceso <> :eliminadoId)");
         if (idAcceso != null) condiciones.add("u.acceso.idAcceso = :idAcceso");
+        if (estadoVigencia != null) {
+            switch (estadoVigencia) {
+                case NO_INICIADA -> condiciones.add(
+                        "u.fechaInicioVigencia IS NOT NULL AND u.fechaInicioVigencia > :hoy "
+                                + "AND (u.fechaFinVigencia IS NULL OR u.fechaFinVigencia >= u.fechaInicioVigencia)");
+                case INDEFINIDA -> condiciones.add(
+                        "u.fechaInicioVigencia IS NOT NULL AND u.fechaInicioVigencia <= :hoy "
+                                + "AND u.fechaFinVigencia IS NULL");
+                case VIGENTE -> condiciones.add(
+                        "u.fechaInicioVigencia IS NOT NULL AND u.fechaInicioVigencia <= :hoy "
+                                + "AND u.fechaFinVigencia IS NOT NULL AND u.fechaFinVigencia >= :hoy");
+                case VENCIDA -> condiciones.add(
+                        "(u.fechaInicioVigencia IS NULL "
+                                + "OR (u.fechaFinVigencia IS NOT NULL AND u.fechaFinVigencia < u.fechaInicioVigencia) "
+                                + "OR (u.fechaFinVigencia IS NOT NULL AND u.fechaFinVigencia < :hoy))");
+            }
+        }
 
         String escapeLike = TextoBusqueda.ESCAPE_CLAUSE;
         for (int i = 0; i < tokens.size(); i++) {
@@ -79,8 +99,8 @@ public class UsuarioBusquedaRepositoryImpl implements UsuarioBusquedaRepository 
                 "SELECT DISTINCT u" + desde + "ORDER BY " + orden, Usuario.class);
         TypedQuery<Long> conteo = entityManager.createQuery("SELECT COUNT(DISTINCT u)" + desde, Long.class);
 
-        aplicarParametros(conteo, eliminadoId, inicio, fin, tokens, idRol, idAcceso);
-        aplicarParametros(consulta, eliminadoId, inicio, fin, tokens, idRol, idAcceso);
+        aplicarParametros(conteo, eliminadoId, inicio, fin, tokens, idRol, idAcceso, estadoVigencia, hoy);
+        aplicarParametros(consulta, eliminadoId, inicio, fin, tokens, idRol, idAcceso, estadoVigencia, hoy);
 
         long total = conteo.getSingleResult();
         if (pageable.isPaged()) {
@@ -97,12 +117,15 @@ public class UsuarioBusquedaRepositoryImpl implements UsuarioBusquedaRepository 
             LocalDate fin,
             List<String> tokens,
             Integer idRol,
-            Long idAcceso) {
+            Long idAcceso,
+            EstadoVigencia estadoVigencia,
+            LocalDate hoy) {
         consulta.setParameter("eliminadoId", eliminadoId);
         if (inicio != null) consulta.setParameter("inicio", inicio);
         if (fin != null) consulta.setParameter("fin", fin);
         if (idRol != null) consulta.setParameter("idRol", idRol);
         if (idAcceso != null) consulta.setParameter("idAcceso", idAcceso);
+        if (estadoVigencia != null) consulta.setParameter("hoy", hoy);
         for (int i = 0; i < tokens.size(); i++) {
             consulta.setParameter("t" + i, TextoBusqueda.patronLike(tokens.get(i)));
         }

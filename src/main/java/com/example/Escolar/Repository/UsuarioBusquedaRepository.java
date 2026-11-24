@@ -1,6 +1,7 @@
 package com.example.Escolar.Repository;
 
 import com.example.Escolar.Model.Usuario;
+import com.example.Escolar.Service.VigenciaService.EstadoVigencia;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -15,5 +16,7 @@ public interface UsuarioBusquedaRepository {
             List<String> tokens,
             Integer idRol,
             Long idAcceso,
+            EstadoVigencia estadoVigencia,
+            LocalDate hoy,
             Pageable pageable);
 }

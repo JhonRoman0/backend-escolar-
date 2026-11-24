@@ -6,6 +6,7 @@ import com.example.Escolar.Dto.UsuarioRequest;
 import com.example.Escolar.Dto.UsuarioResponse;
 import com.example.Escolar.Service.AccesoContextoService;
 import com.example.Escolar.Service.UsuarioService;
+import com.example.Escolar.Service.VigenciaService.EstadoVigencia;
 import jakarta.validation.Valid;
 import org.springframework.dao.ConcurrencyFailureException;
 import com.example.Escolar.Service.ExclusividadDniService;
@@ -43,8 +44,9 @@ public class UsuarioController {
             @PageableDefault(size = 10, sort = "idUsuario") Pageable pageable,
             @RequestParam(required = false) String q,
             @RequestParam(required = false) Integer idRol,
-            @RequestParam(required = false) Long idAcceso) {
-        return usuarioService.getAll(pageable, q, idRol, idAcceso);
+            @RequestParam(required = false) Long idAcceso,
+            @RequestParam(required = false) EstadoVigencia estadoVigencia) {
+        return usuarioService.getAll(pageable, q, idRol, idAcceso, estadoVigencia);
     }
 
     @GetMapping("/{id}")
@@ -124,7 +126,9 @@ public class UsuarioController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin,
             @RequestParam(required = false) Integer idRol,
-            @RequestParam(required = false) Long idAcceso) {
-        return usuarioService.reporte(inicio, fin, idRol, idAcceso);
+            @RequestParam(required = false) Long idAcceso,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) EstadoVigencia estadoVigencia) {
+        return usuarioService.reporte(inicio, fin, idRol, idAcceso, q, estadoVigencia);
     }
 }

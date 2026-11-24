@@ -46,10 +46,13 @@ import org.springframework.web.multipart.MultipartFile;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -78,14 +81,21 @@ public class UsuarioService {
     private final VigenciaService vigenciaService;
 
     public Page<UsuarioResponse> getAll(Pageable pageable) {
-        return getAll(pageable, null, null, null);
+        return getAll(pageable, null, null, null, null);
     }
 
     public Page<UsuarioResponse> getAll(Pageable pageable, String q, Integer idRol, Long idAcceso) {
+        return getAll(pageable, q, idRol, idAcceso, null);
+    }
+
+    public Page<UsuarioResponse> getAll(
+            Pageable pageable, String q, Integer idRol, Long idAcceso, EstadoVigencia estadoVigencia) {
+        LocalDate hoy = FechaColegio.hoy();
         List<String> tokens = TextoBusqueda.tokens(q);
         return usuarioRepository
-                .buscar(AccesoConstants.ELIMINADO, null, null, tokens, idRol, idAcceso, pageable)
-                .map(this::toResponse);
+                .buscar(AccesoConstants.ELIMINADO, null, null, tokens, idRol, idAcceso,
+                        estadoVigencia, hoy, pageable)
+                .map(usuario -> toResponse(usuario, hoy));
     }
 
     public UsuarioResponse getById(Integer id) {
@@ -94,9 +104,11 @@ public class UsuarioService {
 
     @Transactional(isolation = Isolation.SERIALIZABLE)
     public UsuarioResponse create(UsuarioRequest request) {
+        LocalDate hoy = FechaColegio.hoy();
         if (request.getRolIds() == null || request.getRolIds().isEmpty()) {
             throw new IllegalArgumentException("Debe asignar al menos un rol");
         }
+        validarVigenciaCreacion(request, hoy);
         exclusividadDni.validarUsuario(request.getDocumentoIdentidad());
         validarDocumentoUnico(request.getDocumentoIdentidad(), null);
         validarGmailUnico(request.getGmail(), null);
@@ -106,19 +118,16 @@ public class UsuarioService {
             request.setAccesoId(AccesoConstants.ACTIVO.longValue());
         }
         applyRequest(usuario, request);
-        if (usuario.getFechaInicioVigencia() == null) {
-            usuario.setFechaInicioVigencia(FechaColegio.hoy());
-        }
         usuario.setVersionToken(0);
         String temporal = asignarContrasenaTemporal(usuario);
         usuario.setCodigo(generarCodigo(request.getRolIds()));
-        usuario.setFechaCreacion(FechaColegio.hoy());
+        usuario.setFechaCreacion(hoy);
         Usuario saved = usuarioRepository.save(usuario);
         assignRoles(saved, request.getRolIds());
         if (seleccionaRol(request.getRolIds(), ROL_DOCENTE)) {
             crearDocente(saved, request);
         }
-        UsuarioResponse response = toResponse(saved);
+        UsuarioResponse response = toResponse(saved, hoy);
         usuarioRepository.flush();
         response.setCredencialesEnviadas(enviarCredencialesAcceso(saved, temporal, TipoEnvioCredenciales.CREACION));
         return response;
@@ -174,6 +183,7 @@ public class UsuarioService {
     }
 
     private UsuarioResponse actualizarRegistro(Usuario usuario, Integer id, UsuarioRequest request) {
+        LocalDate hoy = FechaColegio.hoy();
         boolean reactivando = AccesoConstants.ACTIVO.equals(request.getAccesoId())
                 && !AccesoConstants.ACTIVO.equals(usuario.getAcceso().getIdAcceso());
         exclusividadDni.validarCambioUsuario(request.getDocumentoIdentidad(), usuario.getDocumentoIdentidad(), reactivando);
@@ -183,10 +193,17 @@ public class UsuarioService {
         validarGmailUnico(request.getGmail(), id);
         LocalDate inicioAnterior = usuario.getFechaInicioVigencia();
         LocalDate finAnterior = usuario.getFechaFinVigencia();
+        validarVigenciaEdicion(usuario, request, hoy);
+        boolean cambiaVigencia = !Objects.equals(inicioAnterior, request.getFechaInicioVigencia())
+                || !Objects.equals(finAnterior, request.getFechaFinVigencia());
+        boolean cambiaAcceso = request.getAccesoId() != null
+                && !Objects.equals(usuario.getAcceso().getIdAcceso().longValue(), request.getAccesoId());
+        boolean cambiaRoles = request.getRolIds() != null && !mismosRoles(usuario, request.getRolIds());
         applyRequest(usuario, request);
-        validarNoQuedarSinAdminVigente(usuario);
-        if (!Objects.equals(inicioAnterior, usuario.getFechaInicioVigencia())
-                || !Objects.equals(finAnterior, usuario.getFechaFinVigencia())) {
+        if (cambiaVigencia || cambiaAcceso || cambiaRoles) {
+            validarNoQuedarSinAdminVigente(usuario);
+        }
+        if (cambiaVigencia) {
             int versionToken = usuario.getVersionToken() == null ? 0 : usuario.getVersionToken();
             usuario.setVersionToken(versionToken + 1);
         }
@@ -221,7 +238,7 @@ public class UsuarioService {
                 crearOReactivarDocente(usuario, docenteExistente.orElse(null), request);
             }
         }
-        return toResponse(usuarioRepository.save(usuario));
+        return toResponse(usuarioRepository.save(usuario), hoy);
     }
 
     // Toda contraseña que pone el sistema es temporal: se exige cambiarla al ingresar.
@@ -347,8 +364,18 @@ public class UsuarioService {
 
     @Transactional(readOnly = true)
     public List<UsuarioReporteResponse> reporte(LocalDate inicio, LocalDate fin, Integer idRol, Long idAcceso) {
+        return reporte(inicio, fin, idRol, idAcceso, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<UsuarioReporteResponse> reporte(
+            LocalDate inicio, LocalDate fin, Integer idRol, Long idAcceso,
+            String q, EstadoVigencia estadoVigencia) {
+        LocalDate hoy = FechaColegio.hoy();
+        List<String> tokens = TextoBusqueda.tokens(q);
         return usuarioRepository
-                .buscar(AccesoConstants.ELIMINADO, inicio, fin, List.of(), idRol, idAcceso, Pageable.unpaged())
+                .buscar(AccesoConstants.ELIMINADO, inicio, fin, tokens, idRol, idAcceso,
+                        estadoVigencia, hoy, Pageable.unpaged())
                 .getContent().stream()
                 .sorted(Comparator.comparing(u -> u.getApellidoPat() + " " + u.getApellidoMat() + " " + u.getNombre(),
                         String.CASE_INSENSITIVE_ORDER))
@@ -364,9 +391,9 @@ public class UsuarioService {
                     r.setFechaCreacion(u.getFechaCreacion());
                     r.setFechaInicioVigencia(u.getFechaInicioVigencia());
                     r.setFechaFinVigencia(u.getFechaFinVigencia());
-                    EstadoVigencia estadoVigencia = vigenciaService.evaluar(
-                            u.getFechaInicioVigencia(), u.getFechaFinVigencia());
-                    r.setEstadoVigencia(estadoVigencia.name());
+                    EstadoVigencia estadoCalculado = vigenciaService.evaluar(
+                            u.getFechaInicioVigencia(), u.getFechaFinVigencia(), hoy);
+                    r.setEstadoVigencia(estadoCalculado.name());
                     r.setRoles(usuarioRolRepository.findByUsuarioIdUsuario(u.getIdUsuario()).stream()
                             .map(UsuarioRol::getRol)
                             .filter(rol -> !rol.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
@@ -597,6 +624,50 @@ public class UsuarioService {
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con id " + id));
     }
 
+    private void validarVigenciaCreacion(UsuarioRequest request, LocalDate hoy) {
+        LocalDate inicio = request.getFechaInicioVigencia();
+        if (inicio == null) {
+            throw new IllegalArgumentException("La fecha de inicio de vigencia es obligatoria");
+        }
+        if (inicio.isBefore(hoy)) {
+            throw new IllegalArgumentException("La fecha de inicio de vigencia no puede ser anterior a la fecha actual");
+        }
+        validarRangoVigencia(inicio, request.getFechaFinVigencia());
+    }
+
+    private void validarVigenciaEdicion(Usuario usuario, UsuarioRequest request, LocalDate hoy) {
+        LocalDate inicioSolicitado = request.getFechaInicioVigencia();
+        if (inicioSolicitado == null) {
+            throw new IllegalArgumentException("La fecha de inicio de vigencia es obligatoria");
+        }
+        LocalDate inicioOriginal = usuario.getFechaInicioVigencia();
+        EstadoVigencia estadoOriginal = vigenciaService.evaluar(
+                inicioOriginal, usuario.getFechaFinVigencia(), hoy);
+        if (estadoOriginal == EstadoVigencia.NO_INICIADA) {
+            if (inicioSolicitado.isBefore(hoy)) {
+                throw new IllegalArgumentException(
+                        "La fecha de inicio de vigencia no puede ser anterior a la fecha actual");
+            }
+        } else if (!Objects.equals(inicioOriginal, inicioSolicitado)) {
+            throw new IllegalArgumentException(
+                    "La fecha de inicio de vigencia no se puede modificar porque la vigencia ya comenzó");
+        }
+        validarRangoVigencia(inicioSolicitado, request.getFechaFinVigencia());
+    }
+
+    private void validarRangoVigencia(LocalDate inicio, LocalDate fin) {
+        if (fin != null && fin.isBefore(inicio)) {
+            throw new IllegalArgumentException("La fecha fin de vigencia no puede ser anterior a la fecha de inicio");
+        }
+    }
+
+    private boolean mismosRoles(Usuario usuario, List<Integer> rolIds) {
+        Set<Integer> actuales = usuarioRolRepository.findByUsuarioIdUsuario(usuario.getIdUsuario()).stream()
+                .map(ur -> ur.getRol().getIdRol())
+                .collect(Collectors.toSet());
+        return actuales.equals(new HashSet<>(rolIds));
+    }
+
     private void applyRequest(Usuario usuario, UsuarioRequest request) {
         FechaNacimiento.validarAdulto(request.getFechaNaci(), usuario.getFechaNaci(), FechaNacimiento.hoy());
         usuario.setNombre(request.getNombre());
@@ -628,6 +699,10 @@ public class UsuarioService {
     }
 
     private UsuarioResponse toResponse(Usuario usuario) {
+        return toResponse(usuario, FechaColegio.hoy());
+    }
+
+    private UsuarioResponse toResponse(Usuario usuario, LocalDate hoy) {
         UsuarioResponse response = new UsuarioResponse();
         response.setIdUsuario(usuario.getIdUsuario());
         response.setNombre(usuario.getNombre());
@@ -650,7 +725,7 @@ public class UsuarioService {
         response.setFechaInicioVigencia(usuario.getFechaInicioVigencia());
         response.setFechaFinVigencia(usuario.getFechaFinVigencia());
         response.setEstadoVigencia(vigenciaService.evaluar(
-                usuario.getFechaInicioVigencia(), usuario.getFechaFinVigencia()).name());
+                usuario.getFechaInicioVigencia(), usuario.getFechaFinVigencia(), hoy).name());
         return response;
     }
 

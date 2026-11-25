@@ -61,9 +61,10 @@ public class MatriculaController {
                                           @RequestParam(required = false) Integer idTurno,
                                           @RequestParam(required = false) Integer idGradoSeccion,
                                           @RequestParam(required = false) Integer idAnio,
-                                          @RequestParam(required = false) Long idAcceso) {
+                                          @RequestParam(required = false) Long idAcceso,
+                                          @RequestParam(required = false) MatriculaResponse.TipoIngreso tipoIngreso) {
         return matriculaService.getAll(pageable, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados(),
-                idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio, idAcceso);
+                idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio, idAcceso, tipoIngreso);
     }
 
     @GetMapping("/{id}")
@@ -160,8 +161,9 @@ public class MatriculaController {
             @RequestParam(required = false) Integer idNivel,
             @RequestParam(required = false) Integer idGrado,
             @RequestParam(required = false) Integer idGradoSeccion,
-            @RequestParam(required = false) Long idAcceso) {
-        return matriculaService.reporte(inicio, fin, idAnio, idNivel, idGrado, idGradoSeccion, idAcceso,
+            @RequestParam(required = false) Long idAcceso,
+            @RequestParam(required = false) MatriculaResponse.TipoIngreso tipoIngreso) {
+        return matriculaService.reporte(inicio, fin, idAnio, idNivel, idGrado, idGradoSeccion, idAcceso, tipoIngreso,
                 accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
     }
 }

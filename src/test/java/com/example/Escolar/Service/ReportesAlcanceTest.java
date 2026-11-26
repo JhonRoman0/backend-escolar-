@@ -2,6 +2,7 @@ package com.example.Escolar.Service;
 
 import com.example.Escolar.Dto.AlumnoReporteResponse;
 import com.example.Escolar.Dto.MatriculaReporteResponse;
+import com.example.Escolar.Dto.MatriculaResponse;
 import com.example.Escolar.Model.*;
 import com.example.Escolar.Repository.*;
 import com.example.Escolar.Service.AccesoContextoService.Alcance;
@@ -19,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -208,6 +210,32 @@ class ReportesAlcanceTest {
                 LocalDate.of(2026, 11, 30), 2, null, null, null, null, 7, roles);
 
         assertEquals(List.of(1), filas.stream().map(MatriculaReporteResponse::getIdMatricula).toList());
+    }
+
+    @Test
+    void matriculaFiltraPorTipoIngresoYLoExponeEnElReporte() {
+        Matricula continuante = matricula(1, 1, "PEREZ", "2027", "2do", 2);
+        Matricula nuevo = matricula(2, 2, "ALVA", "2027", "2do", 2);
+        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.TODO);
+        when(matriculaRepository.findFiltradasList(AccesoConstants.ELIMINADO, null, null, null, null, null, 2, null))
+                .thenReturn(List.of(continuante, nuevo));
+        MatriculaRepository.PrimerAnioAlumno primeroContinuante = org.mockito.Mockito.mock(MatriculaRepository.PrimerAnioAlumno.class);
+        when(primeroContinuante.getIdAlumno()).thenReturn(1);
+        when(primeroContinuante.getPrimerAnio()).thenReturn("2026");
+        MatriculaRepository.PrimerAnioAlumno primeroNuevo = org.mockito.Mockito.mock(MatriculaRepository.PrimerAnioAlumno.class);
+        when(primeroNuevo.getIdAlumno()).thenReturn(2);
+        when(primeroNuevo.getPrimerAnio()).thenReturn("2027");
+        when(matriculaRepository.primerosAniosPorAlumno(List.of(1, 2), AccesoConstants.ELIMINADO))
+                .thenReturn(List.of(primeroContinuante, primeroNuevo));
+        when(pagoMatriculaRepository.findByMatriculaIdMatriculaAndAccesoNotOrderByFecha(any(), eq(eliminado)))
+                .thenReturn(List.of());
+
+        List<MatriculaReporteResponse> filas = matriculas().reporte(null, null, 2, null, null, null, null,
+                MatriculaResponse.TipoIngreso.CONTINUANTE, 7, roles);
+
+        assertEquals(List.of(1), filas.stream().map(MatriculaReporteResponse::getIdMatricula).toList());
+        assertEquals(MatriculaResponse.TipoIngreso.CONTINUANTE, filas.get(0).getTipoIngreso());
+        verify(matriculaRepository).primerosAniosPorAlumno(List.of(1, 2), AccesoConstants.ELIMINADO);
     }
 
     @Test

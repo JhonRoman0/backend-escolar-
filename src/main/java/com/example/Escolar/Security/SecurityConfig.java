@@ -2,6 +2,7 @@ package com.example.Escolar.Security;
 
 import jakarta.servlet.DispatcherType;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpMethod;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -20,6 +21,8 @@ import java.util.List;
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
+
+    public static final String RUTA_IDENTIDAD_COLEGIO = "/colegios/identidad";
 
     public static final List<String> RUTAS_PUBLICAS = List.of(
             "/auth/login",
@@ -69,6 +72,7 @@ public class SecurityConfig {
                         // Tomcat hace una pasada de error: ambas son de una petición ya autorizada.
                         .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, RUTA_IDENTIDAD_COLEGIO).permitAll()
                         .requestMatchers(RUTAS_PUBLICAS.toArray(new String[0])).permitAll()
                         .requestMatchers(RUTAS_SOLO_AUTENTICADAS.toArray(new String[0])).authenticated()
                         .anyRequest().access(rbacAuthorizationManager))

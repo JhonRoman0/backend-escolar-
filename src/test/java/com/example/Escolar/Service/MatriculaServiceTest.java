@@ -25,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 
 import java.util.List;
 import java.util.Optional;
@@ -214,8 +215,92 @@ class MatriculaServiceTest {
         assertTrue(resultado.stream().allMatch(m -> m.getTipoIngreso() == MatriculaResponse.TipoIngreso.NUEVO_INGRESO));
         verify(matriculaRepository).primerosAniosPorAlumno(List.of(1, 2), AccesoConstants.ELIMINADO);
     }
+
+    @Test
+    void tipoIngresoSeFiltraAntesDePaginarYConservaTotales() {
+        var pagina = PageRequest.of(0, 2);
+        Matricula nuevo = matricula(1, activo);
+        Matricula continuanteUno = matricula(2, activo);
+        Matricula continuanteDos = matricula(3, activo);
+        Matricula otroNuevo = matricula(4, activo);
+        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.TODO);
+        when(matriculaRepository.findFiltradasList(AccesoConstants.ELIMINADO, null, null, null, null, null, null, null))
+                .thenReturn(List.of(nuevo, continuanteUno, continuanteDos, otroNuevo));
+        var resumenes = List.of(resumen(1, "2026"), resumen(2, "2025"), resumen(3, "2018"), resumen(4, "2026"));
+        when(matriculaRepository.primerosAniosPorAlumno(List.of(1, 2, 3, 4), AccesoConstants.ELIMINADO))
+                .thenReturn(resumenes);
+
+        var resultado = listar(pagina, null, MatriculaResponse.TipoIngreso.CONTINUANTE);
+
+        assertEquals(2, resultado.getTotalElements());
+        assertEquals(1, resultado.getTotalPages());
+        assertEquals(List.of(2, 3), resultado.map(MatriculaResponse::getIdMatricula).getContent());
+        verify(matriculaRepository).primerosAniosPorAlumno(List.of(1, 2, 3, 4), AccesoConstants.ELIMINADO);
+        verify(matriculaRepository, never()).findFiltradas(any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void tipoIngresoRespetaElAlcanceAntesDeCalcularTotales() {
+        var pagina = PageRequest.of(0, 10);
+        Matricula permitida = matricula(2, activo);
+        Matricula ajena = matricula(9, activo);
+        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.DOCENTE);
+        when(accesoContextoService.gradoSeccionIdsDeDocente(7)).thenReturn(Set.of(12));
+        when(accesoContextoService.matriculasDeGradoSecciones(Set.of(12))).thenReturn(List.of(permitida));
+        when(matriculaRepository.findFiltradasList(AccesoConstants.ELIMINADO, null, null, null, null, null, null, null))
+                .thenReturn(List.of(permitida, ajena));
+        var resumenes = List.of(resumen(2, "2025"), resumen(9, "2024"));
+        when(matriculaRepository.primerosAniosPorAlumno(List.of(2, 9), AccesoConstants.ELIMINADO))
+                .thenReturn(resumenes);
+
+        var resultado = listar(pagina, null, MatriculaResponse.TipoIngreso.CONTINUANTE);
+
+        assertEquals(1, resultado.getTotalElements());
+        assertEquals(List.of(2), resultado.map(MatriculaResponse::getIdMatricula).getContent());
+    }
+
+    @Test
+    void tipoIngresoOrdenaSegunElPageableAntesDePaginar() {
+        var pagina = PageRequest.of(0, 2, Sort.by("idMatricula").descending());
+        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.TODO);
+        when(matriculaRepository.findFiltradasList(AccesoConstants.ELIMINADO, null, null, null, null, null, null, null))
+                .thenReturn(List.of(matricula(1, activo), matricula(2, activo), matricula(3, activo), matricula(4, activo)));
+        var resumenes = List.of(resumen(1, "2025"), resumen(2, "2025"), resumen(3, "2025"), resumen(4, "2025"));
+        when(matriculaRepository.primerosAniosPorAlumno(List.of(1, 2, 3, 4), AccesoConstants.ELIMINADO))
+                .thenReturn(resumenes);
+
+        var resultado = listar(pagina, null, MatriculaResponse.TipoIngreso.CONTINUANTE);
+
+        assertEquals(4, resultado.getTotalElements());
+        assertEquals(List.of(4, 3), resultado.map(MatriculaResponse::getIdMatricula).getContent());
+    }
+
+    @Test
+    void sinTipoIngresoConservaLaPaginacionEnBaseDeDatos() {
+        var pagina = PageRequest.of(0, 10);
+        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.TODO);
+        when(matriculaRepository.findByAccesoNot(eliminado, pagina)).thenReturn(new PageImpl<>(List.of(), pagina, 0));
+
+        listar(pagina, null);
+
+        verify(matriculaRepository).findByAccesoNot(eliminado, pagina);
+        verify(matriculaRepository, never()).findFiltradasList(any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    private MatriculaRepository.PrimerAnioAlumno resumen(int idAlumno, String primerAnio) {
+        var resultado = org.mockito.Mockito.mock(MatriculaRepository.PrimerAnioAlumno.class);
+        when(resultado.getIdAlumno()).thenReturn(idAlumno);
+        when(resultado.getPrimerAnio()).thenReturn(primerAnio);
+        return resultado;
+    }
+
     private Page<MatriculaResponse> listar(PageRequest pagina, Long idAcceso) {
-        return service.getAll(pagina, 7, roles, null, null, null, null, null, null, idAcceso);
+        return listar(pagina, idAcceso, null);
+    }
+
+    private Page<MatriculaResponse> listar(PageRequest pagina, Long idAcceso,
+                                           MatriculaResponse.TipoIngreso tipoIngreso) {
+        return service.getAll(pagina, 7, roles, null, null, null, null, null, null, idAcceso, tipoIngreso);
     }
 
     private Matricula matricula(int id, Acceso acceso) {

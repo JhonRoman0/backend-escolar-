@@ -10,6 +10,7 @@ import java.time.LocalDate;
 @Setter
 public class MatriculaReporteResponse {
     private Integer idMatricula;
+    private MatriculaResponse.TipoIngreso tipoIngreso;
     private String alumno;
     private String codigo;
     private String documentoIdentidad;

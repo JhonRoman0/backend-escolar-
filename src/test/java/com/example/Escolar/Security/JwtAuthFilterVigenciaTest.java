@@ -220,4 +220,47 @@ class JwtAuthFilterVigenciaTest {
         assertEquals(200, response.getStatus());
         assertNotNull(chain.getRequest());
     }
+
+    @Test
+    void sinCookieEnIdentidadNoAutenticaYPasaLaCadena() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", SecurityConfig.RUTA_IDENTIDAD_COLEGIO);
+        request.setServletPath(SecurityConfig.RUTA_IDENTIDAD_COLEGIO);
+        request.addHeader("X-Requested-With", "XMLHttpRequest");
+        MockFilterChain chain = new MockFilterChain();
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        org.mockito.Mockito.clearInvocations(usuarioRepositoryProvider, usuarioRepository);
+
+        filter.doFilter(request, response, chain);
+
+        assertNotNull(chain.getRequest());
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        org.mockito.Mockito.verifyNoInteractions(usuarioRepositoryProvider, usuarioRepository);
+    }
+
+    @Test
+    void cookieVencidaEnIdentidadNoAutenticaYPasaLaCadena() throws Exception {
+        String token = jwtService.generarToken(1, "ADM20240001", List.of("ADMIN"), false,
+                FechaColegio.hoy().minusDays(1), 0);
+        MockFilterChain chain = new MockFilterChain();
+        org.mockito.Mockito.clearInvocations(usuarioRepositoryProvider, usuarioRepository);
+
+        ejecutar(SecurityConfig.RUTA_IDENTIDAD_COLEGIO, token, chain);
+
+        assertNotNull(chain.getRequest());
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        org.mockito.Mockito.verifyNoInteractions(usuarioRepositoryProvider, usuarioRepository);
+    }
+
+    @Test
+    void cookieObsoletaBloqueaIdentidadCon403() throws Exception {
+        conSesion(sesion(FechaColegio.hoy().minusDays(1), null, 2));
+        String token = jwtService.generarToken(1, "ADM20240001", List.of("ADMIN"), false, null, 1);
+        MockFilterChain chain = new MockFilterChain();
+
+        MockHttpServletResponse response = ejecutar(SecurityConfig.RUTA_IDENTIDAD_COLEGIO, token, chain);
+
+        assertEquals(403, response.getStatus());
+        assertTrue(response.getContentAsString().contains("VIGENCIA_TOKEN_OBSOLETO"));
+        assertNull(chain.getRequest());
+    }
 }

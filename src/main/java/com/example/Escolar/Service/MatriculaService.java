@@ -23,9 +23,11 @@ import com.example.Escolar.Repository.MatriculaRepository;
 import com.example.Escolar.Repository.PagoMatriculaRepository;
 import com.example.Escolar.Service.AccesoContextoService.Alcance;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.PropertyAccessorFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +36,7 @@ import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -55,7 +58,8 @@ public class MatriculaService {
             .thenComparing(m -> {
                 Alumno a = m.getAlumnoApoderado().getAlumno();
                 return a.getApellidoPat() + " " + a.getApellidoMat() + " " + a.getNombre();
-            }, String.CASE_INSENSITIVE_ORDER);
+            }, String.CASE_INSENSITIVE_ORDER)
+            .thenComparing(Matricula::getIdMatricula);
 
     private final MatriculaRepository matriculaRepository;
     private final HistorialMatriculaRepository historialMatriculaRepository;
@@ -67,16 +71,28 @@ public class MatriculaService {
     private final BloqueoCalificaciones bloqueo;
 
     public Page<MatriculaResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles,
-                                         Integer idNivel, Integer idGrado, Integer idSeccion,
-                                         Integer idTurno, Integer idGradoSeccion, Integer idAnio,
-                                         Long idAcceso) {
+                                          Integer idNivel, Integer idGrado, Integer idSeccion,
+                                          Integer idTurno, Integer idGradoSeccion, Integer idAnio,
+                                          Long idAcceso, MatriculaResponse.TipoIngreso tipoIngreso) {
         if (idAcceso != null && !AccesoConstants.ACTIVO.equals(idAcceso)
                 && !AccesoConstants.INACTIVO.equals(idAcceso)) {
             throw new IllegalArgumentException("El estado debe ser activo o inactivo");
         }
-        boolean filtrando = idNivel != null || idGrado != null || idSeccion != null || idTurno != null || idGradoSeccion != null || idAnio != null;
         Set<Integer> visibles = idsMatriculasVisibles(idUsuario, roles);
         boolean esGestion = visibles == null;
+
+        if (tipoIngreso != null) {
+            List<Matricula> candidatas = matriculaRepository.findFiltradasList(
+                    AccesoConstants.ELIMINADO, idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio, idAcceso);
+            Map<Integer, String> primeros = primerosAnios(candidatas);
+            List<Matricula> delTipo = filtrarPorTipoIngreso(candidatas, tipoIngreso, primeros);
+            List<Matricula> visiblesList = esGestion
+                    ? delTipo
+                    : delTipo.stream().filter(m -> visibles.contains(m.getIdMatricula())).toList();
+            return paginarMatriculasEnMemoria(visiblesList, pageable, primeros);
+        }
+
+        boolean filtrando = idNivel != null || idGrado != null || idSeccion != null || idTurno != null || idGradoSeccion != null || idAnio != null;
 
         if (filtrando) {
             if (esGestion) {
@@ -110,8 +126,16 @@ public class MatriculaService {
     }
 
     public Page<MatriculaResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles,
-                                         Integer idNivel, Integer idGrado, Integer idSeccion,
-                                         Integer idTurno, Integer idGradoSeccion, Integer idAnio) {
+                                          Integer idNivel, Integer idGrado, Integer idSeccion,
+                                          Integer idTurno, Integer idGradoSeccion, Integer idAnio,
+                                          Long idAcceso) {
+        return getAll(pageable, idUsuario, roles, idNivel, idGrado, idSeccion,
+                idTurno, idGradoSeccion, idAnio, idAcceso, null);
+    }
+
+    public Page<MatriculaResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles,
+                                          Integer idNivel, Integer idGrado, Integer idSeccion,
+                                          Integer idTurno, Integer idGradoSeccion, Integer idAnio) {
         return getAll(pageable, idUsuario, roles, idNivel, idGrado, idSeccion,
                 idTurno, idGradoSeccion, idAnio, null);
     }
@@ -121,12 +145,38 @@ public class MatriculaService {
     }
 
     private Page<MatriculaResponse> paginarMatriculasEnMemoria(List<Matricula> lista, Pageable pageable) {
-        int total = lista.size();
+        return paginarMatriculasEnMemoria(lista, pageable, null);
+    }
+
+    private Page<MatriculaResponse> paginarMatriculasEnMemoria(List<Matricula> lista, Pageable pageable,
+                                                               Map<Integer, String> primeros) {
+        List<Matricula> ordenadas = lista.stream().sorted(ordenPorPageable(pageable)).toList();
+        int total = ordenadas.size();
         int start = (int) pageable.getOffset();
         int end = Math.min(start + pageable.getPageSize(), total);
-        List<Matricula> slice = start >= total ? List.of() : lista.subList(start, end);
-        List<MatriculaResponse> respuestas = toResponses(slice);
+        List<Matricula> slice = start >= total ? List.of() : ordenadas.subList(start, end);
+        List<MatriculaResponse> respuestas = toResponses(slice, primeros);
         return new PageImpl<>(respuestas, pageable, total);
+    }
+
+    private Comparator<Matricula> ordenPorPageable(Pageable pageable) {
+        Comparator<Matricula> orden = null;
+        for (Sort.Order propiedad : pageable.getSort()) {
+            Comparator<Object> comparador = MatriculaService::compararValores;
+            if (propiedad.isDescending()) comparador = comparador.reversed();
+            Comparator<Matricula> actual = Comparator.comparing(
+                    m -> PropertyAccessorFactory.forBeanPropertyAccess(m).getPropertyValue(propiedad.getProperty()),
+                    Comparator.nullsLast(comparador));
+            orden = orden == null ? actual : orden.thenComparing(actual);
+        }
+        return orden == null
+                ? Comparator.comparing(Matricula::getIdMatricula)
+                : orden.thenComparing(Matricula::getIdMatricula);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static int compararValores(Object primero, Object segundo) {
+        return ((Comparable<Object>) primero).compareTo(segundo);
     }
 
     public MatriculaResponse getById(Integer id, Integer idUsuario, List<String> roles) {
@@ -206,15 +256,23 @@ public class MatriculaService {
 
     @Transactional(readOnly = true)
     public List<MatriculaReporteResponse> reporte(LocalDate inicio, LocalDate fin, Integer idAnio, Integer idNivel,
-            Integer idGrado, Integer idGradoSeccion, Long idAcceso, Integer idUsuario, List<String> roles) {
+            Integer idGrado, Integer idGradoSeccion, Long idAcceso, MatriculaResponse.TipoIngreso tipoIngreso,
+            Integer idUsuario, List<String> roles) {
         Set<Integer> visibles = idsMatriculasVisibles(idUsuario, roles);
-        return matriculaRepository.findFiltradasList(AccesoConstants.ELIMINADO, idNivel, idGrado, null, null,
-                        idGradoSeccion, idAnio, idAcceso).stream()
+        List<Matricula> candidatas = matriculaRepository.findFiltradasList(AccesoConstants.ELIMINADO, idNivel, idGrado,
+                null, null, idGradoSeccion, idAnio, idAcceso);
+        Map<Integer, String> primeros = primerosAnios(candidatas);
+        return filtrarPorTipoIngreso(candidatas, tipoIngreso, primeros).stream()
                 .filter(m -> visibles == null || visibles.contains(m.getIdMatricula()))
                 .filter(m -> RangoFechas.contiene(m.getFechaRegistro(), inicio, fin))
                 .sorted(ORDEN_REPORTE)
-                .map(this::aReporte)
+                .map(m -> aReporte(m, clasificarIngreso(primeros.get(idAlumno(m)), anioMatricula(m))))
                 .toList();
+    }
+
+    public List<MatriculaReporteResponse> reporte(LocalDate inicio, LocalDate fin, Integer idAnio, Integer idNivel,
+            Integer idGrado, Integer idGradoSeccion, Long idAcceso, Integer idUsuario, List<String> roles) {
+        return reporte(inicio, fin, idAnio, idNivel, idGrado, idGradoSeccion, idAcceso, null, idUsuario, roles);
     }
 
     public FichaMatriculaResponse ficha(Integer id, Integer idUsuario, List<String> roles) {
@@ -262,13 +320,14 @@ public class MatriculaService {
                 vinculo.getApoPrincipal() == 1);
     }
 
-    private MatriculaReporteResponse aReporte(Matricula m) {
+    private MatriculaReporteResponse aReporte(Matricula m, MatriculaResponse.TipoIngreso tipoIngreso) {
         List<PagoMatricula> pagos = pagoMatriculaRepository
                 .findByMatriculaIdMatriculaAndAccesoNotOrderByFecha(m.getIdMatricula(), eliminado());
         BigDecimal pagado = pagadoNeto(m.getIdMatricula());
         Alumno alumno = m.getAlumnoApoderado().getAlumno();
         GradoSeccion gs = m.getGradoSeccion();
         MatriculaReporteResponse r = new MatriculaReporteResponse();
+        r.setTipoIngreso(tipoIngreso);
         r.setIdMatricula(m.getIdMatricula());
         r.setAlumno(alumno.getNombre() + " " + alumno.getApellidoPat() + " " + alumno.getApellidoMat());
         r.setCodigo(alumno.getCodigo());
@@ -364,16 +423,46 @@ public class MatriculaService {
     }
 
     private List<MatriculaResponse> toResponses(List<Matricula> matriculas) {
+        return toResponses(matriculas, null);
+    }
+
+    private List<MatriculaResponse> toResponses(List<Matricula> matriculas, Map<Integer, String> primeros) {
         if (matriculas.isEmpty()) return List.of();
-        List<Integer> ids = matriculas.stream().map(m -> m.getAlumnoApoderado().getAlumno().getIdAlumno()).distinct().toList();
-        var primeros = matriculaRepository.primerosAniosPorAlumno(ids, AccesoConstants.ELIMINADO).stream()
-                .collect(Collectors.toMap(MatriculaRepository.PrimerAnioAlumno::getIdAlumno, MatriculaRepository.PrimerAnioAlumno::getPrimerAnio));
-        return matriculas.stream().map(m -> {
-            String primero = primeros.get(m.getAlumnoApoderado().getAlumno().getIdAlumno());
-            var tipo = primero != null && primero.compareTo(m.getGradoSeccion().getAnioEscolar().getAnio()) < 0
-                    ? MatriculaResponse.TipoIngreso.CONTINUANTE : MatriculaResponse.TipoIngreso.NUEVO_INGRESO;
-            return toResponse(m, tipo);
-        }).toList();
+        Map<Integer, String> fuente = primeros != null ? primeros : primerosAnios(matriculas);
+        return matriculas.stream()
+                .map(m -> toResponse(m, clasificarIngreso(fuente.get(idAlumno(m)), anioMatricula(m))))
+                .toList();
+    }
+
+    private Map<Integer, String> primerosAnios(List<Matricula> matriculas) {
+        if (matriculas.isEmpty()) return Map.of();
+        List<Integer> ids = matriculas.stream().map(MatriculaService::idAlumno).distinct().toList();
+        return matriculaRepository.primerosAniosPorAlumno(ids, AccesoConstants.ELIMINADO).stream()
+                .collect(Collectors.toMap(MatriculaRepository.PrimerAnioAlumno::getIdAlumno,
+                        MatriculaRepository.PrimerAnioAlumno::getPrimerAnio));
+    }
+
+    private MatriculaResponse.TipoIngreso clasificarIngreso(String primerAnio, String anioMatricula) {
+        return primerAnio != null && primerAnio.compareTo(anioMatricula) < 0
+                ? MatriculaResponse.TipoIngreso.CONTINUANTE
+                : MatriculaResponse.TipoIngreso.NUEVO_INGRESO;
+    }
+
+    private List<Matricula> filtrarPorTipoIngreso(List<Matricula> matriculas,
+                                                  MatriculaResponse.TipoIngreso tipoIngreso,
+                                                  Map<Integer, String> primeros) {
+        if (tipoIngreso == null) return matriculas;
+        return matriculas.stream()
+                .filter(m -> clasificarIngreso(primeros.get(idAlumno(m)), anioMatricula(m)) == tipoIngreso)
+                .toList();
+    }
+
+    private static Integer idAlumno(Matricula matricula) {
+        return matricula.getAlumnoApoderado().getAlumno().getIdAlumno();
+    }
+
+    private static String anioMatricula(Matricula matricula) {
+        return matricula.getGradoSeccion().getAnioEscolar().getAnio();
     }
 
     public MatriculaResponse toResponse(Matricula matricula) {

@@ -208,4 +208,25 @@ class ColegioServiceTest {
         assertNull(c.getUrlPortal());
         assertEquals("https://cdn/vieja", c.getUrlFoto());
     }
+
+    @Test
+    void identidadPublicaCopiaNombreYLogoDelColegioActivo() {
+        Colegio c = new Colegio();
+        c.setNombre("IE San Martin");
+        c.setUrlFoto("https://cdn/logo");
+        when(colegioRepository.findFirstByAccesoNot(eliminado)).thenReturn(Optional.of(c));
+
+        var identidad = service.getIdentidadPublica();
+
+        assertEquals("IE San Martin", identidad.getNombre());
+        assertEquals("https://cdn/logo", identidad.getLogoUrl());
+    }
+
+    @Test
+    void identidadPublicaSinColegioDevuelveCamposNulos() {
+        var identidad = service.getIdentidadPublica();
+
+        assertNull(identidad.getNombre());
+        assertNull(identidad.getLogoUrl());
+    }
 }

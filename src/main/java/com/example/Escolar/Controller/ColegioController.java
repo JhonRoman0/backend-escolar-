@@ -2,6 +2,7 @@ package com.example.Escolar.Controller;
 
 import com.example.Escolar.Dto.ColegioRequest;
 import com.example.Escolar.Dto.ColegioResponse;
+import com.example.Escolar.Dto.IdentidadInstitucionalResponse;
 import com.example.Escolar.Service.ColegioService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,11 @@ public class ColegioController {
     @GetMapping
     public List<ColegioResponse> getAll() {
         return colegioService.getAll();
+    }
+
+    @GetMapping("/identidad")
+    public IdentidadInstitucionalResponse getIdentidad() {
+        return colegioService.getIdentidadPublica();
     }
 
     @GetMapping("/actual")

@@ -2,8 +2,10 @@ package com.example.Escolar.Service;
 
 import com.example.Escolar.Dto.ColegioRequest;
 import com.example.Escolar.Dto.ColegioResponse;
+import com.example.Escolar.Dto.IdentidadInstitucionalResponse;
 import com.example.Escolar.Dto.UploadResponse;
 import com.example.Escolar.Exception.ResourceNotFoundException;
+import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.Colegio;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.ColegioRepository;
@@ -14,6 +16,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -26,8 +29,16 @@ public class ColegioService {
     private final AccesoRepository accesoRepository;
     private final CloudinaryService cloudinaryService;
 
+    private Acceso eliminado() {
+        return accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow();
+    }
+
+    private Optional<Colegio> colegioActivo() {
+        return colegioRepository.findFirstByAccesoNot(eliminado());
+    }
+
     public List<ColegioResponse> getAll() {
-        return colegioRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
+        return colegioRepository.findByAccesoNot(eliminado()).stream()
                 .map(this::toResponse)
                 .toList();
     }
@@ -37,15 +48,24 @@ public class ColegioService {
     }
 
     public ColegioResponse getActual() {
-        return colegioRepository.findFirstByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
+        return colegioActivo()
                 .map(this::toResponse)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe un colegio registrado"));
+    }
+
+    public IdentidadInstitucionalResponse getIdentidadPublica() {
+        IdentidadInstitucionalResponse identidad = new IdentidadInstitucionalResponse();
+        colegioActivo().ifPresent(colegio -> {
+            identidad.setNombre(colegio.getNombre());
+            identidad.setLogoUrl(colegio.getUrlFoto());
+        });
+        return identidad;
     }
 
     /** Todo o nada: el colegio no existe sin su foto, y si algo falla no quedan imágenes sueltas. */
     @Transactional
     public ColegioResponse create(ColegioRequest request, MultipartFile foto, MultipartFile portada) {
-        colegioRepository.findFirstByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
+        colegioActivo()
                 .ifPresent(c -> {
                     throw new IllegalArgumentException("Ya existe un colegio registrado; actualícelo en lugar de crear otro");
                 });
@@ -85,7 +105,7 @@ public class ColegioService {
     @Transactional
     public void delete(Integer id) {
         Colegio colegio = findColegio(id);
-        colegio.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
+        colegio.setAcceso(eliminado());
         colegioRepository.save(colegio);
     }
 
@@ -149,7 +169,7 @@ public class ColegioService {
     }
 
     private Colegio findColegio(Integer id) {
-        return colegioRepository.findByIdColegioAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
+        return colegioRepository.findByIdColegioAndAccesoNot(id, eliminado())
                 .orElseThrow(() -> new ResourceNotFoundException("Colegio no encontrado con id " + id));
     }
 

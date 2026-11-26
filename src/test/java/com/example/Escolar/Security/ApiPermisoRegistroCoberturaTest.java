@@ -37,38 +37,36 @@ class ApiPermisoRegistroCoberturaTest {
     private static final List<String> VERBOS =
             Arrays.stream(RequestMethod.values()).map(RequestMethod::name).toList();
 
+    private static final String CUALQUIER_VERBO = "*";
+
     /**
      * Rutas que SecurityConfig resuelve antes de llegar al RBAC, en sus
      * .requestMatchers(...).permitAll() y .authenticated(). No pasan por el
-     * ApiPermisoRegistro, así que no se exigen aquí.
+     * ApiPermisoRegistro, así que no se exigen aquí. El verbo importa: la
+     * identidad del colegio es pública solo en GET.
      *
-     * Refleja SecurityConfig.securityFilterChain. Si allí se añade o se quita una
-     * ruta hay que tocar esto también: quitar una sin tocarla deja el test en
-     * verde mientras el endpoint vuelve a dar 403.
+     * Se deriva de las listas de SecurityConfig para que no haya una copia que
+     * quede desactualizada al añadir o quitar rutas.
      */
-    private static final List<String> RESUELTAS_POR_CONFIG = List.of(
-            "/auth/login",
-            "/auth/logout",
-            "/auth/forgot-password",
-            "/auth/verify-reset-code",
-            "/auth/reset-password",
-            "/auth/me",
-            "/auth/change-password",
-            "/auth/permisos",
-            "/auth/2fa/verificar",
-            "/auth/2fa/reenviar",
-            "/auth/dispositivos",
-            "/auth/dispositivos/{id}",
-            "/eventos",
-            "/consulta/dni/**",
-            "/swagger-ui.html",
-            "/swagger-ui/**",
-            "/v3/api-docs/**");
+    private static final List<RutaResuelta> RESUELTAS_POR_CONFIG = resueltasPorConfig();
 
     private static final AntPathMatcher MATCHER = new AntPathMatcher();
 
-    private static boolean resueltaPorConfig(String ruta) {
-        return RESUELTAS_POR_CONFIG.stream().anyMatch(patron -> MATCHER.match(patron, ruta));
+    private record RutaResuelta(String patron, String verbo) {}
+
+    private static List<RutaResuelta> resueltasPorConfig() {
+        List<RutaResuelta> resueltas = new ArrayList<>();
+        SecurityConfig.RUTAS_PUBLICAS.forEach(ruta -> resueltas.add(new RutaResuelta(ruta, CUALQUIER_VERBO)));
+        SecurityConfig.RUTAS_SOLO_AUTENTICADAS.forEach(ruta -> resueltas.add(new RutaResuelta(ruta, CUALQUIER_VERBO)));
+        resueltas.add(new RutaResuelta("/**", RequestMethod.OPTIONS.name()));
+        resueltas.add(new RutaResuelta(SecurityConfig.RUTA_IDENTIDAD_COLEGIO, RequestMethod.GET.name()));
+        return List.copyOf(resueltas);
+    }
+
+    private static boolean resueltaPorConfig(String verbo, String ruta) {
+        return RESUELTAS_POR_CONFIG.stream().anyMatch(resuelta ->
+                (CUALQUIER_VERBO.equals(resuelta.verbo()) || resuelta.verbo().equals(verbo))
+                        && MATCHER.match(resuelta.patron(), ruta));
     }
 
     @Test
@@ -92,11 +90,11 @@ class ApiPermisoRegistroCoberturaTest {
                     continue;
                 }
                 String ruta = normaliza(base + primeraRuta(mapping));
-                if (resueltaPorConfig(ruta)) {
-                    continue;
-                }
                 String[] verbos = verbosDe(mapping);
                 for (String verbo : verbos) {
+                    if (resueltaPorConfig(verbo, ruta)) {
+                        continue;
+                    }
                     if (registro.buscar(verbo, ruta).isEmpty()) {
                         faltantes.add(verbo + " " + ruta + "  (" + controlador.getSimpleName()
                                 + "." + metodo.getName() + ")");

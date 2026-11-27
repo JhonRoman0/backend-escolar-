@@ -33,6 +33,13 @@ public class SuspensionDocente {
     LocalDate fechaInicio;
     @Column(name = "fecha_fin")
     LocalDate fechaFin;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "estado", length = 15, nullable = true)
+    EstadoSuspension estado = EstadoSuspension.VIGENTE;
+    @Column(name = "fecha_finalizacion")
+    LocalDate fechaFinalizacion;
+    @Column(name = "motivo_resolucion", length = 255)
+    String motivoResolucion;
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "id_acceso", nullable = false)
     Acceso acceso;

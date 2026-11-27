@@ -17,7 +17,9 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -110,6 +112,38 @@ class ApiPermisoRegistroCoberturaTest {
         assertTrue(faltantes.isEmpty(), () -> "Endpoints sin registrar en ApiPermisoRegistro; "
                 + "el RbacAuthorizationManager los deniega con 403 aunque el rol tenga permisos:\n  "
                 + String.join("\n  ", faltantes));
+    }
+
+    @Test
+    void laLecturaDeCambiosNoSeHabilitaConElPermisoDeSuspensiones() {
+        ApiPermisoRegistro registro = new ApiPermisoRegistro();
+
+        for (String ruta : List.of("/cambios-docente", "/cambios-docente/1",
+                "/motivos-cambio-docente", "/motivos-cambio-docente/1")) {
+            ApiPermisoRegistro.Requisito requisito = registro.buscar("GET", ruta).orElseThrow();
+            assertTrue(requisito.permisosCodigo().contains("CAMBIOS_DOCENTE"), ruta);
+            assertFalse(requisito.permisosCodigo().contains("SUSPENSIONES_DOCENTE"), ruta);
+        }
+    }
+
+    @Test
+    void edicionDeCambiosYSuspensionesUsaSuPermisoDeActualizarSinOpacarRutasEspecificas() {
+        ApiPermisoRegistro registro = new ApiPermisoRegistro();
+
+        ApiPermisoRegistro.Requisito edicionCambio =
+                registro.buscar("PUT", "/cambios-docente/1").orElseThrow();
+        assertEquals(Set.of("CAMBIOS_DOCENTE"), edicionCambio.permisosCodigo());
+        assertEquals("ACTUALIZAR", edicionCambio.accionCodigo());
+
+        ApiPermisoRegistro.Requisito edicionSuspension =
+                registro.buscar("PUT", "/suspensiones/1").orElseThrow();
+        assertEquals(Set.of("SUSPENSIONES_DOCENTE"), edicionSuspension.permisosCodigo());
+        assertEquals("ACTUALIZAR", edicionSuspension.accionCodigo());
+
+        for (String ruta : List.of("/cambios-docente/1/finalizar", "/cambios-docente/1/cancelar",
+                "/cambios-docente/1/asignar-sustituto", "/cambios-docente/1/resolver-incidencia")) {
+            assertEquals("ACTUALIZAR", registro.buscar("PUT", ruta).orElseThrow().accionCodigo(), ruta);
+        }
     }
 
     private static List<Class<?>> controllers() throws ClassNotFoundException {

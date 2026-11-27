@@ -6,6 +6,7 @@ import com.example.Escolar.Model.Rol;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.RolRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
+import com.example.Escolar.Security.ConcesionesService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,6 +31,7 @@ class RolServiceProtegidosTest {
     @Mock RolRepository rolRepository;
     @Mock AccesoRepository accesoRepository;
     @Mock UsuarioRolRepository usuarioRolRepository;
+    @Mock ConcesionesService concesionesService;
     @InjectMocks RolService service;
 
     private final Acceso activo = new Acceso(AccesoConstants.ACTIVO, "Activo");

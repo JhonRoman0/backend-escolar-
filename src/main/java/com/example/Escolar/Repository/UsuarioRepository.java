@@ -5,9 +5,13 @@ import com.example.Escolar.Model.Usuario;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -45,6 +49,12 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Integer>, Usua
             + "where upper(r.nombre) = 'ADMIN' and r.acceso.idAcceso <> :eliminado "
             + "and u.acceso.idAcceso = :activo and (u.gmail is null or trim(u.gmail) = '')")
     List<String> administradoresSinCorreo(@Param("activo") Long activo, @Param("eliminado") Long eliminado);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Usuario u set u.versionToken = coalesce(u.versionToken, 0) + 1 "
+            + "where u.idUsuario in :ids and u.acceso.idAcceso <> :eliminado")
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    int incrementarVersionToken(@Param("ids") Collection<Integer> ids, @Param("eliminado") Long eliminado);
 
     Optional<Usuario> findByGmailAndAccesoNot(String gmail, Acceso acceso);
 

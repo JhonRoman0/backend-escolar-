@@ -65,7 +65,7 @@ class BoletaServiceTest {
         gs.setAnioEscolar(anio);
         gs.setAcceso(activo);
         when(gradoSeccionRepository.findById(26)).thenReturn(Optional.of(gs));
-        when(notaFinalService.puedeVerSeccion(any(), any(), any())).thenReturn(true);
+        when(notaFinalService.puedeExportarSeccionCompleta(any(), any())).thenReturn(true);
 
         ConfiguracionAcademicaResponse config = new ConfiguracionAcademicaResponse();
         config.setEscala(EscalaCalificacion.LITERAL);
@@ -169,7 +169,7 @@ class BoletaServiceTest {
 
     @Test
     void unaSeccionAjenaNoSeImprime() {
-        when(notaFinalService.puedeVerSeccion(any(), any(), any())).thenReturn(false);
+        when(notaFinalService.puedeExportarSeccionCompleta(any(), any())).thenReturn(false);
 
         assertThrows(ResourceNotFoundException.class, () -> service.boletas(26, 2, 7, roles));
     }

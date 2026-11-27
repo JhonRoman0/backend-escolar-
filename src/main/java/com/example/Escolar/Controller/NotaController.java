@@ -44,7 +44,8 @@ public class NotaController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin,
             @RequestParam(required = false) Integer idGradoSeccion,
             @RequestParam(required = false) Integer bimestre) {
-        return notaService.reporte(inicio, fin, idGradoSeccion, bimestre);
+        return notaService.reporte(inicio, fin, idGradoSeccion, bimestre,
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
     }
 
 }

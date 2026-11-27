@@ -88,9 +88,9 @@ class NotaFinalAnualServiceTest {
         b1 = periodo(1, hoy.minusDays(60), hoy.minusDays(31));
         b2 = periodo(2, hoy.minusDays(30), hoy.minusDays(1));
 
-        when(notaFinalService.alcance(30, 100, 7, roles)).thenReturn(new NotaFinalService.Alcance(gs, area, List.of(c1)));
+        when(notaFinalService.alcance(eq(30), eq(100), eq(7), eq(roles), eq("NOTAS_ANUALES"), any())).thenReturn(new NotaFinalService.Alcance(gs, area, List.of(c1)));
         when(notaFinalService.configuracion(gs)).thenReturn(config);
-        when(notaFinalService.alumnosDe(gs)).thenReturn(List.of(ana));
+        when(notaFinalService.alumnosDe(any(), eq(7), eq(roles), eq("NOTAS_ANUALES"), any())).thenReturn(List.of(ana));
         when(notaFinalService.eliminado()).thenReturn(eliminado);
         when(configuracionService.periodos(anio, nivel)).thenAnswer(i -> List.of(b1, b2));
         when(notaRepository.findByMatriculaIdMatriculaInAndCompetenciaIdCompetenciaInAndAccesoNot(any(), any(), eq(eliminado)))

@@ -217,6 +217,6 @@ public class AuthController {
     public PermisosRolResponse permisos() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         UsuarioAutenticado principal = (UsuarioAutenticado) authentication.getPrincipal();
-        return authService.permisosActuales(principal.idUsuario());
+        return authService.permisosActuales(principal.idUsuario(), principal.roles());
     }
 }

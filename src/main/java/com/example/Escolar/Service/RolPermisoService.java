@@ -5,6 +5,7 @@ import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.*;
 import com.example.Escolar.Repository.*;
 import com.example.Escolar.Repository.AccesoRepository;
+import com.example.Escolar.Security.ConcesionesService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,6 +16,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -33,6 +35,7 @@ public class RolPermisoService {
     private final AccionRepository accionRepository;
     private final PermisoAccionRepository permisoAccionRepository;
     private final UsuarioRolRepository usuarioRolRepository;
+    private final ConcesionesService concesionesService;
 
     public List<RolPermisoResponse> getAll() {
         return rolPermisoRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream().map(this::toResponse).toList();
@@ -60,6 +63,7 @@ public class RolPermisoService {
             if (request.getAcciones() != null) {
                 reemplazarAccionesConcedidas(rolPermiso, request.getAcciones());
             }
+            concesionesService.invalidarPermisosDelRol(rol.getIdRol());
             return toResponse(rolPermiso);
         }
         RolPermiso rolPermiso = new RolPermiso();
@@ -69,14 +73,22 @@ public class RolPermisoService {
         rolPermiso.setAcceso(accesoRepository.findById(request.getAccesoId() != null ? request.getAccesoId() : AccesoConstants.ACTIVO).orElseThrow());
         rolPermiso = rolPermisoRepository.save(rolPermiso);
         asignarAccionesConcedidas(rolPermiso, request.getAcciones());
+        concesionesService.invalidarPermisosDelRol(rol.getIdRol());
         return toResponse(rolPermiso);
     }
 
     @Transactional
     public RolPermisoResponse update(Integer id, RolPermisoRequest request) {
         RolPermiso rolPermiso = findRolPermiso(id);
+        Set<Integer> rolesAInvalidar = new LinkedHashSet<>();
+        if (rolPermiso.getRol() != null && rolPermiso.getRol().getIdRol() != null) {
+            rolesAInvalidar.add(rolPermiso.getRol().getIdRol());
+        }
+        if (rolPermiso.getPermiso() != null && rolPermiso.getPermiso().getIdPermiso() != null) {
+        }
         if (request.getIdRol() != null) {
             rolPermiso.setRol(findRol(request.getIdRol()));
+            rolesAInvalidar.add(rolPermiso.getRol().getIdRol());
         }
         if (request.getIdPermiso() != null) {
             Permiso nuevoPermiso = findPermiso(request.getIdPermiso());
@@ -90,6 +102,7 @@ public class RolPermisoService {
                     rolPermisoRepository.save(existente);
                     rolPermiso.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
                     rolPermisoRepository.save(rolPermiso);
+                    concesionesService.invalidarCambioPermisos(rolesAInvalidar, Set.of());
                     return toResponse(existente);
                 }
                 throw new IllegalArgumentException("El permiso ya está asignado a este rol");
@@ -104,14 +117,17 @@ public class RolPermisoService {
         if (request.getAcciones() != null) {
             reemplazarAccionesConcedidas(rolPermiso, request.getAcciones());
         }
+        concesionesService.invalidarCambioPermisos(rolesAInvalidar, Set.of());
         return toResponse(rolPermiso);
     }
 
     @Transactional
     public void delete(Integer id) {
         RolPermiso rolPermiso = findRolPermiso(id);
+        Rol rol = rolPermiso.getRol();
         rolPermiso.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
         rolPermisoRepository.save(rolPermiso);
+        if (rol != null) concesionesService.invalidarPermisosDelRol(rol.getIdRol());
     }
 
     public PermisosRolResponse obtenerPermisosDelRol(Integer idRol) {

@@ -13,6 +13,7 @@ import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.ModuloRepository;
 import com.example.Escolar.Repository.PermisoAccionRepository;
 import com.example.Escolar.Repository.PermisoRepository;
+import com.example.Escolar.Security.ConcesionesService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +29,7 @@ public class PermisoService {
     private final ModuloRepository moduloRepository;
     private final AccionRepository accionRepository;
     private final PermisoAccionRepository permisoAccionRepository;
+    private final ConcesionesService concesionesService;
 
     public List<PermisoResponse> getAll() {
         return permisoRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream().map(this::toResponse).toList();
@@ -45,6 +47,7 @@ public class PermisoService {
         permiso.setAcceso(accesoRepository.findById(request.getAccesoId() != null ? request.getAccesoId() : AccesoConstants.ACTIVO).orElseThrow());
         permiso = permisoRepository.save(permiso);
         asignarAcciones(permiso, request.getAcciones());
+        concesionesService.invalidarPermisosDelPermiso(permiso.getIdPermiso());
         return toResponse(permiso);
     }
 
@@ -58,6 +61,7 @@ public class PermisoService {
             permisoAccionRepository.deleteAll(permisoAccionRepository.findByPermisoIdPermiso(id));
             asignarAcciones(permiso, request.getAcciones());
         }
+        concesionesService.invalidarPermisosDelPermiso(id);
         return toResponse(permiso);
     }
 
@@ -66,6 +70,7 @@ public class PermisoService {
         Permiso permiso = findPermiso(id);
         permiso.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
         permisoRepository.save(permiso);
+        concesionesService.invalidarPermisosDelPermiso(id);
     }
 
     private Permiso findPermiso(Integer id) {

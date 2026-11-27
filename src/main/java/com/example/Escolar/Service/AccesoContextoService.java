@@ -2,6 +2,7 @@ package com.example.Escolar.Service;
 
 import com.example.Escolar.Model.AlumnoApoderado;
 import com.example.Escolar.Model.Apoderado;
+import com.example.Escolar.Model.Asignacion;
 import com.example.Escolar.Model.Docente;
 import com.example.Escolar.Model.Matricula;
 import com.example.Escolar.Repository.AccesoRepository;
@@ -37,9 +38,27 @@ public class AccesoContextoService {
     private final ConcesionesService concesionesService;
 
     /** Qué parte de los datos de un módulo ve el usuario. */
-    public enum Alcance { TODO, DOCENTE, APODERADO }
+    public enum Alcance {
+        TODO, DOCENTE, APODERADO, DOCENTE_Y_APODERADO, NINGUNO;
 
-    private static final Set<String> ACCIONES_ESCRITURA = Set.of("CREAR", "ACTUALIZAR", "ELIMINAR");
+        public boolean incluyeDocente() {
+            return this == DOCENTE || this == DOCENTE_Y_APODERADO;
+        }
+
+        public boolean incluyeApoderado() {
+            return this == APODERADO || this == DOCENTE_Y_APODERADO;
+        }
+    }
+
+    /** Operación que se autoriza; el alcance se calcula junto con el rol que concede la acción. */
+    public enum Operacion { LECTURA, DETALLE, ESCRITURA, REPORTE, EXPORTACION }
+
+    private static final Set<String> ACCIONES_ESCRITURA = Set.of("CREAR", "ACTUALIZAR", "ELIMINAR", "CONFIGURAR");
+    private static final Set<String> ACCIONES_REPORTE = Set.of(
+            "IMPRIMIR_EXPORTAR", "IMPRIMIR_FICHA", "IMPRIMIR_BOLETA", "EXPORTAR_SIAGIE", "VER_RESUMEN", "VER_COLEGIO");
+    private static final Set<String> PERMISOS_VINCULADOS = Set.of(
+            "NOTAS", "NOTAS_ANUALES", "EVALUACIONES", "ASIGNACIONES", "ASISTENCIAS", "HORARIOS",
+            "PORTAL_APODERADO", "ALUMNOS", "MATRICULAS", "APODERADOS");
 
     public Integer idUsuarioAutenticado() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -57,28 +76,71 @@ public class AccesoContextoService {
         return roles != null && roles.stream().anyMatch(r -> "ADMIN".equalsIgnoreCase(r));
     }
 
-    // Con escritura en el permiso del módulo lo gestiona y ve todo. Solo con lectura,
-    // el docente ve lo suyo, el apoderado lo de sus hijos y cualquier otro usuario todo.
     public Alcance alcance(String permisoCodigo, Integer idUsuario, List<String> roles) {
+        return alcance(permisoCodigo, Operacion.LECTURA, idUsuario, roles);
+    }
+
+    /**
+     * Permisos y alcance se resuelven juntos, por rol y operación. La unión de
+     * acciones de un rol nunca se combina con el vínculo de otro.
+     */
+    public Alcance alcance(String permisoCodigo, Operacion operacion, Integer idUsuario, List<String> roles) {
         if (esAdmin(roles)) {
             return Alcance.TODO;
         }
-        Set<String> acciones = concesionesService.accionesPorPermiso(idUsuario).getOrDefault(permisoCodigo, Set.of());
-        if (acciones.stream().anyMatch(ACCIONES_ESCRITURA::contains)) {
+
+        boolean concedido = concesionesService.accionesPorPermisoYRol(idUsuario).values().stream()
+                .anyMatch(permisos -> permisos.containsKey(permisoCodigo)
+                        && permiteOperacion(operacion, permisos.get(permisoCodigo)));
+        if (!concedido) {
+            return Alcance.NINGUNO;
+        }
+        if (!PERMISOS_VINCULADOS.contains(permisoCodigo)) {
             return Alcance.TODO;
         }
-        return vinculo(idUsuario);
-    }
-
-    /** A quién está vinculado el usuario: a un docente, a un apoderado o a ninguno (TODO). */
-    public Alcance vinculo(Integer idUsuario) {
-        if (docenteDeUsuario(idUsuario).isPresent()) {
+        boolean docente = !asignacionesActivasDeDocente(idUsuario).isEmpty();
+        boolean apoderado = operacion != Operacion.ESCRITURA
+                && !"EVALUACIONES".equals(permisoCodigo)
+                && tieneAlumnosVinculados(idUsuario);
+        if (docente && apoderado) {
+            return Alcance.DOCENTE_Y_APODERADO;
+        }
+        if (docente) {
             return Alcance.DOCENTE;
         }
-        if (apoderadoDeUsuario(idUsuario).isPresent()) {
-            return Alcance.APODERADO;
+        return apoderado ? Alcance.APODERADO : Alcance.NINGUNO;
+    }
+
+    public Alcance vinculoEfectivo(Integer idUsuario, List<String> roles) {
+        return esAdmin(roles) ? Alcance.TODO : vinculo(idUsuario);
+    }
+
+    public Alcance vinculo(Integer idUsuario) {
+        if (!asignacionesActivasDeDocente(idUsuario).isEmpty()) {
+            return Alcance.DOCENTE;
         }
-        return Alcance.TODO;
+        return tieneAlumnosVinculados(idUsuario) ? Alcance.APODERADO : Alcance.NINGUNO;
+    }
+
+    private boolean tieneAlumnosVinculados(Integer idUsuario) {
+        return apoderadoDeUsuario(idUsuario)
+                .map(apoderado -> !alumnoApoderadoRepository.findByApoderado(apoderado).isEmpty())
+                .orElse(false);
+    }
+
+    private boolean permiteOperacion(Operacion operacion, Set<String> acciones) {
+        return switch (operacion) {
+            case LECTURA, DETALLE -> true;
+            case ESCRITURA -> acciones.stream().anyMatch(ACCIONES_ESCRITURA::contains);
+            case REPORTE, EXPORTACION -> acciones.stream().anyMatch(ACCIONES_REPORTE::contains);
+        };
+    }
+
+    public List<Asignacion> asignacionesActivasDeDocente(Integer idUsuario) {
+        return docenteDeUsuario(idUsuario)
+                .map(d -> asignacionRepository.findByDocenteIdDocenteAndAcceso(
+                        d.getIdDocente(), accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow()))
+                .orElseGet(List::of);
     }
 
     public boolean tieneAccion(String permisoCodigo, String accionCodigo, Integer idUsuario, List<String> roles) {
@@ -95,16 +157,16 @@ public class AccesoContextoService {
         if (idUsuario == null) {
             return Optional.empty();
         }
-        // Al quitarle el rol Docente su registro queda eliminado: ya no cuenta como vínculo.
         return docenteRepository.findByUsuarioIdUsuario(idUsuario)
-                .filter(d -> !d.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO));
+                .filter(d -> AccesoConstants.ACTIVO.equals(d.getAcceso().getIdAcceso()));
     }
 
     public Optional<Apoderado> apoderadoDeUsuario(Integer idUsuario) {
         if (idUsuario == null) {
             return Optional.empty();
         }
-        return apoderadoRepository.findByUsuarioIdUsuarioAndAccesoNot(idUsuario, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
+        return apoderadoRepository.findByUsuarioIdUsuarioAndAccesoNot(idUsuario, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
+                .filter(a -> AccesoConstants.ACTIVO.equals(a.getAcceso().getIdAcceso()));
     }
 
     public Set<Integer> gradoSeccionIdsDeApoderado(Apoderado apoderado) {
@@ -118,9 +180,8 @@ public class AccesoContextoService {
 
     public Set<Integer> gradoSeccionIdsDeDocente(Integer idUsuario) {
         Set<Integer> ids = new HashSet<>();
-        docenteDeUsuario(idUsuario).ifPresent(docente ->
-                asignacionRepository.findByDocenteIdDocenteAndAccesoNot(docente.getIdDocente(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
-                        .forEach(asignacion -> ids.add(asignacion.getGradoSeccion().getIdGradoSeccion())));
+        asignacionesActivasDeDocente(idUsuario)
+                .forEach(asignacion -> ids.add(asignacion.getGradoSeccion().getIdGradoSeccion()));
         return ids;
     }
 
@@ -142,10 +203,15 @@ public class AccesoContextoService {
         if (apoderado == null) {
             return matriculas;
         }
-        for (AlumnoApoderado vinculo : alumnoApoderadoRepository.findByApoderado(apoderado)) {
-            matriculas.addAll(matriculaRepository.findByAlumnoApoderadoAlumnoIdAlumnoAndAccesoNot(
-                    vinculo.getAlumno().getIdAlumno(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()));
+        List<Integer> idsAlumnos = alumnoApoderadoRepository.findByApoderado(apoderado).stream()
+                .filter(AlumnoApoderado::isActivo)
+                .map(vinculo -> vinculo.getAlumno().getIdAlumno())
+                .toList();
+        if (idsAlumnos.isEmpty()) {
+            return matriculas;
         }
+        matriculas.addAll(matriculaRepository.findActivasPorAlumnoIds(
+                idsAlumnos, accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow()));
         return matriculas;
     }
 
@@ -153,6 +219,7 @@ public class AccesoContextoService {
         Integer idAlumno = matricula.getAlumnoApoderado().getAlumno().getIdAlumno();
         return apoderadoDeUsuario(idUsuario)
                 .map(apoderado -> alumnoApoderadoRepository.findByApoderado(apoderado).stream()
+                        .filter(AlumnoApoderado::isActivo)
                         .anyMatch(v -> v.getAlumno().getIdAlumno().equals(idAlumno)))
                 .orElse(false);
     }

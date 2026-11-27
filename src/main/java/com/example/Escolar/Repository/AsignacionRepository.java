@@ -15,6 +15,9 @@ public interface AsignacionRepository extends JpaRepository<Asignacion, Integer>
 
     List<Asignacion> findByDocenteIdDocenteAndAccesoNot(Integer idDocente, Acceso acceso);
 
+    List<Asignacion> findByDocenteIdDocenteAndAnioEscolarEstadoAndAccesoNot(
+            Integer idDocente, Byte estado, Acceso acceso);
+
     List<Asignacion> findByDocenteIdDocenteAndAcceso(Integer idDocente, Acceso acceso);
 
     long countByDocenteAndAcceso(Docente docente, Acceso acceso);

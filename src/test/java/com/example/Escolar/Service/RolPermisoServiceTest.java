@@ -15,6 +15,7 @@ import com.example.Escolar.Repository.RolPermisoAccionRepository;
 import com.example.Escolar.Repository.RolPermisoRepository;
 import com.example.Escolar.Repository.RolRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
+import com.example.Escolar.Security.ConcesionesService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -52,6 +53,8 @@ class RolPermisoServiceTest {
     private UsuarioRolRepository usuarioRolRepository;
     @Mock
     private AccesoRepository accesoRepository;
+    @Mock
+    private ConcesionesService concesionesService;
 
     @InjectMocks
     private RolPermisoService service;

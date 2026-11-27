@@ -28,6 +28,7 @@ import com.example.Escolar.Repository.RolRepository;
 import com.example.Escolar.Repository.TipoContratoRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
+import com.example.Escolar.Security.ConcesionesService;
 import com.example.Escolar.Service.EmailService.TipoEnvioCredenciales;
 import com.example.Escolar.Service.VigenciaService.EstadoVigencia;
 import com.example.Escolar.Util.FechaColegio;
@@ -100,6 +101,8 @@ class UsuarioServiceTest {
     private AlumnoApoderadoRepository alumnoApoderadoRepository;
     @Mock
     private VigenciaService vigenciaService;
+    @Mock
+    private ConcesionesService concesionesService;
 
     @InjectMocks
     private UsuarioService service;
@@ -828,7 +831,7 @@ class UsuarioServiceTest {
 
         service.update(1, request);
 
-        assertEquals(4, activo.getVersionToken());
+        verify(concesionesService).invalidarCambioRoles(1);
         assertEquals(inicioVencido, activo.getFechaInicioVigencia());
         assertEquals(FechaColegio.hoy().plusDays(30), activo.getFechaFinVigencia());
     }
@@ -924,7 +927,7 @@ class UsuarioServiceTest {
         service.update(1, request);
 
         assertEquals(inicioNuevo, activo.getFechaInicioVigencia());
-        assertEquals(1, activo.getVersionToken());
+        verify(concesionesService).invalidarCambioRoles(1);
     }
 
     @Test

@@ -28,6 +28,7 @@ import com.example.Escolar.Repository.DocenteRepository;
 import com.example.Escolar.Repository.GradoSeccionRepository;
 import com.example.Escolar.Repository.HorarioClaseRepository;
 import com.example.Escolar.Repository.RecreoRepository;
+import com.example.Escolar.Security.ConcesionesService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,6 +61,7 @@ public class AsignacionService {
     private final AulaRepository aulaRepository;
     private final AccesoRepository accesoRepository;
     private final AccesoContextoService accesoContextoService;
+    private final ConcesionesService concesionesService;
     private final DocenteNivelRepository docenteNivelRepository;
     private final RecreoRepository recreoRepository;
     private final ConfiguracionAcademicaService configuracionAcademicaService;
@@ -91,10 +93,31 @@ public class AsignacionService {
     public List<AsignacionResponse> getByDocente(Integer idDocente, Integer idUsuario, List<String> roles) {
         findDocente(idDocente);
         Predicate<Asignacion> visible = visibles(idUsuario, roles);
-        return asignacionRepository.findByDocenteIdDocenteAndAccesoNot(idDocente, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
-                .filter(visible)
+        return asignacionesVigentes(idDocente).stream().filter(visible)
                 .map(this::toResponse)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AsignacionResponse> asignacionesParaCambio(Integer idDocente, Integer idUsuario, List<String> roles) {
+        if (!accesoContextoService.tieneAccion("CAMBIOS_DOCENTE", "CREAR", idUsuario, roles)
+                && !accesoContextoService.tieneAccion("CAMBIOS_DOCENTE", "ACTUALIZAR", idUsuario, roles)) {
+            throw new org.springframework.security.access.AccessDeniedException("Sin permiso para gestionar cambios de docente");
+        }
+        findDocente(idDocente);
+        List<Asignacion> asignaciones = asignacionesVigentes(idDocente).stream()
+                .filter(a -> AccesoConstants.ACTIVO.equals(a.getAcceso().getIdAcceso()))
+                .toList();
+        Map<Integer, List<HorarioClase>> horarios = horariosDe(asignaciones);
+        return asignaciones.stream()
+                .map(a -> toResponse(a, horarios.getOrDefault(a.getIdAsignacion(), List.of())))
+                .toList();
+    }
+
+    private List<Asignacion> asignacionesVigentes(Integer idDocente) {
+        return asignacionRepository.findByDocenteIdDocenteAndAnioEscolarEstadoAndAccesoNot(
+                idDocente, AnioEscolarService.ESTADO_VIGENTE,
+                accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
     }
 
     public AsignacionResponse getById(Integer id, Integer idUsuario, List<String> roles) {
@@ -123,6 +146,7 @@ public class AsignacionService {
         asignacion.setAcceso(accesoRepository.findById(request.getAccesoId() == null ? AccesoConstants.ACTIVO : request.getAccesoId()).orElseThrow());
         asignacion = asignacionRepository.save(asignacion);
         guardarHorarios(asignacion, nuevos);
+        if (AccesoConstants.ACTIVO.equals(asignacion.getAcceso().getIdAcceso())) invalidarDocente(datos.docente());
         return toResponse(asignacion);
     }
 
@@ -131,6 +155,10 @@ public class AsignacionService {
     public AsignacionResponse update(Integer id, AsignacionRequest request) {
         bloqueo.asignacion(id);
         Asignacion asignacion = findAsignacion(id);
+        if (asignacion.getDocente() != null && request.getIdDocente() != null
+                && !request.getIdDocente().equals(asignacion.getDocente().getIdDocente())) {
+            throw new IllegalArgumentException("El docente de una asignación se cambia desde Cambios de docente");
+        }
         validarBloqueoHorarios(asignacion.getAnioEscolar());
         ReglasAnioEscolar.validarEditable(asignacion.getAnioEscolar(), QUE);
         Datos datos = validarDatos(request, id);
@@ -144,6 +172,10 @@ public class AsignacionService {
         ReglasAnioEscolar.validarEditable(datos.anio(), QUE);
         List<HorarioClase> nuevos = prepararHorarios(request, datos, id);
 
+        boolean cambioAlcance = !asignacion.getCurso().getIdCurso().equals(datos.curso().getIdCurso())
+                || !asignacion.getGradoSeccion().getIdGradoSeccion().equals(datos.gradoSeccion().getIdGradoSeccion())
+                || !asignacion.getAnioEscolar().getIdAnio().equals(datos.anio().getIdAnio())
+                || request.getAccesoId() != null && !request.getAccesoId().equals(asignacion.getAcceso().getIdAcceso());
         asignacion.setCurso(datos.curso());
         asignacion.setDocente(datos.docente());
         asignacion.setGradoSeccion(datos.gradoSeccion());
@@ -153,6 +185,7 @@ public class AsignacionService {
         }
         asignacion = asignacionRepository.save(asignacion);
         reemplazarHorarios(asignacion, nuevos);
+        if (cambioAlcance) invalidarDocente(datos.docente());
         return toResponse(asignacion);
     }
 
@@ -167,6 +200,13 @@ public class AsignacionService {
         horarioClaseRepository.findByAsignacionIdAsignacionAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .forEach(h -> h.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()));
         asignacionRepository.save(asignacion);
+        invalidarDocente(asignacion.getDocente());
+    }
+
+    private void invalidarDocente(Docente docente) {
+        if (docente != null && docente.getUsuario() != null && docente.getUsuario().getIdUsuario() != null) {
+            concesionesService.invalidarVinculoDespuesDeCommit(Set.of(docente.getUsuario().getIdUsuario()));
+        }
     }
 
     public HorasDocenteResponse calcularHorasDocente(Integer idDocente, String periodo) {
@@ -378,20 +418,18 @@ public class AsignacionService {
 
     // Se calcula una vez por consulta: el alcance lee los permisos del usuario.
     private Predicate<Asignacion> visibles(Integer idUsuario, List<String> roles) {
-        return switch (accesoContextoService.alcance(PERMISO, idUsuario, roles)) {
-            case TODO -> asignacion -> true;
-            case DOCENTE -> {
-                Integer idDocente = accesoContextoService.docenteDeUsuario(idUsuario)
-                        .map(Docente::getIdDocente)
-                        .orElse(null);
-                yield asignacion -> asignacion.getDocente().getIdDocente().equals(idDocente);
-            }
-            case APODERADO -> {
-                Set<Integer> secciones = accesoContextoService.gradoSeccionIdsDeApoderado(
-                        accesoContextoService.apoderadoDeUsuario(idUsuario).orElse(null));
-                yield asignacion -> secciones.contains(asignacion.getGradoSeccion().getIdGradoSeccion());
-            }
-        };
+        AccesoContextoService.Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, roles);
+        if (alcance == AccesoContextoService.Alcance.TODO) {
+            return asignacion -> true;
+        }
+        Integer idDocente = alcance.incluyeDocente() ? accesoContextoService.docenteDeUsuario(idUsuario)
+                .map(Docente::getIdDocente).orElse(null) : null;
+        Set<Integer> secciones = alcance.incluyeApoderado()
+                ? accesoContextoService.gradoSeccionIdsDeApoderado(
+                        accesoContextoService.apoderadoDeUsuario(idUsuario).orElse(null)) : Set.of();
+        return asignacion -> AccesoConstants.ACTIVO.equals(asignacion.getAcceso().getIdAcceso())
+                && (asignacion.getDocente().getIdDocente().equals(idDocente)
+                        || secciones.contains(asignacion.getGradoSeccion().getIdGradoSeccion()));
     }
 
     private Asignacion findAsignacion(Integer id) {

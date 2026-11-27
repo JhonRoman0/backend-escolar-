@@ -245,6 +245,37 @@ class AsignacionServiceTest {
         return assertThrows(IllegalArgumentException.class, () -> asignacionService.create(request)).getMessage();
     }
 
+    @Test
+    void consultarAsignacionesParaCambioExigePermisoParaGestionarlo() {
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+                () -> asignacionService.asignacionesParaCambio(1, 7, java.util.List.of("Personalizado")));
+    }
+
+    @Test
+    void getByDocenteSoloConsultaAsignacionesDelAnioVigente() {
+        Asignacion asignacion = new Asignacion();
+        asignacion.setIdAsignacion(100);
+        asignacion.setDocente(docente);
+        asignacion.setGradoSeccion(tercerA);
+        asignacion.setCurso(matematica);
+        asignacion.setAnioEscolar(anio);
+        asignacion.setAcceso(activo);
+        when(asignacionRepository.findByDocenteIdDocenteAndAnioEscolarEstadoAndAccesoNot(
+                eq(7), eq(AnioEscolarService.ESTADO_VIGENTE), any()))
+                .thenReturn(List.of(asignacion));
+        when(accesoContextoService.alcance(eq("ASIGNACIONES"), eq(99), any())).thenReturn(Alcance.TODO);
+        when(horarioClaseRepository.findByAsignacionIdAsignacionAndAccesoNot(eq(100), any()))
+                .thenReturn(List.of());
+
+        List<AsignacionResponse> respuesta = asignacionService.getByDocente(7, 99, List.of());
+
+        assertEquals(1, respuesta.size());
+        assertEquals(100, respuesta.get(0).getIdAsignacion());
+        verify(asignacionRepository).findByDocenteIdDocenteAndAnioEscolarEstadoAndAccesoNot(
+                eq(7), eq(AnioEscolarService.ESTADO_VIGENTE), any());
+        verify(asignacionRepository, never()).findByDocenteIdDocenteAndAccesoNot(eq(7), any());
+    }
+
     // ── Horarios ───────────────────────────────────────────────────────────
 
     @Test

@@ -45,9 +45,7 @@ public class HorarioService {
         if (accesoContextoService.tieneAccion(PERMISO, "VER_COLEGIO", idUsuario, roles)) {
             return Alcance.TODO;
         }
-        Alcance base = accesoContextoService.alcance(PERMISO, idUsuario, roles);
-        // Sin vínculo cae en "lo propio": como no es docente, no tiene clases.
-        return base == Alcance.TODO ? Alcance.DOCENTE : base;
+        return accesoContextoService.alcance(PERMISO, idUsuario, roles);
     }
 
     public org.springframework.data.domain.Page<HorarioPlanoResponse> listar(
@@ -98,7 +96,7 @@ public class HorarioService {
         Alcance alcance = alcance(idUsuario, roles);
         if (alcance == Alcance.TODO) {
             horarios = horarioClaseRepository.findPlanosPorDocenteYAnio(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow(), anio, idDocente);
-        } else if (alcance == Alcance.DOCENTE) {
+        } else if (alcance.incluyeDocente()) {
             Integer idPropio = accesoContextoService.docenteDeUsuario(idUsuario)
                     .map(d -> d.getIdDocente())
                     .orElse(null);
@@ -110,7 +108,8 @@ public class HorarioService {
             horarios = horarioClaseRepository.findPlanosPorDocenteYAnio(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow(), anio, idDocente);
             horarios = filtrarPorVisibilidad(horarios, idUsuario, roles);
         }
-        return horarios.stream().map(this::toPlanoResponse).toList();
+        return horarios.stream().filter(h -> alcance == Alcance.TODO || asignacionActiva(h))
+                .map(this::toPlanoResponse).toList();
     }
 
     /**
@@ -124,6 +123,7 @@ public class HorarioService {
         Integer anio = resolverAnio(idAnio);
         List<HorarioClase> clases = horarioClaseRepository.findPlanosPorDocenteYAnio(
                 accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow(), anio, idDocente);
+        clases = clases.stream().filter(HorarioService::asignacionActiva).toList();
         // Por turno: con un solo grado (aunque sean varias secciones) su recreo aplica a todas sus clases.
         List<RecreoHorarioResponse> recreos = clases.stream()
                 .map(h -> h.getAsignacion().getGradoSeccion())
@@ -166,13 +166,8 @@ public class HorarioService {
         }
 
         Alcance alcance = alcance(idUsuario, roles);
-        if (alcance == Alcance.APODERADO) {
-            boolean esHijo = accesoContextoService.esApoderadoDe(idUsuario, matriculas.get(0));
-            if (!esHijo) {
-                throw new ResourceNotFoundException("El alumno con id " + idAlumno + " no es hijo del apoderado autenticado");
-            }
-        } else if (alcance == Alcance.DOCENTE) {
-            // Sin VER_COLEGIO, un docente no consulta el horario de cualquier alumno.
+        if (alcance != Alcance.TODO && (alcance == null || !alcance.incluyeApoderado()
+                || !accesoContextoService.esApoderadoDe(idUsuario, matriculas.get(0)))) {
             throw new ResourceNotFoundException("Alumno no encontrado con id " + idAlumno);
         }
 
@@ -198,25 +193,28 @@ public class HorarioService {
                 .orElseThrow(() -> new ResourceNotFoundException("No hay un año escolar activo"));
     }
 
+    private static boolean asignacionActiva(HorarioClase horario) {
+        return horario.getAsignacion().getAcceso() != null
+                && AccesoConstants.ACTIVO.equals(horario.getAsignacion().getAcceso().getIdAcceso());
+    }
+
     private List<HorarioClase> filtrarPorVisibilidad(List<HorarioClase> horarios,
                                                       Integer idUsuario, List<String> roles) {
         Alcance alcance = alcance(idUsuario, roles);
         if (alcance == Alcance.TODO) {
             return horarios;
         }
-        if (alcance == Alcance.DOCENTE) {
-            Set<Integer> gradoSeccionIds = accesoContextoService.gradoSeccionIdsDeDocente(idUsuario);
-            return horarios.stream()
-                    .filter(h -> gradoSeccionIds.contains(
-                            h.getAsignacion().getGradoSeccion().getIdGradoSeccion()))
-                    .toList();
-        }
-        // Apoderado: horarios de las secciones de sus hijos.
-        Set<Integer> gradoSeccionIds = accesoContextoService.gradoSeccionIdsDeApoderado(
-                accesoContextoService.apoderadoDeUsuario(idUsuario).orElse(null));
-        return horarios.stream()
-                .filter(h -> gradoSeccionIds.contains(
-                        h.getAsignacion().getGradoSeccion().getIdGradoSeccion()))
+        Set<Integer> propias = alcance != null && alcance.incluyeDocente()
+                ? accesoContextoService.asignacionesActivasDeDocente(idUsuario).stream()
+                        .map(a -> a.getIdAsignacion()).collect(java.util.stream.Collectors.toSet())
+                : Set.of();
+        Set<Integer> seccionesHijos = alcance != null && alcance.incluyeApoderado()
+                ? accesoContextoService.gradoSeccionIdsDeApoderado(
+                        accesoContextoService.apoderadoDeUsuario(idUsuario).orElse(null))
+                : Set.of();
+        return horarios.stream().filter(HorarioService::asignacionActiva)
+                .filter(h -> propias.contains(h.getAsignacion().getIdAsignacion())
+                        || seccionesHijos.contains(h.getAsignacion().getGradoSeccion().getIdGradoSeccion()))
                 .toList();
     }
 

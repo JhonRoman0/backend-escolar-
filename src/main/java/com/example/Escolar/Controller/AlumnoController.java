@@ -53,18 +53,25 @@ public class AlumnoController {
 
     @PutMapping("/{id}")
     public AlumnoResponse update(@PathVariable Integer id, @Valid @RequestBody AlumnoEdicionRequest request) {
+        validarEdicion(id);
         return alumnoService.actualizarDiscapacidad(id, request);
     }
 
     @PostMapping(value = "/{id}/foto", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public AlumnoResponse subirFoto(@PathVariable Integer id, @RequestPart("foto") MultipartFile foto) {
+        validarEdicion(id);
         return alumnoService.subirFoto(id, foto);
     }
 
     @DeleteMapping("/{id}/foto")
     public ResponseEntity<Void> eliminarFoto(@PathVariable Integer id) {
+        validarEdicion(id);
         alumnoService.eliminarFoto(id);
         return ResponseEntity.noContent().build();
+    }
+
+    private void validarEdicion(Integer id) {
+        alumnoService.validarEdicion(id, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
     }
 
     @GetMapping("/reporte")

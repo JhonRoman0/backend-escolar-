@@ -76,7 +76,7 @@ class SiagieExportServiceTest {
         gs.setAnioEscolar(anio);
         gs.setAcceso(activo);
         when(gradoSeccionRepository.findById(26)).thenReturn(Optional.of(gs));
-        when(notaFinalService.puedeVerSeccion(any(), any(), any())).thenReturn(true);
+        when(notaFinalService.puedeExportarSeccionCompleta(any(), any())).thenReturn(true);
 
         Colegio colegio = new Colegio();
         colegio.setNombre("BAUTISTA LOGOS");
@@ -241,7 +241,7 @@ class SiagieExportServiceTest {
 
     @Test
     void unaSeccionAjenaNoSeExporta() {
-        when(notaFinalService.puedeVerSeccion(any(), any(), any())).thenReturn(false);
+        when(notaFinalService.puedeExportarSeccionCompleta(any(), any())).thenReturn(false);
 
         assertThrows(ResourceNotFoundException.class, () -> service.exportar(26, 1, 7, roles));
     }

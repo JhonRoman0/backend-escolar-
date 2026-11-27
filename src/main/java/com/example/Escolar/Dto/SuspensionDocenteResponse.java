@@ -17,5 +17,14 @@ public class SuspensionDocenteResponse {
     private String motivoDetalle;
     private LocalDate fechaInicio;
     private LocalDate fechaFin;
+    private String anio;
+    private String estado;
+    private LocalDate fechaFinalizacion;
+    private String motivoResolucion;
+    private Boolean incidencia;
+    private String motivoIncidencia;
+    private boolean puedeEditar;
+    private boolean puedeCancelar;
+    private boolean puedeFinalizar;
     private Long accesoId;
 }

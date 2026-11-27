@@ -6,14 +6,17 @@ import com.example.Escolar.Exception.AnioEscolarConGradosException;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.AnioEscolar;
+import com.example.Escolar.Model.EstadoCambioDocente;
 import com.example.Escolar.Model.PeriodoEvaluacion;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.AnioEscolarRepository;
 import com.example.Escolar.Repository.AsignacionRepository;
+import com.example.Escolar.Repository.CambioDocenteRepository;
 import com.example.Escolar.Repository.ConfiguracionAcademicaRepository;
 import com.example.Escolar.Repository.PeriodoEvaluacionRepository;
 import com.example.Escolar.Repository.CursoRepository;
 import com.example.Escolar.Repository.GradoSeccionRepository;
+import com.example.Escolar.Util.FechaColegio;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,6 +51,7 @@ public class AnioEscolarService {
     private final CursoService cursoService;
     private final PeriodoEvaluacionRepository periodoRepository;
     private final ConfiguracionAcademicaRepository configuracionRepository;
+    private final CambioDocenteRepository cambioDocenteRepository;
 
     // Transaccional porque antes de leer cierra los años vencidos. La anotacion
     // va en el metodo publico y no en cerrarAniosVencidos: al llamarse desde
@@ -165,6 +169,9 @@ public class AnioEscolarService {
     public AnioEscolarResponse cambiarEstado(Integer id, Byte estado) {
         AnioEscolar anioEscolar = findAnio(id);
         validarTransicion(anioEscolar.getEstado(), estado);
+        if (estado == ESTADO_CERRADO) {
+            validarSinCambiosPendientes(id);
+        }
         validarFechaFinSiVigente(estado, anioEscolar.getFechaFin());
         if (estado == ESTADO_VIGENTE) {
             validarVigenteSegunCalendario(anioEscolar.getAnio());
@@ -224,13 +231,29 @@ public class AnioEscolarService {
     // consecuencia del calendario, no un relevo de manos.
     private void cerrarAniosVencidos() {
         List<AnioEscolar> vencidos = anioEscolarRepository.findByEstadoInAndFechaFinBeforeAndAccesoNot(
-                ESTADOS_CERRABLES, LocalDate.now(), accesoEliminado()
-        );
+                ESTADOS_CERRABLES, FechaColegio.hoy(), accesoEliminado()
+        ).stream()
+                .filter(a -> !hayCambiosPendientes(a.getIdAnio()))
+                .toList();
         if (vencidos.isEmpty()) {
             return;
         }
         vencidos.forEach(a -> a.setEstado(ESTADO_CERRADO));
         anioEscolarRepository.saveAll(vencidos);
+    }
+
+    private void validarSinCambiosPendientes(Integer idAnio) {
+        if (hayCambiosPendientes(idAnio)) {
+            throw new IllegalArgumentException(
+                    "No se puede cerrar el año mientras haya cambios de docente pendientes o incidencias sin resolver");
+        }
+    }
+
+    private boolean hayCambiosPendientes(Integer idAnio) {
+        return cambioDocenteRepository.existsByAnioEscolarIdAnioAndEstadoInAndAccesoNot(
+                idAnio, EstadoCambioDocente.ACTIVOS, accesoEliminado())
+                || cambioDocenteRepository.existsByAnioEscolarIdAnioAndIncidenciaTrueAndAccesoNot(
+                idAnio, accesoEliminado());
     }
 
     private void validarPeriodosDentroDelAnio(AnioEscolar anio) {

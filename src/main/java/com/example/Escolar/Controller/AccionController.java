@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/** Catálogo de solo lectura: lo define el sistema (CatalogoPermisos), no se edita por API. */
 @RestController
 @RequestMapping("/acciones")
 @RequiredArgsConstructor
@@ -26,22 +27,5 @@ public class AccionController {
     @GetMapping("/{id}")
     public AccionResponse getById(@PathVariable Integer id) {
         return accionService.getById(id);
-    }
-
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public AccionResponse create(@Valid @RequestBody AccionRequest request) {
-        return accionService.create(request);
-    }
-
-    @PutMapping("/{id}")
-    public AccionResponse update(@PathVariable Integer id, @Valid @RequestBody AccionRequest request) {
-        return accionService.update(id, request);
-    }
-
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Integer id) {
-        accionService.delete(id);
-        return ResponseEntity.noContent().build();
     }
 }

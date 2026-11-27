@@ -4,6 +4,7 @@ import com.example.Escolar.Dto.RolRequest;
 import com.example.Escolar.Dto.RolResponse;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Exception.RolConUsuariosException;
+import com.example.Escolar.Model.Acceso;
 import com.example.Escolar.Model.Rol;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.RolRepository;
@@ -38,10 +39,11 @@ public class RolService {
     @Transactional
     public RolResponse create(RolRequest request) {
         validarNombreNoProtegido(request.getNombre());
+        validarNombreUnico(request.getNombre(), null);
         Rol rol = new Rol();
-        rol.setNombre(request.getNombre());
+        rol.setNombre(request.getNombre().trim());
         rol.setColor(request.getColor());
-        rol.setAcceso(accesoRepository.findById(request.getAccesoId() != null ? request.getAccesoId() : AccesoConstants.ACTIVO).orElseThrow());
+        rol.setAcceso(accesoParaRol(request.getAccesoId() != null ? request.getAccesoId() : AccesoConstants.ACTIVO));
         return toResponse(rolRepository.save(rol));
     }
 
@@ -50,18 +52,20 @@ public class RolService {
         Rol rol = findRol(id);
         validarRolNoProtegido(rol);
         validarNombreNoProtegido(request.getNombre());
+        validarNombreUnico(request.getNombre(), id);
+        Acceso nuevoAcceso = request.getAccesoId() == null ? null : accesoParaRol(request.getAccesoId());
         if (request.getAccesoId() != null
                 && request.getAccesoId().equals(AccesoConstants.INACTIVO)
                 && !rol.getAcceso().getIdAcceso().equals(AccesoConstants.INACTIVO)
                 && tieneUsuarios(id)) {
             throw new RolConUsuariosException("No se puede inactivar el rol '" + rol.getNombre() + "' porque tiene usuarios asociados");
         }
-        rol.setNombre(request.getNombre());
+        rol.setNombre(request.getNombre().trim());
         if (request.getColor() != null) {
             rol.setColor(request.getColor());
         }
-        if (request.getAccesoId() != null) {
-            rol.setAcceso(accesoRepository.findById(request.getAccesoId()).orElseThrow());
+        if (nuevoAcceso != null) {
+            rol.setAcceso(nuevoAcceso);
         }
         RolResponse response = toResponse(rolRepository.save(rol));
         concesionesService.invalidarPermisosDelRol(id);
@@ -78,6 +82,26 @@ public class RolService {
         rol.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
         rolRepository.save(rol);
         concesionesService.invalidarPermisosDelRol(id);
+    }
+
+    /** Un rol se activa o inactiva al editarlo; eliminarlo es con DELETE (revisa sus usuarios). */
+    private Acceso accesoParaRol(Long accesoId) {
+        if (!AccesoConstants.ACTIVO.equals(accesoId) && !AccesoConstants.INACTIVO.equals(accesoId)) {
+            throw new IllegalArgumentException("Estado no válido: para eliminar un rol usa la opción Eliminar");
+        }
+        return accesoRepository.findById(accesoId).orElseThrow();
+    }
+
+    /** Sin distinguir mayúsculas ni espacios: "Docente" y " docente " son el mismo rol. */
+    private void validarNombreUnico(String nombre, Integer idExcluido) {
+        String buscado = nombre.trim();
+        boolean repetido = rolRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
+                .stream()
+                .anyMatch(r -> !r.getIdRol().equals(idExcluido) && r.getNombre() != null
+                        && r.getNombre().trim().equalsIgnoreCase(buscado));
+        if (repetido) {
+            throw new IllegalArgumentException("Ya existe un rol llamado " + buscado);
+        }
     }
 
     private boolean tieneUsuarios(Integer id) {

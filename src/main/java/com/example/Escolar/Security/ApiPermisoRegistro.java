@@ -44,35 +44,26 @@ public class ApiPermisoRegistro {
         registrar("PUT", "/usuarios/**", "USUARIOS", "ACTUALIZAR");
         registrar("DELETE", "/usuarios/**", "USUARIOS", "ELIMINAR");
 
-        registrarLectura("GET", "/roles", "ROLES");
-        registrarLectura("GET", "/roles/**", "ROLES");
+        // El formulario de usuarios y la pantalla de Accesos también necesitan la lista de roles.
+        registrarLectura("GET", "/roles", "ROLES", "USUARIOS", "ROLES_PERMISOS");
+        registrarLectura("GET", "/roles/**", "ROLES", "USUARIOS", "ROLES_PERMISOS");
         registrar("POST", "/roles", "ROLES", "CREAR");
         registrar("PUT", "/roles/**", "ROLES", "ACTUALIZAR");
         registrar("DELETE", "/roles/**", "ROLES", "ELIMINAR");
 
-        registrarLectura("GET", "/modulos", "MODULOS");
-        registrarLectura("GET", "/modulos/**", "MODULOS");
-        registrar("POST", "/modulos", "MODULOS", "CREAR");
-        registrar("PUT", "/modulos/**", "MODULOS", "ACTUALIZAR");
-        registrar("DELETE", "/modulos/**", "MODULOS", "ELIMINAR");
-
-        registrarLectura("GET", "/permisos", "PERMISOS");
-        registrarLectura("GET", "/permisos/**", "PERMISOS");
-        registrar("POST", "/permisos", "PERMISOS", "CREAR");
-        registrar("PUT", "/permisos/**", "PERMISOS", "ACTUALIZAR");
-        registrar("DELETE", "/permisos/**", "PERMISOS", "ELIMINAR");
-
-        registrarLectura("GET", "/acciones", "ACCIONES");
-        registrarLectura("GET", "/acciones/**", "ACCIONES");
-        registrar("POST", "/acciones", "ACCIONES", "CREAR");
-        registrar("PUT", "/acciones/**", "ACCIONES", "ACTUALIZAR");
-        registrar("DELETE", "/acciones/**", "ACCIONES", "ELIMINAR");
+        // Pantalla de Accesos: el catálogo (módulos, permisos, acciones) solo se lee.
+        registrarLectura("GET", "/modulos", "ROLES_PERMISOS");
+        registrarLectura("GET", "/modulos/**", "ROLES_PERMISOS");
+        registrarLectura("GET", "/permisos", "ROLES_PERMISOS");
+        registrarLectura("GET", "/permisos/**", "ROLES_PERMISOS");
+        registrarLectura("GET", "/acciones", "ROLES_PERMISOS");
+        registrarLectura("GET", "/acciones/**", "ROLES_PERMISOS");
 
         registrarLectura("GET", "/roles-permiso", "ROLES_PERMISOS");
         registrarLectura("GET", "/roles-permiso/**", "ROLES_PERMISOS");
-        registrar("POST", "/roles-permiso", "ROLES_PERMISOS", "CREAR");
+        registrar("POST", "/roles-permiso", "ROLES_PERMISOS", "ACTUALIZAR");
         registrar("PUT", "/roles-permiso/**", "ROLES_PERMISOS", "ACTUALIZAR");
-        registrar("DELETE", "/roles-permiso/**", "ROLES_PERMISOS", "ELIMINAR");
+        registrar("DELETE", "/roles-permiso/**", "ROLES_PERMISOS", "ACTUALIZAR");
 
         registrar("GET", "/docentes/reporte", "DOCENTES", "IMPRIMIR_EXPORTAR");
         registrarLectura("GET", "/docentes", "DOCENTES", "ASIGNACIONES", "SUSPENSIONES_DOCENTE", "HORARIOS", "NOTAS", "CAMBIOS_DOCENTE");

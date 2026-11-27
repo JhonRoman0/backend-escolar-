@@ -39,79 +39,9 @@ public class PermisoService {
         return toResponse(findPermiso(id));
     }
 
-    @Transactional
-    public PermisoResponse create(PermisoRequest request) {
-        validarCodigoUnico(request.getCodigo(), null);
-        Permiso permiso = new Permiso();
-        applyRequest(permiso, request);
-        permiso.setAcceso(accesoRepository.findById(request.getAccesoId() != null ? request.getAccesoId() : AccesoConstants.ACTIVO).orElseThrow());
-        permiso = permisoRepository.save(permiso);
-        asignarAcciones(permiso, request.getAcciones());
-        concesionesService.invalidarPermisosDelPermiso(permiso.getIdPermiso());
-        return toResponse(permiso);
-    }
-
-    @Transactional
-    public PermisoResponse update(Integer id, PermisoRequest request) {
-        Permiso permiso = findPermiso(id);
-        validarCodigoUnico(request.getCodigo(), permiso.getIdPermiso());
-        applyRequest(permiso, request);
-        permiso = permisoRepository.save(permiso);
-        if (request.getAcciones() != null) {
-            permisoAccionRepository.deleteAll(permisoAccionRepository.findByPermisoIdPermiso(id));
-            asignarAcciones(permiso, request.getAcciones());
-        }
-        concesionesService.invalidarPermisosDelPermiso(id);
-        return toResponse(permiso);
-    }
-
-    @Transactional
-    public void delete(Integer id) {
-        Permiso permiso = findPermiso(id);
-        permiso.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
-        permisoRepository.save(permiso);
-        concesionesService.invalidarPermisosDelPermiso(id);
-    }
-
     private Permiso findPermiso(Integer id) {
         return permisoRepository.findByIdPermisoAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("Permiso no encontrado con id " + id));
-    }
-
-    private void applyRequest(Permiso permiso, PermisoRequest request) {
-        Modulo modulo = moduloRepository.findByIdModuloAndAccesoNot(request.getIdModulo(), accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
-                .orElseThrow(() -> new ResourceNotFoundException("Módulo no encontrado con id " + request.getIdModulo()));
-        permiso.setCodigo(request.getCodigo());
-        permiso.setNombre(request.getNombre());
-        permiso.setModulo(modulo);
-        if (request.getAccesoId() != null) {
-            permiso.setAcceso(accesoRepository.findById(request.getAccesoId()).orElseThrow());
-        }
-    }
-
-    private void validarCodigoUnico(String codigo, Integer idExcluido) {
-        permisoRepository.findByCodigoAndAccesoNot(codigo, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
-                .filter(p -> idExcluido == null || !p.getIdPermiso().equals(idExcluido))
-                .ifPresent(p -> {
-                    throw new IllegalArgumentException("Ya existe un permiso con el código " + codigo);
-                });
-    }
-
-    private void asignarAcciones(Permiso permiso, List<String> codigosAcciones) {
-        if (codigosAcciones == null || codigosAcciones.isEmpty()) {
-            return;
-        }
-        for (String codigo : codigosAcciones) {
-            Accion accion = accionRepository.findByCodigoAndAccesoNot(codigo, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
-                    .orElseThrow(() -> new IllegalArgumentException("La acción " + codigo + " no existe"));
-            if (permisoAccionRepository.findByPermisoIdPermisoAndAccionIdAccion(permiso.getIdPermiso(), accion.getIdAccion()).isEmpty()) {
-                PermisoAccion permisoAccion = new PermisoAccion();
-                permisoAccion.setPermiso(permiso);
-                permisoAccion.setAccion(accion);
-                permisoAccion.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
-                permisoAccionRepository.save(permisoAccion);
-            }
-        }
     }
 
     private PermisoResponse toResponse(Permiso permiso) {

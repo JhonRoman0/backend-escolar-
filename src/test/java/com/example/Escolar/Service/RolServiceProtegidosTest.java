@@ -92,4 +92,27 @@ class RolServiceProtegidosTest {
         service.delete(7);
         assertEquals(AccesoConstants.ELIMINADO, secretaria.getAcceso().getIdAcceso());
     }
+
+    @Test
+    void unRolNoSeEliminaDesdeEditar() {
+        Rol secretaria = rol(7, "Secretaria");
+        when(rolRepository.findByAccesoNot(any())).thenReturn(List.of(secretaria));
+
+        var e = assertThrows(IllegalArgumentException.class,
+                () -> service.update(7, pedido("Secretaria", AccesoConstants.ELIMINADO)));
+        assertEquals("Estado no válido: para eliminar un rol usa la opción Eliminar", e.getMessage());
+        assertEquals(activo, secretaria.getAcceso());
+    }
+
+    @Test
+    void elNombreDelRolNoSeRepite() {
+        Rol secretaria = rol(7, "Secretaria");
+        Rol auxiliar = rol(8, "Auxiliar");
+        when(rolRepository.findByAccesoNot(any())).thenReturn(List.of(secretaria, auxiliar));
+
+        var e = assertThrows(IllegalArgumentException.class, () -> service.create(pedido("  secretaria ", null)));
+        assertEquals("Ya existe un rol llamado secretaria", e.getMessage());
+        // Editar el mismo rol conservando su nombre sí se permite.
+        assertEquals("Secretaria", service.update(7, pedido("Secretaria", null)).getNombre());
+    }
 }

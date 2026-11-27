@@ -51,8 +51,8 @@ public class DispositivoUsuario {
     LocalDateTime confiableHasta;
 
     /**
-     * Huella de la contraseña, el correo y la versión de sesión al marcarlo de
-     * confianza: si cualquiera cambia, la confianza deja de valer sola.
+     * Huella de la contraseña y el correo al marcarlo de confianza: si alguno
+     * cambia, la confianza deja de valer sola.
      */
     @Column(name = "huella_confianza", length = 64, nullable = true)
     String huellaConfianza;

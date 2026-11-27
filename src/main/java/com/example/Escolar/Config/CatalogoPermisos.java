@@ -37,6 +37,9 @@ public final class CatalogoPermisos {
                 "CREAR", "Crear roles",
                 "ACTUALIZAR", "Editar roles",
                 "ELIMINAR", "Eliminar roles");
+        // La pantalla de Accesos: con el permiso se ve; con la acción se asigna.
+        permiso("ROLES_PERMISOS", SEGURIDAD,
+                "ACTUALIZAR", "Asignar y quitar permisos a los roles");
         permiso("TURNOS", ACADEMICO,
                 "CREAR", "Crear turnos",
                 "ACTUALIZAR", "Editar horarios del turno",

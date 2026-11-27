@@ -219,7 +219,7 @@ class DosFactorServiceTest {
     }
 
     @Test
-    void cambiarContrasenaCorreoOVersionDeSesionQuitaLaConfianza() {
+    void cambiarContrasenaOCorreoQuitaLaConfianzaPeroNoUnCambioDePermisos() {
         buscarPorDesafio();
         DosFactorService.Desafio d = servicio.iniciar(usuario, contexto);
         ArgumentCaptor<DispositivoUsuario> guardado = ArgumentCaptor.forClass(DispositivoUsuario.class);
@@ -234,9 +234,10 @@ class DosFactorServiceTest {
         usuario.setGmail("nuevo@gmail.com");
         assertFalse(servicio.esDeConfianza(usuario, v.tokenDispositivo()));
         usuario.setGmail("ana.perez@gmail.com");
+        assertTrue(servicio.esDeConfianza(usuario, v.tokenDispositivo()));
+        // Un cambio de permisos o de roles sube la versión de sesión: la sesión se
+        // cierra, pero el navegador sigue siendo de confianza (no pide el código).
         usuario.setVersionToken(1);
-        assertFalse(servicio.esDeConfianza(usuario, v.tokenDispositivo()));
-        usuario.setVersionToken(0);
         assertTrue(servicio.esDeConfianza(usuario, v.tokenDispositivo()));
     }
 

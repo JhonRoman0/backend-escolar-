@@ -1,5 +1,6 @@
 package com.example.Escolar.Exception;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -15,6 +16,7 @@ import org.springframework.web.context.request.async.AsyncRequestNotUsableExcept
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -250,19 +252,29 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
-    public ResponseEntity<Map<String, Object>> handleDataIntegrity(DataIntegrityViolationException ex) {
-        String causeMsg = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
-        log.error("DataIntegrityViolation: {}", causeMsg, ex);
-        String mensaje = "El registro ya existe o viola una restricción de integridad (por ejemplo, doble marcado de asistencia).";
-        if (causeMsg != null && causeMsg.contains("Duplicate entry")) {
-            if (causeMsg.contains("documento_identidad")) {
+    public ResponseEntity<Map<String, Object>> handleDataIntegrity(DataIntegrityViolationException ex,
+                                                                   HttpServletRequest request) {
+        Throwable causa = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause() : ex;
+        String causaMsg = causa.getMessage();
+        String sqlState = null;
+        Integer codigo = null;
+        if (causa instanceof SQLException sqlException) {
+            sqlState = sqlException.getSQLState();
+            codigo = sqlException.getErrorCode();
+        }
+        String ruta = request.getRequestURI();
+        log.error("DataIntegrityViolation uri={} sqlState={} codigo={} causa={}", ruta, sqlState, codigo, causaMsg, ex);
+        String mensaje = "El registro no se pudo guardar porque entra en conflicto con datos existentes. Revise la información e intente nuevamente.";
+        if (ruta != null && ruta.contains("/cambios-docente")) {
+            mensaje = "No se pudo registrar el cambio de docente. Verifique que las asignaciones estén activas, que el sustituto esté disponible y que no exista otro cambio que se solape.";
+        }
+        if (causaMsg != null && causaMsg.contains("Duplicate entry")) {
+            if (causaMsg.contains("documento_identidad")) {
                 mensaje = "Ya existe un registro con ese DNI/documento de identidad (incluso eliminado). Verifique la papelera o use otro DNI.";
-            } else if (causeMsg.contains("codigo")) {
+            } else if (causaMsg.contains("codigo")) {
                 mensaje = "Ya existe un alumno con ese código (incluso eliminado). El DNI ya está registrado.";
-            } else if (causeMsg.contains("gmail")) {
+            } else if (causaMsg.contains("gmail")) {
                 mensaje = "Ya existe un usuario con ese correo electrónico.";
-            } else {
-                mensaje = "Registro duplicado: " + causeMsg;
             }
         }
         Map<String, Object> body = new HashMap<>();

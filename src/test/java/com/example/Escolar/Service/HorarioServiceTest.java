@@ -115,6 +115,7 @@ class HorarioServiceTest {
         AnioEscolar anio = new AnioEscolar();
         anio.setIdAnio(2);
         Asignacion a = new Asignacion();
+        a.setAcceso(new Acceso(AccesoConstants.ACTIVO, "Activo"));
         a.setCurso(c);
         a.setDocente(docente);
         a.setGradoSeccion(gs);
@@ -222,6 +223,10 @@ class HorarioServiceTest {
         when(matriculaRepository.findActivasPorAlumnoId(eq(4), any())).thenReturn(List.of(m));
         when(accesoContextoService.alcance("HORARIOS", 7, List.of("Docente"))).thenReturn(AccesoContextoService.Alcance.DOCENTE);
 
+        assertThrows(com.example.Escolar.Exception.ResourceNotFoundException.class,
+                () -> service.porAlumno(4, null, 7, List.of("Docente")));
+
+        when(accesoContextoService.alcance("HORARIOS", 7, List.of("Docente"))).thenReturn(AccesoContextoService.Alcance.NINGUNO);
         assertThrows(com.example.Escolar.Exception.ResourceNotFoundException.class,
                 () -> service.porAlumno(4, null, 7, List.of("Docente")));
 

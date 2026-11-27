@@ -51,6 +51,8 @@ import java.util.stream.Collectors;
 public class AsistenciaService {
 
     private static final String PERMISO = "ASISTENCIAS";
+    private static final String CREAR = "CREAR";
+    private static final String ACTUALIZAR = "ACTUALIZAR";
     public static final byte PRINCIPAL = 1;
 
     public static final String ESTADO_PUNTUAL = "Puntual";
@@ -97,10 +99,9 @@ public class AsistenciaService {
 
     @Transactional(readOnly = true)
     public AsistenciaResponse previsualizar(AsistenciaRequest request, Integer idUsuario, List<String> roles) {
-        validarEscritura(idUsuario, roles);
+        exigirAccion(CREAR, idUsuario, roles);
         Alumno alumno = buscarAlumno(request);
         Matricula matricula = matriculaDelAnioVigente(alumno);
-        validarAlcance(matricula, idUsuario, roles);
         LocalDate hoy = LocalDate.now();
         validarDiaDeClase(matricula, hoy);
         Turno turno = matricula.getGradoSeccion().getTurno();
@@ -120,10 +121,9 @@ public class AsistenciaService {
      */
     @Transactional
     public AsistenciaResponse confirmar(AsistenciaRequest request, MultipartFile foto, Integer idUsuario, List<String> roles) {
-        validarEscritura(idUsuario, roles);
+        exigirAccion(CREAR, idUsuario, roles);
         Alumno alumno = buscarAlumno(request);
         Matricula matricula = matriculaDelAnioVigente(alumno);
-        validarAlcance(matricula, idUsuario, roles);
         LocalDate hoy = LocalDate.now();
         validarDiaDeClase(matricula, hoy);
         Turno turno = matricula.getGradoSeccion().getTurno();
@@ -176,9 +176,9 @@ public class AsistenciaService {
 
     @Transactional
     public AsistenciaResponse justificar(Integer idAsistencia, JustificarRequest request, Integer idUsuario, List<String> roles) {
-        validarEscritura(idUsuario, roles);
+        exigirAccion(ACTUALIZAR, idUsuario, roles);
         AsistenciaAlumno asistencia = findAsistencia(idAsistencia);
-        validarModificable(asistencia, idUsuario, roles);
+        validarAnioModificable(asistencia);
         Usuario usuario = findUsuario(idUsuario);
         Justificacion justificacion = justificacion(request.getIdJustificacion());
 
@@ -202,9 +202,17 @@ public class AsistenciaService {
      */
     @Transactional
     public void anular(Integer idAsistencia, String motivo, Integer idUsuario, List<String> roles) {
-        validarEscritura(idUsuario, roles);
+        exigirAccion("ELIMINAR", idUsuario, roles);
+        Alcance alcance = accesoContextoService.alcance(PERMISO, AccesoContextoService.Operacion.ESCRITURA, idUsuario, roles);
+        if (alcance != Alcance.TODO && !alcance.incluyeDocente()) {
+            throw new IllegalArgumentException("La asistencia la registra el colegio.");
+        }
         AsistenciaAlumno asistencia = findAsistencia(idAsistencia);
-        validarModificable(asistencia, idUsuario, roles);
+        if (alcance != Alcance.TODO && !accesoContextoService.gradoSeccionIdsDeDocente(idUsuario)
+                .contains(asistencia.getMatricula().getGradoSeccion().getIdGradoSeccion())) {
+            throw new ResourceNotFoundException("Registro de asistencia no encontrado con id " + idAsistencia);
+        }
+        validarAnioModificable(asistencia);
         if (!asistencia.getFecha().equals(LocalDate.now())) {
             throw new IllegalArgumentException("Solo se anulan marcas del mismo día.");
         }
@@ -245,7 +253,8 @@ public class AsistenciaService {
     @Transactional(readOnly = true)
     public Page<AsistenciaDiaResponse> asistenciasHoy(Integer idUsuario, List<String> roles, Filtro filtro, Pageable pageable) {
         LocalDate hoy = LocalDate.now();
-        List<Matricula> matriculas = matriculasVisibles(idUsuario, roles, filtro);
+        boolean consultaDeRegistro = tieneAccion(CREAR, idUsuario, roles) || tieneAccion(ACTUALIZAR, idUsuario, roles);
+        List<Matricula> matriculas = matriculasVisibles(idUsuario, roles, filtro, consultaDeRegistro);
         Map<Integer, MarcaAsistencia> marcas = marcasPorMatricula(matriculas, hoy, hoy).entrySet().stream()
                 .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().get(0)));
         Map<Integer, Set<LocalDate>> dias = new HashMap<>();
@@ -410,7 +419,7 @@ public class AsistenciaService {
                 .orElseThrow(() -> new ResourceNotFoundException("Alumno no encontrado con id " + idAlumno));
         Matricula matricula = accesoContextoService.matriculaActual(alumno.getIdAlumno())
                 .orElseThrow(() -> new ResourceNotFoundException("El alumno no tiene matrícula"));
-        if (!esVisible(matricula, idUsuario, roles)) {
+        if (!visibilidadReporte(idUsuario, roles).test(matricula)) {
             throw new ResourceNotFoundException("Alumno no encontrado con id " + idAlumno);
         }
         AnioEscolar anio = matricula.getGradoSeccion().getAnioEscolar();
@@ -439,9 +448,10 @@ public class AsistenciaService {
         }
         usuarioRepository.findByIdUsuarioAndAccesoNot(idUsuarioConsulta, eliminado())
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario registrador no encontrado con id " + idUsuarioConsulta));
+        var visible = visibilidadReporte(idUsuario, roles);
         return asistenciaAlumnoRepository
                 .findByUsuarioRegistroIdUsuarioAndFechaBetweenAndAccesoNot(idUsuarioConsulta, desde, hasta, eliminado())
-                .stream().map(a -> {
+                .stream().filter(a -> visible.test(a.getMatricula())).map(a -> {
                     GradoSeccion gs = a.getMatricula().getGradoSeccion();
                     ReporteUsuarioResponse r = new ReporteUsuarioResponse();
                     r.setFecha(a.getFecha());
@@ -533,53 +543,38 @@ public class AsistenciaService {
         }
     }
 
-    /** Lo que se ve: el docente, sus secciones; el apoderado, sus hijos; el resto, todo. */
     private Alcance alcanceLectura(Integer idUsuario, List<String> roles) {
-        if (accesoContextoService.esAdmin(roles)) {
-            return Alcance.TODO;
-        }
-        if (accesoContextoService.docenteDeUsuario(idUsuario).isPresent()) {
-            return Alcance.DOCENTE;
-        }
-        return accesoContextoService.alcance(PERMISO, idUsuario, roles);
+        return accesoContextoService.alcance(PERMISO, AccesoContextoService.Operacion.LECTURA, idUsuario, roles);
     }
 
-    /**
-     * Registrar, justificar y anular dependen de los permisos (la ruta ya pide cada
-     * acción). El apoderado nunca: la asistencia la registra el colegio.
-     */
-    private void validarEscritura(Integer idUsuario, List<String> roles) {
-        if (alcanceLectura(idUsuario, roles) == Alcance.APODERADO) {
-            throw new IllegalArgumentException("La asistencia la registra el colegio.");
+    private boolean tieneAccion(String accion, Integer idUsuario, List<String> roles) {
+        return accesoContextoService.tieneAccion(PERMISO, accion, idUsuario, roles);
+    }
+
+    private void exigirAccion(String accion, Integer idUsuario, List<String> roles) {
+        if (!tieneAccion(accion, idUsuario, roles)) {
+            throw new IllegalArgumentException("Sin permiso para realizar esta operación de asistencia.");
         }
     }
 
-    /** Solo sobre alumnos que el usuario ve: el docente, los de sus secciones. */
-    private void validarAlcance(Matricula matricula, Integer idUsuario, List<String> roles) {
-        if (!esVisible(matricula, idUsuario, roles)) {
-            throw new IllegalArgumentException("El alumno no pertenece a tus secciones.");
-        }
-    }
-
-    private void validarModificable(AsistenciaAlumno asistencia, Integer idUsuario, List<String> roles) {
-        if (!esVisible(asistencia.getMatricula(), idUsuario, roles)) {
-            throw new ResourceNotFoundException("Registro de asistencia no encontrado con id " + asistencia.getIdAsistencia());
-        }
+    private void validarAnioModificable(AsistenciaAlumno asistencia) {
         if (asistencia.getMatricula().getGradoSeccion().getAnioEscolar().getEstado() == AnioEscolarService.ESTADO_CERRADO) {
             throw new IllegalArgumentException("El año escolar está cerrado: su asistencia ya no se modifica.");
         }
     }
 
-    private boolean esVisible(Matricula matricula, Integer idUsuario, List<String> roles) {
-        return switch (alcanceLectura(idUsuario, roles)) {
-            case TODO -> true;
-            case DOCENTE -> accesoContextoService.gradoSeccionIdsDeDocente(idUsuario)
-                    .contains(matricula.getGradoSeccion().getIdGradoSeccion());
-            case APODERADO -> accesoContextoService.apoderadoDeUsuario(idUsuario)
-                    .map(a -> accesoContextoService.matriculasDeHijos(a).stream()
-                            .anyMatch(m -> m.getIdMatricula().equals(matricula.getIdMatricula())))
-                    .orElse(false);
-        };
+    private java.util.function.Predicate<Matricula> visibilidadReporte(Integer idUsuario, List<String> roles) {
+        Alcance alcance = accesoContextoService.alcance(
+                PERMISO, AccesoContextoService.Operacion.REPORTE, idUsuario, roles);
+        Set<Integer> secciones = alcance != null && alcance.incluyeDocente()
+                ? accesoContextoService.gradoSeccionIdsDeDocente(idUsuario) : Set.of();
+        Set<Integer> hijos = alcance != null && alcance.incluyeApoderado()
+                ? accesoContextoService.apoderadoDeUsuario(idUsuario)
+                        .map(a -> accesoContextoService.matriculasDeHijos(a).stream()
+                                .map(Matricula::getIdMatricula).collect(Collectors.toSet()))
+                        .orElseGet(Set::of) : Set.of();
+        return m -> alcance == Alcance.TODO || secciones.contains(m.getGradoSeccion().getIdGradoSeccion())
+                || hijos.contains(m.getIdMatricula());
     }
 
     /**
@@ -612,25 +607,28 @@ public class AsistenciaService {
 
     /** Matrículas activas del año (el vigente si no se elige) que el usuario puede ver, con los filtros. */
     private List<Matricula> matriculasVisibles(Integer idUsuario, List<String> roles, Filtro filtro) {
+        return matriculasVisibles(idUsuario, roles, filtro, false);
+    }
+
+    private List<Matricula> matriculasVisibles(Integer idUsuario, List<String> roles, Filtro filtro, boolean consultaDeRegistro) {
         Optional<AnioEscolar> anio = resolverAnio(filtro.idAnio());
         if (anio.isEmpty()) {
             return List.of();
         }
         List<Matricula> delAnio = delAnioParaListar(anio.get().getIdAnio()).stream()
                 .filter(m -> AccesoConstants.ACTIVO.equals(m.getAcceso().getIdAcceso())).toList();
-        List<Matricula> porRol = switch (alcanceLectura(idUsuario, roles)) {
-            case TODO -> delAnio;
-            case DOCENTE -> {
-                Set<Integer> secciones = accesoContextoService.gradoSeccionIdsDeDocente(idUsuario);
-                yield delAnio.stream().filter(m -> secciones.contains(m.getGradoSeccion().getIdGradoSeccion())).toList();
-            }
-            case APODERADO -> {
-                Apoderado apoderado = accesoContextoService.apoderadoDeUsuario(idUsuario).orElse(null);
-                Set<Integer> hijos = apoderado == null ? Set.of() : accesoContextoService.matriculasDeHijos(apoderado).stream()
-                        .map(Matricula::getIdMatricula).collect(Collectors.toSet());
-                yield delAnio.stream().filter(m -> hijos.contains(m.getIdMatricula())).toList();
-            }
-        };
+        Alcance alcance = consultaDeRegistro && anio.get().getEstado() == AnioEscolarService.ESTADO_VIGENTE
+                ? Alcance.TODO : alcanceLectura(idUsuario, roles);
+        Set<Integer> secciones = alcance.incluyeDocente()
+                ? accesoContextoService.gradoSeccionIdsDeDocente(idUsuario) : Set.of();
+        Set<Integer> hijos = alcance.incluyeApoderado() ? accesoContextoService.apoderadoDeUsuario(idUsuario)
+                .map(apoderado -> accesoContextoService.matriculasDeHijos(apoderado).stream()
+                        .map(Matricula::getIdMatricula).collect(Collectors.toSet()))
+                .orElseGet(Set::of) : Set.of();
+        List<Matricula> porRol = alcance == Alcance.TODO ? delAnio : delAnio.stream()
+                .filter(m -> secciones.contains(m.getGradoSeccion().getIdGradoSeccion())
+                        || hijos.contains(m.getIdMatricula()))
+                .toList();
         String buscado = normalizar(filtro.search());
         return porRol.stream().filter(m -> {
             GradoSeccion gs = m.getGradoSeccion();

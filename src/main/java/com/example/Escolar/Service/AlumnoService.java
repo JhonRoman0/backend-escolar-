@@ -265,30 +265,40 @@ public class AlumnoService {
         return celular != null && !celular.isBlank() ? nombre + " " + celular : nombre;
     }
 
+    public void validarEdicion(Integer id, Integer idUsuario, List<String> roles) {
+        Alcance alcance = accesoContextoService.alcance(
+                PERMISO, AccesoContextoService.Operacion.ESCRITURA, idUsuario, roles);
+        Set<Integer> visibles = idsAlumnosVisibles(idUsuario, alcance);
+        if (visibles != null && !visibles.contains(id)) {
+            throw new ResourceNotFoundException("Alumno no encontrado con id " + id);
+        }
+    }
+
     private Set<Integer> idsAlumnosVisibles(Integer idUsuario, List<String> roles) {
-        Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, roles);
+        return idsAlumnosVisibles(idUsuario, accesoContextoService.alcance(PERMISO, idUsuario, roles));
+    }
+
+    private Set<Integer> idsAlumnosVisibles(Integer idUsuario, Alcance alcance) {
         if (alcance == Alcance.TODO) {
             return null;
         }
-        if (alcance == Alcance.DOCENTE) {
-            Set<Integer> ids = new HashSet<>();
+        Set<Integer> ids = new HashSet<>();
+        if (alcance != null && alcance.incluyeDocente()) {
             for (Matricula matricula : accesoContextoService.matriculasDeGradoSecciones(
                     accesoContextoService.gradoSeccionIdsDeDocente(idUsuario))) {
                 ids.add(matricula.getAlumnoApoderado().getAlumno().getIdAlumno());
             }
-            return ids;
         }
-        if (alcance == Alcance.APODERADO) {
-            Set<Integer> ids = new HashSet<>();
+        if (alcance != null && alcance.incluyeApoderado()) {
             Apoderado apoderado = accesoContextoService.apoderadoDeUsuario(idUsuario).orElse(null);
             if (apoderado == null) {
                 return ids;
             }
-            alumnoApoderadoRepository.findByApoderado(apoderado)
+            alumnoApoderadoRepository.findByApoderado(apoderado).stream()
+                    .filter(AlumnoApoderado::isActivo)
                     .forEach(aa -> ids.add(aa.getAlumno().getIdAlumno()));
-            return ids;
         }
-        return new HashSet<>();
+        return ids;
     }
 
     private boolean esVisible(Integer idAlumno, Integer idUsuario, List<String> roles) {

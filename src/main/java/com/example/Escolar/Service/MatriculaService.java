@@ -383,14 +383,13 @@ public class MatriculaService {
             return null;
         }
         Set<Integer> ids = new HashSet<>();
-        if (alcance == Alcance.DOCENTE) {
+        if (alcance != null && alcance.incluyeDocente()) {
             for (Matricula matricula : accesoContextoService.matriculasDeGradoSecciones(
                     accesoContextoService.gradoSeccionIdsDeDocente(idUsuario))) {
                 ids.add(matricula.getIdMatricula());
             }
-            return ids;
         }
-        if (alcance == Alcance.APODERADO) {
+        if (alcance != null && alcance.incluyeApoderado()) {
             Apoderado apoderado = accesoContextoService.apoderadoDeUsuario(idUsuario).orElse(null);
             if (apoderado == null) {
                 return ids;

@@ -30,6 +30,7 @@ import com.example.Escolar.Repository.RolRepository;
 import com.example.Escolar.Repository.TipoContratoRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
+import com.example.Escolar.Security.ConcesionesService;
 import com.example.Escolar.Service.EmailService.TipoEnvioCredenciales;
 import com.example.Escolar.Service.VigenciaService.EstadoVigencia;
 import com.example.Escolar.Util.FechaColegio;
@@ -79,6 +80,7 @@ public class UsuarioService {
     private final ApoderadoRepository apoderadoRepository;
     private final AlumnoApoderadoRepository alumnoApoderadoRepository;
     private final VigenciaService vigenciaService;
+    private final ConcesionesService concesionesService;
 
     public Page<UsuarioResponse> getAll(Pageable pageable) {
         return getAll(pageable, null, null, null, null);
@@ -203,9 +205,8 @@ public class UsuarioService {
         if (cambiaVigencia || cambiaAcceso || cambiaRoles) {
             validarNoQuedarSinAdminVigente(usuario);
         }
-        if (cambiaVigencia) {
-            int versionToken = usuario.getVersionToken() == null ? 0 : usuario.getVersionToken();
-            usuario.setVersionToken(versionToken + 1);
+        if ((cambiaVigencia || cambiaAcceso) && !cambiaRoles) {
+            concesionesService.invalidarCambioRoles(id);
         }
 
         if (request.getRolIds() != null) {
@@ -228,6 +229,9 @@ public class UsuarioService {
 
             usuarioRolRepository.deleteByUsuarioIdUsuario(id);
             assignRoles(usuario, request.getRolIds());
+            if (cambiaRoles) {
+                concesionesService.invalidarCambioRoles(id);
+            }
             if (quitaApoderado) {
                 darDeBajaApoderado(id);
             }

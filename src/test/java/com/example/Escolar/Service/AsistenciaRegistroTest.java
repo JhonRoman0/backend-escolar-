@@ -1,6 +1,7 @@
 package com.example.Escolar.Service;
 
 import com.example.Escolar.Dto.AsistenciaRequest;
+import com.example.Escolar.Dto.JustificarRequest;
 import com.example.Escolar.Dto.UploadResponse;
 import com.example.Escolar.Model.*;
 import com.example.Escolar.Repository.*;
@@ -99,7 +100,12 @@ class AsistenciaRegistroTest {
 
         when(alumnoRepository.findByCodigoAndAccesoNot("A2026001", eliminado)).thenReturn(Optional.of(alumno));
         when(accesoContextoService.matriculaActual(9)).thenReturn(Optional.of(matricula));
-        when(accesoContextoService.alcance("ASISTENCIAS", 7, roles)).thenReturn(Alcance.TODO);
+        when(accesoContextoService.tieneAccion("ASISTENCIAS", "CREAR", 7, roles)).thenReturn(true);
+        when(accesoContextoService.tieneAccion("ASISTENCIAS", "ELIMINAR", 7, roles)).thenReturn(true);
+        when(accesoContextoService.alcance(eq("ASISTENCIAS"), eq(AccesoContextoService.Operacion.LECTURA), eq(7), any()))
+                .thenReturn(Alcance.TODO);
+        when(accesoContextoService.alcance(eq("ASISTENCIAS"), eq(AccesoContextoService.Operacion.ESCRITURA), eq(7), any()))
+                .thenReturn(Alcance.TODO);
         when(accesoContextoService.docenteDeUsuario(7)).thenReturn(Optional.empty());
         when(calendario.esDiaDeClase(eq(anio), any(), any())).thenReturn(true);
         when(calendario.diasDeClase(eq(anio), any(), any(), any())).thenReturn(Set.of(hoy));
@@ -184,20 +190,71 @@ class AsistenciaRegistroTest {
     }
 
     @Test
-    void elDocenteConPermisoRegistraSoloEnSusSecciones() {
+    void crearPermiteRegistrarSinAsignacionesPeroNoJustificarUnaMarca() {
         pasadoElLimiteDeTardanza();
-        when(accesoContextoService.docenteDeUsuario(7)).thenReturn(Optional.of(new Docente()));
-        when(accesoContextoService.gradoSeccionIdsDeDocente(7)).thenReturn(Set.of(99));
         UploadResponse subida = new UploadResponse();
         subida.setUrl("https://img/e.jpg");
         when(cloudinaryService.upload(any(), anyString())).thenReturn(subida);
 
-        var ex = assertThrows(IllegalArgumentException.class, () -> service.confirmar(pedido("María López"), foto(), 7, roles));
-        assertTrue(ex.getMessage().contains("secciones"), ex.getMessage());
+        service.previsualizar(pedido("Maria Lopez"), 7, roles);
+        service.confirmar(pedido("Maria Lopez"), foto(), 7, roles);
 
-        when(accesoContextoService.gradoSeccionIdsDeDocente(7)).thenReturn(Set.of(30));
-        service.confirmar(pedido("María López"), foto(), 7, roles);
         verify(asistenciaAlumnoRepository).save(any());
+        verify(accesoContextoService, never()).gradoSeccionIdsDeDocente(7);
+        assertThrows(IllegalArgumentException.class, () -> service.justificar(11, new JustificarRequest(), 7, roles));
+        verify(asistenciaAlumnoRepository, never()).findByIdAsistenciaAndAccesoNot(any(), any());
+    }
+
+    @Test
+    void actualizarPermiteJustificarSinAsignacionesPeroNoRegistrarNiAnular() {
+        when(accesoContextoService.tieneAccion("ASISTENCIAS", "CREAR", 7, roles)).thenReturn(false);
+        when(accesoContextoService.tieneAccion("ASISTENCIAS", "ELIMINAR", 7, roles)).thenReturn(false);
+        when(accesoContextoService.tieneAccion("ASISTENCIAS", "ACTUALIZAR", 7, roles)).thenReturn(true);
+        AsistenciaAlumno marca = new AsistenciaAlumno();
+        marca.setIdAsistencia(11);
+        marca.setMatricula(matricula);
+        marca.setFecha(hoy);
+        marca.setEstado(estado(AsistenciaService.ESTADO_PUNTUAL));
+        marca.setAcceso(activo);
+        Usuario registrador = new Usuario();
+        registrador.setIdUsuario(7);
+        marca.setUsuarioRegistro(registrador);
+        when(asistenciaAlumnoRepository.findByIdAsistenciaAndAccesoNot(11, eliminado)).thenReturn(Optional.of(marca));
+        JustificarRequest request = new JustificarRequest();
+        request.setIdJustificacion(4);
+
+        service.justificar(11, request, 7, roles);
+
+        assertEquals(AsistenciaService.ESTADO_JUSTIFICADA, marca.getEstado().getNombre());
+        verify(accesoContextoService, never()).gradoSeccionIdsDeDocente(7);
+        assertThrows(IllegalArgumentException.class, () -> service.confirmar(pedido(null), null, 7, roles));
+        assertThrows(IllegalArgumentException.class, () -> service.anular(11, "Motivo suficiente", 7, roles));
+        anio.setEstado(AnioEscolarService.ESTADO_CERRADO);
+        assertThrows(IllegalArgumentException.class, () -> service.justificar(11, request, 7, roles));
+        verify(asistenciaAlumnoRepository, times(1)).save(any());
+    }
+
+    @Test
+    void alcanceCentralSoloAplicaALaConsultaOperativaDeHoy() {
+        turno.setHoraFaltaLimite(LocalTime.MAX);
+        when(accesoContextoService.alcance("ASISTENCIAS", AccesoContextoService.Operacion.LECTURA, 7, roles))
+                .thenReturn(Alcance.DOCENTE);
+        when(accesoContextoService.gradoSeccionIdsDeDocente(7)).thenReturn(Set.of(99));
+        var filtro = AsistenciaService.Filtro.delAnio(null);
+        assertEquals(1, service.asistenciasHoy(7, roles, filtro, Pageable.unpaged()).getTotalElements());
+        assertTrue(service.matrizSemanal(hoy, Pageable.unpaged(), 7, roles, filtro).isEmpty());
+
+        when(accesoContextoService.tieneAccion("ASISTENCIAS", "CREAR", 7, roles)).thenReturn(false);
+        assertTrue(service.asistenciasHoy(7, roles, filtro, Pageable.unpaged()).isEmpty());
+
+        when(accesoContextoService.alcance("ASISTENCIAS", AccesoContextoService.Operacion.LECTURA, 7, roles))
+                .thenReturn(Alcance.APODERADO);
+        assertTrue(service.asistenciasHoy(7, roles, filtro, Pageable.unpaged()).isEmpty());
+        Apoderado apoderado = new Apoderado();
+        when(accesoContextoService.apoderadoDeUsuario(7)).thenReturn(Optional.of(apoderado));
+        when(accesoContextoService.matriculasDeHijos(apoderado)).thenReturn(List.of(matricula));
+        assertEquals(1, service.asistenciasHoy(7, roles, filtro, Pageable.unpaged()).getTotalElements());
+        assertThrows(IllegalArgumentException.class, () -> service.previsualizar(pedido(null), 7, roles));
     }
 
     @Test

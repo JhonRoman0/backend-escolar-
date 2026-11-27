@@ -54,7 +54,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         String token = extraerToken(request);
         Claims claims = token == null ? null : parsearToken(token);
-        if (claims != null && dispositivoQuitado(claims)) {
+        if (claims != null && !"/auth/logout".equals(request.getServletPath()) && dispositivoQuitado(claims)) {
             claims = null;
         }
         if (claims != null) {
@@ -113,6 +113,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     VigenciaNoValidaException.MENSAJE_NO_DISPONIBLE);
         }
         UsuarioVigenciaSesion datos = sesion.get();
+        if (!AccesoConstants.ACTIVO.equals(datos.getAccesoId())) {
+            return new VigenciaNoValidaException(VigenciaNoValidaException.CODIGO_CUENTA_INACTIVA,
+                    VigenciaNoValidaException.MENSAJE_CUENTA_INACTIVA);
+        }
         Integer versionToken = jwtService.getVersionToken(claims);
         Integer versionActual = datos.getVersionToken() == null ? 0 : datos.getVersionToken();
         if (!Objects.equals(versionActual, versionToken)) {

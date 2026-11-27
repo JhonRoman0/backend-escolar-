@@ -29,6 +29,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -53,6 +54,8 @@ class AnioEscolarServiceTest {
     private com.example.Escolar.Repository.PeriodoEvaluacionRepository periodoRepository;
     @Mock
     private com.example.Escolar.Repository.ConfiguracionAcademicaRepository configuracionRepository;
+    @Mock
+    private com.example.Escolar.Repository.CambioDocenteRepository cambioDocenteRepository;
     @InjectMocks
     private AnioEscolarService anioEscolarService;
 
@@ -275,6 +278,26 @@ class AnioEscolarServiceTest {
         verify(anioEscolarRepository, never()).saveAll(anyList());
     }
 
+    @Test
+    void elBarridoNoCierraAniosConCambiosPendientesOIncidencia() {
+        AnioEscolar conCambio = anio(1, "2024", AnioEscolarService.ESTADO_VIGENTE, LocalDate.of(2024, 12, 15));
+        AnioEscolar conIncidencia = anio(2, "2025", AnioEscolarService.ESTADO_POR_COMENZAR,
+                LocalDate.of(2025, 3, 1));
+        when(anioEscolarRepository.findByEstadoInAndFechaFinBeforeAndAccesoNot(
+                anyList(), any(LocalDate.class), any(Acceso.class)))
+                .thenReturn(List.of(conCambio, conIncidencia));
+        when(cambioDocenteRepository.existsByAnioEscolarIdAnioAndEstadoInAndAccesoNot(
+                eq(1), anyList(), any(Acceso.class))).thenReturn(true);
+        when(cambioDocenteRepository.existsByAnioEscolarIdAnioAndIncidenciaTrueAndAccesoNot(
+                eq(2), any(Acceso.class))).thenReturn(true);
+
+        anioEscolarService.getAll();
+
+        assertEquals(AnioEscolarService.ESTADO_VIGENTE, conCambio.getEstado());
+        assertEquals(AnioEscolarService.ESTADO_POR_COMENZAR, conIncidencia.getEstado());
+        verify(anioEscolarRepository, never()).saveAll(anyList());
+    }
+
     // ── Transiciones ───────────────────────────────────────────────────────
 
     @Test
@@ -287,6 +310,27 @@ class AnioEscolarServiceTest {
                 () -> anioEscolarService.cambiarEstado(1, (byte) AnioEscolarService.ESTADO_POR_COMENZAR));
 
         assertEquals("No se puede volver a 'por comenzar' un año que ya está vigente", e.getMessage());
+    }
+
+    @Test
+    void noSePuedeCerrarManualmenteConCambiosPendientesOIncidencia() {
+        int actual = LocalDate.now().getYear();
+        AnioEscolar vigente = anio(1, String.valueOf(actual), AnioEscolarService.ESTADO_VIGENTE,
+                LocalDate.of(actual, 12, 15));
+        when(anioEscolarRepository.findByIdAnioAndAccesoNot(anyInt(), any(Acceso.class)))
+                .thenReturn(Optional.of(vigente));
+        when(cambioDocenteRepository.existsByAnioEscolarIdAnioAndEstadoInAndAccesoNot(
+                eq(1), anyList(), any(Acceso.class))).thenReturn(true);
+        when(cambioDocenteRepository.existsByAnioEscolarIdAnioAndIncidenciaTrueAndAccesoNot(
+                eq(1), any(Acceso.class))).thenReturn(true);
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> anioEscolarService.cambiarEstado(1, (byte) AnioEscolarService.ESTADO_CERRADO));
+
+        assertEquals("No se puede cerrar el año mientras haya cambios de docente pendientes o incidencias sin resolver",
+                e.getMessage());
+        assertEquals(AnioEscolarService.ESTADO_VIGENTE, vigente.getEstado());
+        verify(anioEscolarRepository, never()).save(any(AnioEscolar.class));
     }
 
     @Test

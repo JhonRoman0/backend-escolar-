@@ -34,6 +34,7 @@ import com.example.Escolar.Repository.PagoMatriculaRepository;
 import com.example.Escolar.Repository.RolRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
+import com.example.Escolar.Security.ConcesionesService;
 import com.example.Escolar.Service.EmailService.TipoEnvioCredenciales;
 import com.example.Escolar.Util.FechaColegio;
 import org.junit.jupiter.api.BeforeEach;
@@ -91,6 +92,8 @@ class InscripcionServiceTest {
     private GradoSeccionRepository gradoSeccionRepository;
     @Mock
     private AccesoRepository accesoRepository;
+    @Mock
+    private ConcesionesService concesionesService;
     @Mock
     private PasswordEncoder passwordEncoder;
     @Mock

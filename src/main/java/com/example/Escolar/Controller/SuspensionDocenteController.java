@@ -1,6 +1,7 @@
 package com.example.Escolar.Controller;
 
 import com.example.Escolar.Dto.SuspensionDocenteRequest;
+import com.example.Escolar.Dto.EditarSuspensionVigenteRequest;
 import com.example.Escolar.Dto.SuspensionDocenteResponse;
 import com.example.Escolar.Service.SuspensionDocenteService;
 import jakarta.validation.Valid;
@@ -38,9 +39,28 @@ public class SuspensionDocenteController {
         return suspensionDocenteService.create(request);
     }
 
-    @PutMapping("/{id}/finalizar")
-    public SuspensionDocenteResponse finalizar(@PathVariable Integer id) {
-        return suspensionDocenteService.finalizar(id);
+    @PutMapping("/{id}")
+    public SuspensionDocenteResponse actualizar(@PathVariable Integer id,
+                                                @Valid @RequestBody SuspensionDocenteRequest request) {
+        return suspensionDocenteService.actualizar(id, request);
+    }
+
+    @PutMapping("/{id}/edicion-vigente")
+    public SuspensionDocenteResponse editarVigente(@PathVariable Integer id,
+                                                    @Valid @RequestBody EditarSuspensionVigenteRequest request) {
+        return suspensionDocenteService.editarVigente(id, request);
+    }
+
+    @PostMapping("/{id}/finalizar")
+    public SuspensionDocenteResponse finalizar(@PathVariable Integer id,
+                                               @RequestParam(required = false) String motivo) {
+        return suspensionDocenteService.finalizar(id, motivo);
+    }
+
+    @PostMapping("/{id}/cancelar")
+    public SuspensionDocenteResponse cancelar(@PathVariable Integer id,
+                                              @RequestParam(required = false) String motivo) {
+        return suspensionDocenteService.cancelar(id, motivo);
     }
 
     @DeleteMapping("/{id}")

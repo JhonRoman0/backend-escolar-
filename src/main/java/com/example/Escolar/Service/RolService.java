@@ -8,6 +8,7 @@ import com.example.Escolar.Model.Rol;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.RolRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
+import com.example.Escolar.Security.ConcesionesService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +22,7 @@ public class RolService {
     private final RolRepository rolRepository;
     private final AccesoRepository accesoRepository;
     private final UsuarioRolRepository usuarioRolRepository;
+    private final ConcesionesService concesionesService;
 
     public List<RolResponse> getAll(boolean soloActivos) {
         if (soloActivos) {
@@ -61,7 +63,9 @@ public class RolService {
         if (request.getAccesoId() != null) {
             rol.setAcceso(accesoRepository.findById(request.getAccesoId()).orElseThrow());
         }
-        return toResponse(rolRepository.save(rol));
+        RolResponse response = toResponse(rolRepository.save(rol));
+        concesionesService.invalidarPermisosDelRol(id);
+        return response;
     }
 
     @Transactional
@@ -73,6 +77,7 @@ public class RolService {
         }
         rol.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
         rolRepository.save(rol);
+        concesionesService.invalidarPermisosDelRol(id);
     }
 
     private boolean tieneUsuarios(Integer id) {

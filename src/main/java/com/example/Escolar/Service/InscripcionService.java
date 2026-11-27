@@ -36,6 +36,7 @@ import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
 import com.example.Escolar.Service.EmailService.TipoEnvioCredenciales;
 import com.example.Escolar.Util.FechaColegio;
+import com.example.Escolar.Security.ConcesionesService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -91,6 +92,7 @@ public class InscripcionService {
     private final PagoMatriculaRepository pagoMatriculaRepository;
     private final GradoSeccionRepository gradoSeccionRepository;
     private final AccesoRepository accesoRepository;
+    private final ConcesionesService concesionesService;
     private final PasswordEncoder passwordEncoder;
     private final CloudinaryService cloudinaryService;
     private final EmailService emailService;
@@ -340,6 +342,7 @@ public class InscripcionService {
         vinculo.setActivo(true);
         vinculo.setApoPrincipal(apoPrincipal);
         vinculo = alumnoApoderadoRepository.save(vinculo);
+        invalidarVinculo(apoderado);
 
         ApoderadoResponse response = ApoderadoResponse.fromVinculo(vinculo);
         alConfirmar(() -> response.setCredencialesEnviadas(enviarCredenciales(credenciales)));
@@ -467,6 +470,7 @@ public class InscripcionService {
             vinculo.setActivo(true);
             vinculo.setApoPrincipal(i == 0 ? PRINCIPAL : (byte) 0);
             vinculo = alumnoApoderadoRepository.save(vinculo);
+            invalidarVinculo(apoderado);
             if (i == 0) {
                 principal = vinculo;
             }
@@ -484,6 +488,7 @@ public class InscripcionService {
         vinculo.setActivo(false);
         vinculo.setApoPrincipal((byte) 0);
         alumnoApoderadoRepository.save(vinculo);
+        invalidarVinculo(vinculo.getApoderado());
         Apoderado apoderado = vinculo.getApoderado();
         Integer idAlumno = vinculo.getAlumno().getIdAlumno();
         boolean tieneOtrosHijos = alumnoApoderadoRepository.findByApoderado(apoderado).stream()
@@ -721,6 +726,12 @@ public class InscripcionService {
             cloudinaryService.delete(publicId);
         } catch (RuntimeException e) {
             log.warn("No se pudo borrar el archivo {} de Cloudinary: {}", publicId, e.getMessage());
+        }
+    }
+
+    private void invalidarVinculo(Apoderado apoderado) {
+        if (apoderado != null && apoderado.getUsuario() != null && apoderado.getUsuario().getIdUsuario() != null) {
+            concesionesService.invalidarVinculoDespuesDeCommit(Set.of(apoderado.getUsuario().getIdUsuario()));
         }
     }
 

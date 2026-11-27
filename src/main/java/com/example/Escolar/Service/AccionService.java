@@ -6,6 +6,7 @@ import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.Accion;
 import com.example.Escolar.Repository.AccionRepository;
 import com.example.Escolar.Repository.AccesoRepository;
+import com.example.Escolar.Security.ConcesionesService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +19,7 @@ public class AccionService {
 
     private final AccionRepository accionRepository;
     private final AccesoRepository accesoRepository;
+    private final ConcesionesService concesionesService;
 
     public List<AccionResponse> getAll() {
         return accionRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream().map(this::toResponse).toList();
@@ -40,7 +42,10 @@ public class AccionService {
     public AccionResponse update(Integer id, AccionRequest request) {
         Accion accion = findAccion(id);
         validarCodigoUnico(request.getCodigo(), accion.getIdAccion());
+        boolean cambiaConcesion = !accion.getCodigo().equals(request.getCodigo())
+                || request.getAccesoId() != null && !request.getAccesoId().equals(accion.getAcceso().getIdAcceso());
         applyRequest(accion, request);
+        if (cambiaConcesion) concesionesService.invalidarPermisosDeAccion(id);
         return toResponse(accionRepository.save(accion));
     }
 
@@ -49,6 +54,7 @@ public class AccionService {
         Accion accion = findAccion(id);
         accion.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
         accionRepository.save(accion);
+        concesionesService.invalidarPermisosDeAccion(id);
     }
 
     private Accion findAccion(Integer id) {

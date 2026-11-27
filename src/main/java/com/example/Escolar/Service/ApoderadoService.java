@@ -126,23 +126,21 @@ public class ApoderadoService {
         if (alcance == Alcance.TODO) {
             return null;
         }
-        if (alcance == Alcance.DOCENTE) {
-            Set<Integer> ids = new HashSet<>();
+        Set<Integer> ids = new HashSet<>();
+        if (alcance != null && alcance.incluyeDocente()) {
             for (Matricula matricula : accesoContextoService.matriculasDeGradoSecciones(
                     accesoContextoService.gradoSeccionIdsDeDocente(idUsuario))) {
                 alumnoApoderadoRepository.findByAlumno(matricula.getAlumnoApoderado().getAlumno())
                         .forEach(v -> ids.add(v.getApoderado().getIdApoderado()));
             }
-            return ids;
         }
-        if (alcance == Alcance.APODERADO) {
-            Set<Integer> ids = new HashSet<>();
+        if (alcance != null && alcance.incluyeApoderado()) {
             Apoderado apoderado = accesoContextoService.apoderadoDeUsuario(idUsuario).orElse(null);
             if (apoderado != null) {
                 ids.add(apoderado.getIdApoderado());
             }
             return ids;
         }
-        return new HashSet<>();
+        return ids;
     }
 }

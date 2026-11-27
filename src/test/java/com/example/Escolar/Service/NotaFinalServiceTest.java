@@ -68,6 +68,8 @@ class NotaFinalServiceTest {
     void preparar() {
         when(accesoRepository.findById(AccesoConstants.ACTIVO)).thenReturn(Optional.of(activo));
         when(accesoRepository.findById(AccesoConstants.ELIMINADO)).thenReturn(Optional.of(eliminado));
+        when(accesoContextoService.alcance(any(), any(), any())).thenReturn(AccesoContextoService.Alcance.DOCENTE);
+        when(accesoContextoService.alcance(any(), any(), any(), any())).thenReturn(AccesoContextoService.Alcance.DOCENTE);
         when(usuarioRepository.findById(7)).thenReturn(Optional.of(usuario("LUIS")));
         anio = new AnioEscolar();
         anio.setIdAnio(2);
@@ -101,6 +103,7 @@ class NotaFinalServiceTest {
         Asignacion ajena = asignacion(11, geometria, new Docente());
         when(accesoContextoService.docenteDeUsuario(7)).thenReturn(Optional.of(docenteAritmetica));
         when(asignacionRepository.findByDocenteIdDocenteAndAccesoNot(5, eliminado)).thenReturn(List.of(suya));
+        when(accesoContextoService.asignacionesActivasDeDocente(7)).thenReturn(List.of(suya));
         when(asignacionRepository.findByAccesoNot(eliminado)).thenReturn(List.of(suya, ajena));
 
         ana = matricula(1, "ANA");

@@ -437,8 +437,8 @@ public class DataSeeder implements CommandLineRunner {
                 new PermisoSeed("AULAS", "Aulas", crud()),
                 new PermisoSeed("ASIGNACIONES", "Asignaciones", crud()),
                 new PermisoSeed("RECREOS", "Recreos", crud()),
-                new PermisoSeed("SUSPENSIONES_DOCENTE", "Suspensiones de Docente", List.of("CREAR")),
-                new PermisoSeed("CAMBIOS_DOCENTE", "Cambios de Docente", List.of()),
+                new PermisoSeed("SUSPENSIONES_DOCENTE", "Suspensiones de Docente", crud()),
+                new PermisoSeed("CAMBIOS_DOCENTE", "Cambios de Docente", List.of("CREAR", "ACTUALIZAR", "CONFIGURAR")),
                 new PermisoSeed("COMPETENCIAS", "Competencias", List.of("ACTUALIZAR")),
                 new PermisoSeed("CONFIGURACION_ACADEMICA", "Configuración académica", List.of("ACTUALIZAR")))));
 

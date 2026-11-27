@@ -129,6 +129,14 @@ public final class CatalogoPermisos {
                 "CREAR", "Crear recreos",
                 "ACTUALIZAR", "Editar recreos",
                 "ELIMINAR", "Eliminar recreos");
+        permiso("SUSPENSIONES_DOCENTE", ACADEMICO,
+                "CREAR", "Registrar suspensiones laborales",
+                "ACTUALIZAR", "Finalizar suspensiones laborales",
+                "ELIMINAR", "Eliminar suspensiones laborales");
+        permiso("CAMBIOS_DOCENTE", ACADEMICO,
+                "CREAR", "Registrar cambios de docente",
+                "ACTUALIZAR", "Gestionar cambios, incidencias y resoluciones",
+                "CONFIGURAR", "Gestionar motivos de cambio");
     }
 
     private CatalogoPermisos() {

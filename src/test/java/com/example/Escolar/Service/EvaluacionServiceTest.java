@@ -138,6 +138,7 @@ class EvaluacionServiceTest {
         asignacion.setDocente(docente);
         asignacion.setAcceso(activo);
 
+        when(accesoContextoService.alcance("NOTAS", 7, roles)).thenReturn(AccesoContextoService.Alcance.DOCENTE);
         when(accesoContextoService.docenteDeUsuario(7)).thenReturn(Optional.of(docente));
         when(asignacionRepository.findByDocenteIdDocenteAndAccesoNot(5, eliminado)).thenReturn(List.of(asignacion));
         when(evaluacionRepository.save(any(Evaluacion.class))).thenAnswer(i -> i.getArgument(0));

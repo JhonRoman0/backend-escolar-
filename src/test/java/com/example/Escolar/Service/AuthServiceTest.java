@@ -10,7 +10,9 @@ import com.example.Escolar.Exception.EsperaReenvioCodigoException;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Exception.VigenciaNoValidaException;
 import com.example.Escolar.Model.Acceso;
+import com.example.Escolar.Model.Rol;
 import com.example.Escolar.Model.Usuario;
+import com.example.Escolar.Model.UsuarioRol;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
@@ -40,6 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -119,7 +122,7 @@ class AuthServiceTest {
         when(usuarioRolRepository.findByUsuarioIdUsuario(1)).thenReturn(List.of());
         when(jwtService.generarToken(1, "ADM20240001", List.of(), false, null, 0)).thenReturn("token");
         when(rolPermisoService.obtenerPermisosDelUsuario(1)).thenReturn(new PermisosRolResponse());
-        when(accesoContextoService.vinculo(1)).thenReturn(AccesoContextoService.Alcance.TODO);
+        when(accesoContextoService.vinculoEfectivo(eq(1), any())).thenReturn(AccesoContextoService.Alcance.TODO);
 
         authService.login(request());
 
@@ -461,7 +464,7 @@ class AuthServiceTest {
         when(usuarioRolRepository.findByUsuarioIdUsuario(1)).thenReturn(List.of());
         when(jwtService.generarToken(1, "ADM20240001", List.of(), true, null, 0)).thenReturn("tokenPendiente");
         when(rolPermisoService.obtenerPermisosDelUsuario(1)).thenReturn(new PermisosRolResponse());
-        when(accesoContextoService.vinculo(1)).thenReturn(AccesoContextoService.Alcance.TODO);
+        when(accesoContextoService.vinculoEfectivo(eq(1), any())).thenReturn(AccesoContextoService.Alcance.TODO);
 
         LoginResponse response = authService.login(request());
 
@@ -479,7 +482,7 @@ class AuthServiceTest {
         when(usuarioRolRepository.findByUsuarioIdUsuario(1)).thenReturn(List.of());
         when(jwtService.generarToken(1, "ADM20240001", List.of(), false, null, 0)).thenReturn("tokenLimpio");
         when(rolPermisoService.obtenerPermisosDelUsuario(1)).thenReturn(new PermisosRolResponse());
-        when(accesoContextoService.vinculo(1)).thenReturn(AccesoContextoService.Alcance.TODO);
+        when(accesoContextoService.vinculoEfectivo(eq(1), any())).thenReturn(AccesoContextoService.Alcance.TODO);
 
         String token = authService.cambiarContrasena(1, "claveTemporal", "ClaveNueva1@");
 
@@ -515,6 +518,41 @@ class AuthServiceTest {
 
         assertEquals(Boolean.FALSE, usuario.getDebeCambiarContrasena());
         assertEquals("$2a$10$nuevo", usuario.getContraseña());
+    }
+
+    @Test
+    void loginNoIncluyeRolesInactivosEnElToken() {
+        stubAccesoRepository();
+        Usuario usuario = usuario(0);
+        when(usuarioRepository.findByCodigoAndAccesoNot(anyString(), any(Acceso.class)))
+                .thenReturn(Optional.of(usuario));
+        when(passwordEncoder.matches("clave", "$2a$10$hash")).thenReturn(true);
+        when(jwtService.generarToken(org.mockito.ArgumentMatchers.eq(1), anyString(), any(),
+                org.mockito.ArgumentMatchers.eq(false), org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(0))).thenReturn("token");
+        when(rolPermisoService.obtenerPermisosDelUsuario(1)).thenReturn(new PermisosRolResponse());
+        when(accesoContextoService.vinculoEfectivo(eq(1), any())).thenReturn(AccesoContextoService.Alcance.TODO);
+
+        Rol activoRol = new Rol();
+        activoRol.setNombre("Docente");
+        activoRol.setAcceso(mockAcceso(AccesoConstants.ACTIVO));
+        Rol inactivoRol = new Rol();
+        inactivoRol.setNombre("Administrador");
+        inactivoRol.setAcceso(mockAcceso(AccesoConstants.INACTIVO));
+        UsuarioRol activoUsuarioRol = new UsuarioRol();
+        activoUsuarioRol.setRol(activoRol);
+        UsuarioRol inactivoUsuarioRol = new UsuarioRol();
+        inactivoUsuarioRol.setRol(inactivoRol);
+        when(usuarioRolRepository.findByUsuarioIdUsuario(1))
+                .thenReturn(List.of(activoUsuarioRol, inactivoUsuarioRol));
+
+        authService.login(request());
+
+        ArgumentCaptor<List<String>> captor = ArgumentCaptor.forClass(List.class);
+        verify(jwtService).generarToken(org.mockito.ArgumentMatchers.eq(1), anyString(),
+                captor.capture(), org.mockito.ArgumentMatchers.eq(false),
+                org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.eq(0));
+        assertEquals(List.of("Docente"), captor.getValue());
     }
 
     private String sha256(String valor) {

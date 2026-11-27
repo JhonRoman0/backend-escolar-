@@ -75,7 +75,7 @@ public class ApiPermisoRegistro {
         registrar("DELETE", "/roles-permiso/**", "ROLES_PERMISOS", "ELIMINAR");
 
         registrar("GET", "/docentes/reporte", "DOCENTES", "IMPRIMIR_EXPORTAR");
-        registrarLectura("GET", "/docentes", "DOCENTES", "ASIGNACIONES", "SUSPENSIONES_DOCENTE", "HORARIOS", "NOTAS");
+        registrarLectura("GET", "/docentes", "DOCENTES", "ASIGNACIONES", "SUSPENSIONES_DOCENTE", "HORARIOS", "NOTAS", "CAMBIOS_DOCENTE");
         registrarLectura("GET", "/docentes/**", "DOCENTES");
         registrarLectura("GET", "/grados-academicos", "DOCENTES", "USUARIOS");
         registrarLectura("GET", "/tipos-contrato", "DOCENTES", "USUARIOS");
@@ -256,11 +256,27 @@ public class ApiPermisoRegistro {
         registrarLectura("GET", "/suspensiones", "SUSPENSIONES_DOCENTE");
         registrarLectura("GET", "/suspensiones/**", "SUSPENSIONES_DOCENTE");
         registrar("POST", "/suspensiones", "SUSPENSIONES_DOCENTE", "CREAR");
+        registrar("POST", "/suspensiones/*/cancelar", "SUSPENSIONES_DOCENTE", "ACTUALIZAR");
+        registrar("POST", "/suspensiones/*/finalizar", "SUSPENSIONES_DOCENTE", "ACTUALIZAR");
+        registrar("PUT", "/suspensiones/*/edicion-vigente", "SUSPENSIONES_DOCENTE", "ACTUALIZAR");
         registrar("PUT", "/suspensiones/**", "SUSPENSIONES_DOCENTE", "ACTUALIZAR");
         registrar("DELETE", "/suspensiones/**", "SUSPENSIONES_DOCENTE", "ELIMINAR");
 
         registrarLectura("GET", "/cambios-docente", "CAMBIOS_DOCENTE");
         registrarLectura("GET", "/cambios-docente/**", "CAMBIOS_DOCENTE");
+        registrar("POST", "/cambios-docente", "CAMBIOS_DOCENTE", "CREAR");
+        registrar("PUT", "/cambios-docente/*/edicion-vigente", "CAMBIOS_DOCENTE", "ACTUALIZAR");
+        registrar("PUT", "/cambios-docente/*/asignar-sustituto", "CAMBIOS_DOCENTE", "ACTUALIZAR");
+        registrar("PUT", "/cambios-docente/*/resolver-incidencia", "CAMBIOS_DOCENTE", "ACTUALIZAR");
+        registrar("PUT", "/cambios-docente/*/finalizar", "CAMBIOS_DOCENTE", "ACTUALIZAR");
+        registrar("PUT", "/cambios-docente/*/cancelar", "CAMBIOS_DOCENTE", "ACTUALIZAR");
+        registrar("PUT", "/cambios-docente/*", "CAMBIOS_DOCENTE", "ACTUALIZAR");
+
+        registrarLectura("GET", "/motivos-cambio-docente", "CAMBIOS_DOCENTE");
+        registrarLectura("GET", "/motivos-cambio-docente/**", "CAMBIOS_DOCENTE");
+        registrar("POST", "/motivos-cambio-docente", "CAMBIOS_DOCENTE", "CONFIGURAR");
+        registrar("PUT", "/motivos-cambio-docente/**", "CAMBIOS_DOCENTE", "CONFIGURAR");
+        registrar("DELETE", "/motivos-cambio-docente/**", "CAMBIOS_DOCENTE", "CONFIGURAR");
 
     }
 

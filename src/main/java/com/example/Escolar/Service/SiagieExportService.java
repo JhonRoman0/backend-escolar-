@@ -100,7 +100,7 @@ public class SiagieExportService {
         GradoSeccion gs = gradoSeccionRepository.findById(idGradoSeccion)
                 .filter(g -> !AccesoConstants.ELIMINADO.equals(g.getAcceso().getIdAcceso()))
                 .orElseThrow(() -> new ResourceNotFoundException("Sección no encontrada"));
-        if (!notaFinalService.puedeVerSeccion(gs, idUsuario, roles)) {
+        if (!notaFinalService.puedeExportarSeccionCompleta(idUsuario, roles)) {
             throw new ResourceNotFoundException("Sección no encontrada o fuera de tus asignaciones");
         }
         AnioEscolar anio = gs.getAnioEscolar();

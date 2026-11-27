@@ -2,8 +2,14 @@ package com.example.Escolar.Service;
 
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.Acceso;
+import com.example.Escolar.Model.Alumno;
+import com.example.Escolar.Model.AlumnoApoderado;
+import com.example.Escolar.Model.Competencia;
+import com.example.Escolar.Model.Curso;
 import com.example.Escolar.Model.GradoSeccion;
 import com.example.Escolar.Model.Matricula;
+import com.example.Escolar.Model.Nota;
+import com.example.Escolar.Model.Usuario;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.CompetenciaRepository;
 import com.example.Escolar.Repository.MatriculaRepository;
@@ -18,11 +24,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -60,7 +68,12 @@ class NotaServiceTest {
 
         // El docente solo enseña en la sección 5.
         when(accesoContextoService.alcance("NOTAS", USUARIO, ROLES)).thenReturn(Alcance.DOCENTE);
-        when(accesoContextoService.gradoSeccionIdsDeDocente(USUARIO)).thenReturn(Set.of(5));
+        var asignacion = new com.example.Escolar.Model.Asignacion();
+        asignacion.setGradoSeccion(matricula(1, 5).getGradoSeccion());
+        Curso curso = new Curso();
+        curso.setIdCurso(20);
+        asignacion.setCurso(curso);
+        when(accesoContextoService.asignacionesActivasDeDocente(USUARIO)).thenReturn(List.of(asignacion));
     }
 
     private Matricula matricula(int id, int idGradoSeccion) {
@@ -80,5 +93,58 @@ class NotaServiceTest {
     @Test
     void elDocenteNoVeLasNotasDeOtraSeccion() {
         assertThrows(ResourceNotFoundException.class, () -> notaService.getPorMatricula(2, USUARIO, ROLES));
+    }
+
+    @Test
+    void elReporteRespetaElAlcanceDocente() {
+        when(notaRepository.findByFechaRegistroBetweenAndAccesoNot(any(), any(), any()))
+                .thenReturn(List.of(nota(1, 5), nota(2, 6)));
+
+        var resultado = notaService.reporte(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31),
+                null, null, USUARIO, ROLES);
+
+        assertEquals(1, resultado.size());
+        assertEquals("Ana Pérez", resultado.get(0).getAlumno());
+    }
+
+    @Test
+    void sinVinculoDocenteConAlcanceNingunoNoVeNotasNiReportes() {
+        when(accesoContextoService.alcance("NOTAS", USUARIO, ROLES)).thenReturn(Alcance.NINGUNO);
+        when(notaRepository.findByFechaRegistroBetweenAndAccesoNot(any(), any(), any()))
+                .thenReturn(List.of(nota(1, 5), nota(2, 6)));
+
+        var resultado = notaService.reporte(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31),
+                null, null, USUARIO, ROLES);
+
+        assertEquals(0, resultado.size());
+        assertThrows(ResourceNotFoundException.class, () -> notaService.getPorMatricula(1, USUARIO, ROLES));
+    }
+
+    private Nota nota(int idMatricula, int idGradoSeccion) {
+        Alumno alumno = new Alumno();
+        alumno.setNombre("Ana");
+        alumno.setApellidoPat("Pérez");
+        alumno.setCodigo("A" + idMatricula);
+        AlumnoApoderado alumnoApoderado = new AlumnoApoderado();
+        alumnoApoderado.setAlumno(alumno);
+        Matricula matricula = matricula(idMatricula, idGradoSeccion);
+        matricula.setAlumnoApoderado(alumnoApoderado);
+        Curso curso = new Curso();
+        curso.setIdCurso(20);
+        curso.setNombre("Matemática");
+        Competencia competencia = new Competencia();
+        competencia.setNombre("Competencia");
+        competencia.setCurso(curso);
+        Usuario usuario = new Usuario();
+        usuario.setNombre("Doc");
+        usuario.setApellidoPat("ente");
+        Nota nota = new Nota();
+        nota.setMatricula(matricula);
+        nota.setCompetencia(competencia);
+        nota.setBimestre((byte) 1);
+        nota.setCalificacion("15");
+        nota.setFechaRegistro(LocalDate.of(2026, 3, 10));
+        nota.setUsuarioRegistro(usuario);
+        return nota;
     }
 }

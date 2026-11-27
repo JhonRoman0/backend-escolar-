@@ -51,6 +51,7 @@ public class EvaluacionService {
     private final ReconocimientoCalificacionRepository reconocimientos;
     private final BloqueoCalificaciones bloqueo;
 
+    private static final String PERMISO = "NOTAS";
     private static final String[] DIAS = {"lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"};
     private static final int MAX_EVALUACIONES_POR_DIA = 2;
 
@@ -480,12 +481,14 @@ public class EvaluacionService {
     }
 
     private List<Asignacion> asignacionesVisibles(Integer idUsuario, List<String> roles) {
-        Optional<Docente> docente = accesoContextoService.esAdmin(roles)
-                ? Optional.empty()
-                : accesoContextoService.docenteDeUsuario(idUsuario);
-        List<Asignacion> asignaciones = docente
-                .map(d -> asignacionRepository.findByDocenteIdDocenteAndAccesoNot(d.getIdDocente(), eliminado()))
-                .orElseGet(() -> asignacionRepository.findByAccesoNot(eliminado()));
+        AccesoContextoService.Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, roles);
+        List<Asignacion> asignaciones = switch (alcance) {
+            case TODO -> asignacionRepository.findByAccesoNot(eliminado());
+            case DOCENTE, DOCENTE_Y_APODERADO -> accesoContextoService.docenteDeUsuario(idUsuario)
+                    .map(d -> asignacionRepository.findByDocenteIdDocenteAndAccesoNot(d.getIdDocente(), eliminado()))
+                    .orElseGet(List::of);
+            case APODERADO, NINGUNO -> List.of();
+        };
         return asignaciones.stream()
                 .filter(a -> AccesoConstants.ACTIVO.equals(a.getAcceso().getIdAcceso()))
                 .toList();

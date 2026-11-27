@@ -11,12 +11,14 @@ public class BloqueoCalificaciones {
 
     public void matricula(Integer id) { refrescar(Matricula.class, id); }
     public void asignacion(Integer id) { refrescar(Asignacion.class, id); }
+    public void suspension(Integer id) { refrescar(SuspensionDocente.class, id); }
+    public void docente(Integer id) { refrescar(Docente.class, id); }
     public void evaluacion(Integer id) { refrescar(Evaluacion.class, id); }
     public void nota(Integer id) { refrescar(NotaEvaluacion.class, id); }
     public void reconocimiento(Integer id) { refrescar(ReconocimientoCalificacion.class, id); }
 
     private <T> void refrescar(Class<T> tipo, Integer id) {
-        T fila = em.find(tipo, id, LockModeType.PESSIMISTIC_WRITE);
+        T fila = em.find(tipo, id);
         if (fila == null) throw new IllegalArgumentException("Registro no encontrado");
         em.refresh(fila, LockModeType.PESSIMISTIC_WRITE);
     }

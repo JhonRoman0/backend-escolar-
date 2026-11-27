@@ -97,16 +97,19 @@ public class AuthService {
         LoginResponse response = new LoginResponse();
         response.setToken(token);
         response.setUsuario(usuarioService.getById(usuario.getIdUsuario()));
-        response.setPermisos(permisosActuales(usuario.getIdUsuario()));
+        response.setPermisos(permisosActuales(usuario.getIdUsuario(), roles));
         response.setEsAdmin(roles.stream().anyMatch(nombre -> "ADMIN".equalsIgnoreCase(nombre)));
         return response;
     }
 
     public PermisosRolResponse permisosActuales(Integer idUsuario) {
+        return permisosActuales(idUsuario, null);
+    }
+
+    public PermisosRolResponse permisosActuales(Integer idUsuario, List<String> roles) {
         PermisosRolResponse permisos = rolPermisoService.obtenerPermisosDelUsuario(idUsuario);
-        // El front lo usa para saber qué parte de los datos ve quien solo tiene lectura.
-        Alcance vinculo = accesoContextoService.vinculo(idUsuario);
-        permisos.setVinculo(vinculo == Alcance.TODO ? null : vinculo.name());
+        Alcance vinculo = accesoContextoService.vinculoEfectivo(idUsuario, roles);
+        permisos.setVinculo(vinculo == Alcance.TODO || vinculo == Alcance.NINGUNO ? null : vinculo.name());
         return permisos;
     }
 
@@ -293,7 +296,7 @@ public class AuthService {
     private List<String> getRoles(Usuario usuario) {
         return usuarioRolRepository.findByUsuarioIdUsuario(usuario.getIdUsuario()).stream()
                 .map(UsuarioRol::getRol)
-                .filter(rol -> !rol.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
+                .filter(rol -> AccesoConstants.ACTIVO.equals(rol.getAcceso().getIdAcceso()))
                 .map(Rol::getNombre)
                 .toList();
     }

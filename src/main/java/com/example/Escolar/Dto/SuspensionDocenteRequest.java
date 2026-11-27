@@ -19,4 +19,5 @@ public class SuspensionDocenteRequest {
     @NotNull(message = "La fecha de inicio es obligatoria")
     private LocalDate fechaInicio;
     private LocalDate fechaFin;
+    private String motivoResolucion;
 }

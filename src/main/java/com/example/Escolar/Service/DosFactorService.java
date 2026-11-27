@@ -291,11 +291,12 @@ public class DosFactorService {
                 && Objects.equals(d.getHuellaConfianza(), huella(usuario));
     }
 
-    // Cambia si cambian la contraseña, el correo o la versión de sesión.
+    // Cambia si cambian la contraseña o el correo. No depende de la versión de
+    // sesión: un cambio de permisos o de roles cierra la sesión, pero el
+    // navegador de confianza no vuelve a pedir el código.
     private String huella(Usuario usuario) {
         String correo = usuario.getGmail() == null ? "" : usuario.getGmail().trim().toLowerCase(Locale.ROOT);
-        int version = usuario.getVersionToken() == null ? 0 : usuario.getVersionToken();
-        return HashSeguro.sha256(usuario.getContraseña() + "|" + correo + "|" + version);
+        return HashSeguro.sha256(usuario.getContraseña() + "|" + correo);
     }
 
     private DispositivoUsuario dispositivoDe(Integer idUsuario, Integer idDispositivo) {

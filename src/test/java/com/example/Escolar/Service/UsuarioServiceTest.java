@@ -103,12 +103,16 @@ class UsuarioServiceTest {
     private VigenciaService vigenciaService;
     @Mock
     private ConcesionesService concesionesService;
+    /** Por defecto actúa un ADMIN: los tests de Seguridad lo cambian. */
+    @Mock
+    private com.example.Escolar.Security.ActorSeguridad actorSeguridad;
 
     @InjectMocks
     private UsuarioService service;
 
     @BeforeEach
     void vigenciaPorDefecto() {
+        when(actorSeguridad.esAdminOSistema()).thenReturn(true);
         when(vigenciaService.evaluar(any(), any())).thenReturn(EstadoVigencia.INDEFINIDA);
         when(vigenciaService.evaluar(any(), any(), any())).thenReturn(EstadoVigencia.INDEFINIDA);
         when(vigenciaService.esAdministrable(any(Usuario.class))).thenReturn(true);
@@ -953,5 +957,100 @@ class UsuarioServiceTest {
         assertEquals(0, activo.getVersionToken());
         verify(usuarioRepository).save(activo);
         verify(vigenciaService, never()).esAdministrable(any(Usuario.class));
+    }
+
+    // ───────────── Rol ADMIN protegido (actor sin ADMIN) ─────────────
+
+    private void actorSinAdmin(Integer idActor) {
+        when(actorSeguridad.esAdminOSistema()).thenReturn(false);
+        when(actorSeguridad.idActual()).thenReturn(Optional.of(idActor));
+    }
+
+    @Test
+    void sinSerAdminNoSeCreaUnUsuarioConRolAdmin() {
+        stubCreacionBasica();
+        actorSinAdmin(50);
+        when(rolRepository.findByIdRolAndAccesoNot(any(Integer.class), any(Acceso.class)))
+                .thenReturn(Optional.of(rol(5, "ADMIN")));
+        UsuarioRequest request = requestSinDocente();
+        request.setRolIds(List.of(5));
+
+        var e = assertThrows(com.example.Escolar.Exception.AccesoDenegadoException.class, () -> service.create(request));
+        assertEquals("Solo un administrador puede asignar el rol ADMIN", e.getMessage());
+        verify(usuarioRepository, never()).save(any(Usuario.class));
+    }
+
+    @Test
+    void sinSerAdminNoSeTocaAUnUsuarioAdmin() {
+        stubAccesoRepository();
+        stubValidacionesUnicas();
+        Usuario admin = usuario(1, AccesoConstants.ACTIVO);
+        stubSaveYRolesActivos(admin, rol(9, "ADMIN"));
+        actorSinAdmin(50);
+        when(actorSeguridad.esAdmin(1)).thenReturn(true);
+        UsuarioRequest request = requestSinDocente();
+        request.setRolIds(null);
+        request.setGmail("otro@correo.com");
+
+        // Ni editarlo (p. ej. cambiarle el correo), ni restablecer su contraseña, ni eliminarlo.
+        assertThrows(com.example.Escolar.Exception.AccesoDenegadoException.class, () -> service.update(1, request));
+        assertThrows(com.example.Escolar.Exception.AccesoDenegadoException.class, () -> service.restablecerContrasena(1));
+        assertThrows(com.example.Escolar.Exception.AccesoDenegadoException.class, () -> service.delete(1, 50));
+        assertThrows(com.example.Escolar.Exception.AccesoDenegadoException.class, () -> service.desbloquear(1));
+        assertEquals("jhoanatanguevaravasquez@gmail.com", admin.getGmail());
+        verify(emailService, never())
+                .enviarCredencialesAcceso(anyString(), anyString(), anyString(), anyString(), any(TipoEnvioCredenciales.class));
+    }
+
+    @Test
+    void nadieSinAdminCambiaSusPropiosRoles() {
+        stubAccesoRepository();
+        stubValidacionesUnicas();
+        Usuario propio = usuario(1, AccesoConstants.ACTIVO);
+        stubSaveYRolesActivos(propio, rol(3, "Secretaria"));
+        actorSinAdmin(1);
+        when(rolRepository.findByIdRolAndAccesoNot(any(Integer.class), any(Acceso.class)))
+                .thenReturn(Optional.of(rol(4, "Auxiliar")));
+        UsuarioRequest request = requestSinDocente();
+        request.setRolIds(List.of(3, 4));
+
+        var e = assertThrows(com.example.Escolar.Exception.AccesoDenegadoException.class, () -> service.update(1, request));
+        assertEquals("No puedes cambiar tus propios roles", e.getMessage());
+
+        // Sus demás datos sí los puede editar (sin tocar roles).
+        request.setRolIds(null);
+        assertEquals(1, service.update(1, request).getIdUsuario());
+    }
+
+    @Test
+    void sinSerAdminNoSeDaElRolAdminAlEditarAOtro() {
+        stubAccesoRepository();
+        stubValidacionesUnicas();
+        Usuario otro = usuario(1, AccesoConstants.ACTIVO);
+        stubSaveYRolesActivos(otro, rol(3, "Secretaria"));
+        actorSinAdmin(50);
+        when(rolRepository.findByIdRolAndAccesoNot(any(Integer.class), any(Acceso.class)))
+                .thenReturn(Optional.of(rol(5, "ADMIN")));
+        UsuarioRequest request = requestSinDocente();
+        request.setRolIds(List.of(5));
+
+        var e = assertThrows(com.example.Escolar.Exception.AccesoDenegadoException.class, () -> service.update(1, request));
+        assertEquals("Solo un administrador puede asignar el rol ADMIN", e.getMessage());
+    }
+
+    @Test
+    void cambiarLosRolesCierraSusSesiones() {
+        stubAccesoRepository();
+        stubValidacionesUnicas();
+        Usuario usuario = usuario(1, AccesoConstants.ACTIVO);
+        stubSaveYRolesActivos(usuario, rol(3, "Secretaria"));
+        when(rolRepository.findByIdRolAndAccesoNot(any(Integer.class), any(Acceso.class)))
+                .thenReturn(Optional.of(rol(4, "Auxiliar")));
+        UsuarioRequest request = requestSinDocente();
+        request.setRolIds(List.of(4));
+
+        service.update(1, request);
+
+        assertEquals(1, usuario.getVersionToken());
     }
 }

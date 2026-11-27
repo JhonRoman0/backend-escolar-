@@ -30,6 +30,8 @@ import com.example.Escolar.Repository.RolRepository;
 import com.example.Escolar.Repository.TipoContratoRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
+import com.example.Escolar.Exception.AccesoDenegadoException;
+import com.example.Escolar.Security.ActorSeguridad;
 import com.example.Escolar.Security.ConcesionesService;
 import com.example.Escolar.Service.EmailService.TipoEnvioCredenciales;
 import com.example.Escolar.Service.VigenciaService.EstadoVigencia;
@@ -81,6 +83,7 @@ public class UsuarioService {
     private final AlumnoApoderadoRepository alumnoApoderadoRepository;
     private final VigenciaService vigenciaService;
     private final ConcesionesService concesionesService;
+    private final ActorSeguridad actorSeguridad;
 
     public Page<UsuarioResponse> getAll(Pageable pageable) {
         return getAll(pageable, null, null, null, null);
@@ -115,6 +118,9 @@ public class UsuarioService {
         validarDocumentoUnico(request.getDocumentoIdentidad(), null);
         validarGmailUnico(request.getGmail(), null);
         detectarEliminadoParaReactivar(request.getDocumentoIdentidad());
+        if (seleccionaRol(request.getRolIds(), ROL_ADMIN)) {
+            exigirAdmin("Solo un administrador puede asignar el rol ADMIN");
+        }
         Usuario usuario = new Usuario();
         if (request.getAccesoId() == null) {
             request.setAccesoId(AccesoConstants.ACTIVO.longValue());
@@ -146,6 +152,7 @@ public class UsuarioService {
      */
     @Transactional
     public boolean restablecerContrasena(Integer id) {
+        protegerAdmin(id);
         Usuario usuario = findUsuario(id);
         String temporal = ContrasenaTemporal.generar();
         if (!enviarCredencialesAcceso(usuario, temporal, TipoEnvioCredenciales.RESTABLECIMIENTO)) {
@@ -186,6 +193,8 @@ public class UsuarioService {
 
     private UsuarioResponse actualizarRegistro(Usuario usuario, Integer id, UsuarioRequest request) {
         LocalDate hoy = FechaColegio.hoy();
+        protegerAdmin(id);
+        validarCambioDeRoles(usuario, id, request.getRolIds());
         boolean reactivando = AccesoConstants.ACTIVO.equals(request.getAccesoId())
                 && !AccesoConstants.ACTIVO.equals(usuario.getAcceso().getIdAcceso());
         exclusividadDni.validarCambioUsuario(request.getDocumentoIdentidad(), usuario.getDocumentoIdentidad(), reactivando);
@@ -202,6 +211,12 @@ public class UsuarioService {
                 && !Objects.equals(usuario.getAcceso().getIdAcceso().longValue(), request.getAccesoId());
         boolean cambiaRoles = request.getRolIds() != null && !mismosRoles(usuario, request.getRolIds());
         applyRequest(usuario, request);
+        // Cambiar los roles cierra sus sesiones: los roles de la sesión se fijan al
+        // entrar, así un ADMIN quitado no conserva su acceso.
+        if (cambiaRoles) {
+            int versionToken = usuario.getVersionToken() == null ? 0 : usuario.getVersionToken();
+            usuario.setVersionToken(versionToken + 1);
+        }
         if (cambiaVigencia || cambiaAcceso || cambiaRoles) {
             validarNoQuedarSinAdminVigente(usuario);
         }
@@ -264,6 +279,7 @@ public class UsuarioService {
 
     @Transactional
     public void desbloquear(Integer id) {
+        protegerAdmin(id);
         Usuario usuario = findUsuario(id);
         usuario.setIntentosFallidos(0);
         usuario.setFechaBloqueo(null);
@@ -275,6 +291,7 @@ public class UsuarioService {
         if (id.equals(idAutenticado)) {
             throw new UsuarioConDependenciasException("No puedes eliminar tu propia cuenta");
         }
+        protegerAdmin(id);
         Usuario usuario = findUsuario(id);
         validarNoEsUltimoAdmin(usuario, "eliminar a");
         validarSinAlumnosActivos(usuario, "eliminar a", "");
@@ -428,6 +445,7 @@ public class UsuarioService {
 
     @Transactional
     public UsuarioResponse subirFoto(Integer id, MultipartFile file) {
+        protegerAdmin(id);
         Usuario usuario = findUsuario(id);
         if (usuario.getPkUrlFoto() != null && !usuario.getPkUrlFoto().isBlank()) {
             cloudinaryService.delete(usuario.getPkUrlFoto());
@@ -456,6 +474,7 @@ public class UsuarioService {
 
     @Transactional
     public void eliminarFoto(Integer id) {
+        protegerAdmin(id);
         Usuario usuario = findUsuario(id);
         if (usuario.getPkUrlFoto() != null && !usuario.getPkUrlFoto().isBlank()) {
             cloudinaryService.delete(usuario.getPkUrlFoto());
@@ -477,6 +496,31 @@ public class UsuarioService {
             usuarioRol.setRol(rol);
             usuarioRol.setFechaAsignacion(LocalDateTime.now());
             usuarioRolRepository.save(usuarioRol);
+        }
+    }
+
+    /** Sobre un usuario con rol ADMIN solo actúa otro ADMIN (editar, correo, contraseña, eliminar...). */
+    private void protegerAdmin(Integer idUsuario) {
+        if (actorSeguridad.esAdmin(idUsuario)) {
+            exigirAdmin("Solo un administrador puede modificar a un usuario con rol ADMIN");
+        }
+    }
+
+    private void exigirAdmin(String mensaje) {
+        if (!actorSeguridad.esAdminOSistema()) {
+            throw new AccesoDenegadoException(mensaje);
+        }
+    }
+
+    private void validarCambioDeRoles(Usuario usuario, Integer id, List<Integer> rolIds) {
+        if (rolIds == null || mismosRoles(usuario, rolIds) || actorSeguridad.esAdminOSistema()) {
+            return;
+        }
+        if (actorSeguridad.idActual().map(id::equals).orElse(false)) {
+            throw new AccesoDenegadoException("No puedes cambiar tus propios roles");
+        }
+        if (seleccionaRol(rolIds, ROL_ADMIN)) {
+            throw new AccesoDenegadoException("Solo un administrador puede asignar el rol ADMIN");
         }
     }
 

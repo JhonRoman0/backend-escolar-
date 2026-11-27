@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/** Catálogo de solo lectura: lo define el sistema (CatalogoPermisos), no se edita por API. */
 @RestController
 @RequestMapping("/permisos")
 @RequiredArgsConstructor
@@ -26,22 +27,5 @@ public class PermisoController {
     @GetMapping("/{id}")
     public PermisoResponse getById(@PathVariable Integer id) {
         return permisoService.getById(id);
-    }
-
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public PermisoResponse create(@Valid @RequestBody PermisoRequest request) {
-        return permisoService.create(request);
-    }
-
-    @PutMapping("/{id}")
-    public PermisoResponse update(@PathVariable Integer id, @Valid @RequestBody PermisoRequest request) {
-        return permisoService.update(id, request);
-    }
-
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Integer id) {
-        permisoService.delete(id);
-        return ResponseEntity.noContent().build();
     }
 }

@@ -1,9 +1,11 @@
 package com.example.Escolar.Security;
 
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Gana la primera ruta que coincide: una lectura general no debe tapar la del reporte. */
 class ApiPermisoRegistroReportesTest {
@@ -49,5 +51,24 @@ class ApiPermisoRegistroReportesTest {
         assertEquals("VER_COLEGIO", registro.buscar("GET", "/horarios/seccion/5/recreos").orElseThrow().accionCodigo());
         assertEquals(null, registro.buscar("GET", "/horarios/mio").orElseThrow().accionCodigo());
         assertEquals(java.util.Set.of("IMPRIMIR_EXPORTAR", "VER_COLEGIO"), registro.accionesDe("HORARIOS"));
+    }
+
+    @Test
+    void laPantallaDeAccesosSoloDependeDeRolesYPermisos() {
+        var registro = new ApiPermisoRegistro();
+        for (String ruta : java.util.List.of("/modulos", "/permisos", "/acciones", "/roles-permiso", "/roles-permiso/rol/3")) {
+            assertEquals(java.util.Set.of("ROLES_PERMISOS"), registro.buscar("GET", ruta).orElseThrow().permisosCodigo(), ruta);
+        }
+        assertEquals("ACTUALIZAR", registro.buscar("POST", "/roles-permiso").orElseThrow().accionCodigo());
+        assertEquals("ACTUALIZAR", registro.buscar("PUT", "/roles-permiso/4").orElseThrow().accionCodigo());
+        assertEquals("ACTUALIZAR", registro.buscar("DELETE", "/roles-permiso/4").orElseThrow().accionCodigo());
+        // El catálogo no se edita por API.
+        for (String metodo : java.util.List.of("POST", "PUT", "DELETE")) {
+            assertTrue(registro.buscar(metodo, "/modulos/1").isEmpty(), metodo);
+            assertTrue(registro.buscar(metodo, "/permisos/1").isEmpty(), metodo);
+            assertTrue(registro.buscar(metodo, "/acciones/1").isEmpty(), metodo);
+        }
+        // El formulario de usuarios lee los roles con su propio permiso.
+        assertTrue(registro.buscar("GET", "/roles").orElseThrow().permisosCodigo().contains("USUARIOS"));
     }
 }

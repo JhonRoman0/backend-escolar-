@@ -158,4 +158,30 @@ class CatalogoPermisosSyncTest {
         assertEquals(academico, competencias.getModulo());
         verify(permisoRepository).save(competencias);
     }
+
+    @Test
+    void retiraModulosPermisosYAccionesConLoQueLosRolesTenianDeEllos() {
+        Permiso modulos = new Permiso();
+        modulos.setIdPermiso(30);
+        modulos.setCodigo("MODULOS");
+        modulos.setAcceso(activo);
+        when(permisoRepository.findByCodigoAndAccesoNot(eq("MODULOS"), any())).thenReturn(Optional.of(modulos));
+        RolPermiso delRol = new RolPermiso();
+        delRol.setIdRolPermiso(70);
+        delRol.setAcceso(activo);
+        when(rolPermisoRepository.findByPermisoIdPermiso(30)).thenReturn(List.of(delRol));
+        RolPermisoAccion concedida = new RolPermisoAccion();
+        concedida.setAcceso(activo);
+        when(rolPermisoAccionRepository.findByRolPermisoIdRolPermisoAndAccesoNot(eq(70), any())).thenReturn(List.of(concedida));
+        PermisoAccion accionDelPermiso = new PermisoAccion();
+        accionDelPermiso.setAcceso(activo);
+        when(permisoAccionRepository.findByPermisoIdPermisoAndAccesoNot(eq(30), any())).thenReturn(List.of(accionDelPermiso));
+
+        sync.sincronizar();
+
+        assertEquals(AccesoConstants.ELIMINADO, modulos.getAcceso().getIdAcceso());
+        assertEquals(AccesoConstants.ELIMINADO, delRol.getAcceso().getIdAcceso());
+        assertEquals(AccesoConstants.ELIMINADO, concedida.getAcceso().getIdAcceso());
+        assertEquals(AccesoConstants.ELIMINADO, accionDelPermiso.getAcceso().getIdAcceso());
+    }
 }

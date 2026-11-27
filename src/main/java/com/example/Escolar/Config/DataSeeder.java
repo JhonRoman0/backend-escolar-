@@ -422,10 +422,7 @@ public class DataSeeder implements CommandLineRunner {
         crearModuloSiFalta(new ModuloSeed("Seguridad", "shield", List.of(
                 new PermisoSeed("USUARIOS", "Usuarios", crudWithExport()),
                 new PermisoSeed("ROLES", "Roles", crud()),
-                new PermisoSeed("MODULOS", "Módulos", crud()),
-                new PermisoSeed("PERMISOS", "Permisos", crud()),
-                new PermisoSeed("ACCIONES", "Acciones", crud()),
-                new PermisoSeed("ROLES_PERMISOS", "Roles y Permisos", crud()))));
+                new PermisoSeed("ROLES_PERMISOS", "Roles y Permisos", List.of("ACTUALIZAR")))));
 
         crearModuloSiFalta(new ModuloSeed("Académico", "book", List.of(
                 new PermisoSeed("DOCENTES", "Docentes", crudWithExport()),

@@ -29,53 +29,9 @@ public class AccionService {
         return toResponse(findAccion(id));
     }
 
-    @Transactional
-    public AccionResponse create(AccionRequest request) {
-        validarCodigoUnico(request.getCodigo(), null);
-        Accion accion = new Accion();
-        applyRequest(accion, request);
-        accion.setAcceso(accesoRepository.findById(request.getAccesoId() != null ? request.getAccesoId() : AccesoConstants.ACTIVO).orElseThrow());
-        return toResponse(accionRepository.save(accion));
-    }
-
-    @Transactional
-    public AccionResponse update(Integer id, AccionRequest request) {
-        Accion accion = findAccion(id);
-        validarCodigoUnico(request.getCodigo(), accion.getIdAccion());
-        boolean cambiaConcesion = !accion.getCodigo().equals(request.getCodigo())
-                || request.getAccesoId() != null && !request.getAccesoId().equals(accion.getAcceso().getIdAcceso());
-        applyRequest(accion, request);
-        if (cambiaConcesion) concesionesService.invalidarPermisosDeAccion(id);
-        return toResponse(accionRepository.save(accion));
-    }
-
-    @Transactional
-    public void delete(Integer id) {
-        Accion accion = findAccion(id);
-        accion.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
-        accionRepository.save(accion);
-        concesionesService.invalidarPermisosDeAccion(id);
-    }
-
     private Accion findAccion(Integer id) {
         return accionRepository.findByIdAccionAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("Acción no encontrada con id " + id));
-    }
-
-    private void validarCodigoUnico(String codigo, Integer idExcluido) {
-        accionRepository.findByCodigoAndAccesoNot(codigo, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
-                .filter(a -> idExcluido == null || !a.getIdAccion().equals(idExcluido))
-                .ifPresent(a -> {
-                    throw new IllegalArgumentException("Ya existe una acción con el código " + codigo);
-                });
-    }
-
-    private void applyRequest(Accion accion, AccionRequest request) {
-        accion.setCodigo(request.getCodigo());
-        accion.setNombre(request.getNombre());
-        if (request.getAccesoId() != null) {
-            accion.setAcceso(accesoRepository.findById(request.getAccesoId()).orElseThrow());
-        }
     }
 
     private AccionResponse toResponse(Accion accion) {

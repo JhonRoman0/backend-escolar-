@@ -37,9 +37,17 @@ public class CatalogoPermisosSync {
     private final RolPermisoAccionRepository rolPermisoAccionRepository;
     private final AccesoRepository accesoRepository;
 
+    /**
+     * Permisos que ya no existen: el catálogo de módulos, permisos y acciones lo
+     * define el sistema y no se concede (quitarlos dejaba sin la pantalla de Accesos).
+     */
+    static final java.util.Set<String> RETIRADOS = java.util.Set.of("MODULOS", "PERMISOS", "ACCIONES");
+
     public void sincronizar() {
         Acceso activo = accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow();
         Acceso eliminado = accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow();
+        RETIRADOS.forEach(codigo -> permisoRepository.findByCodigoAndAccesoNot(codigo, eliminado)
+                .ifPresent(permiso -> retirarPermiso(permiso, eliminado)));
         CatalogoPermisos.todos().forEach((codigoPermiso, acciones) ->
                 permisoRepository.findByCodigoAndAccesoNot(codigoPermiso, eliminado).ifPresent(permiso -> {
                     moverASuModulo(permiso, eliminado);
@@ -81,6 +89,27 @@ public class CatalogoPermisosSync {
         pa.setEtiqueta(etiqueta);
         pa.setAcceso(activo);
         permisoAccionRepository.save(pa);
+    }
+
+    private void retirarPermiso(Permiso permiso, Acceso eliminado) {
+        for (RolPermiso rolPermiso : rolPermisoRepository.findByPermisoIdPermiso(permiso.getIdPermiso())) {
+            rolPermisoAccionRepository.findByRolPermisoIdRolPermisoAndAccesoNot(rolPermiso.getIdRolPermiso(), eliminado)
+                    .forEach(concedida -> {
+                        concedida.setAcceso(eliminado);
+                        rolPermisoAccionRepository.save(concedida);
+                    });
+            if (!AccesoConstants.ELIMINADO.equals(rolPermiso.getAcceso().getIdAcceso())) {
+                rolPermiso.setAcceso(eliminado);
+                rolPermisoRepository.save(rolPermiso);
+            }
+        }
+        for (PermisoAccion pa : permisoAccionRepository.findByPermisoIdPermisoAndAccesoNot(permiso.getIdPermiso(), eliminado)) {
+            pa.setAcceso(eliminado);
+            permisoAccionRepository.save(pa);
+        }
+        permiso.setAcceso(eliminado);
+        permisoRepository.save(permiso);
+        log.info("Catálogo de permisos: se retiró el permiso {}", permiso.getCodigo());
     }
 
     private void quitarAccion(Permiso permiso, PermisoAccion pa, Acceso eliminado) {

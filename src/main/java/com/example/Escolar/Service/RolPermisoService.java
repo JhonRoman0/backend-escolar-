@@ -5,6 +5,8 @@ import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.*;
 import com.example.Escolar.Repository.*;
 import com.example.Escolar.Repository.AccesoRepository;
+import com.example.Escolar.Exception.AccesoDenegadoException;
+import com.example.Escolar.Security.ActorSeguridad;
 import com.example.Escolar.Security.ConcesionesService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -36,6 +38,7 @@ public class RolPermisoService {
     private final PermisoAccionRepository permisoAccionRepository;
     private final UsuarioRolRepository usuarioRolRepository;
     private final ConcesionesService concesionesService;
+    private final ActorSeguridad actorSeguridad;
 
     public List<RolPermisoResponse> getAll() {
         return rolPermisoRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream().map(this::toResponse).toList();
@@ -52,17 +55,18 @@ public class RolPermisoService {
         }
         Rol rol = findRol(request.getIdRol());
         Permiso permiso = findPermiso(request.getIdPermiso());
+        List<String> acciones = request.getAcciones() == null ? List.of() : request.getAcciones();
+        validarCambio(rol, permiso, List.of(), acciones);
+        Acceso acceso = accesoParaAsignacion(request.getAccesoId());
         Optional<RolPermiso> existente = rolPermisoRepository.findByRolIdRolAndPermisoIdPermiso(rol.getIdRol(), permiso.getIdPermiso());
         if (existente.isPresent()) {
             RolPermiso rolPermiso = existente.get();
             if (!rolPermiso.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO)) {
                 throw new IllegalArgumentException("El permiso ya está asignado a este rol");
             }
-            rolPermiso.setAcceso(accesoRepository.findById(request.getAccesoId() != null ? request.getAccesoId() : AccesoConstants.ACTIVO).orElseThrow());
+            rolPermiso.setAcceso(acceso);
             rolPermiso = rolPermisoRepository.save(rolPermiso);
-            if (request.getAcciones() != null) {
-                reemplazarAccionesConcedidas(rolPermiso, request.getAcciones());
-            }
+            reemplazarAccionesConcedidas(rolPermiso, acciones);
             concesionesService.invalidarPermisosDelRol(rol.getIdRol());
             return toResponse(rolPermiso);
         }
@@ -70,54 +74,34 @@ public class RolPermisoService {
         rolPermiso.setRol(rol);
         rolPermiso.setPermiso(permiso);
         rolPermiso.setFechaAsignacion(LocalDateTime.now());
-        rolPermiso.setAcceso(accesoRepository.findById(request.getAccesoId() != null ? request.getAccesoId() : AccesoConstants.ACTIVO).orElseThrow());
+        rolPermiso.setAcceso(acceso);
         rolPermiso = rolPermisoRepository.save(rolPermiso);
-        asignarAccionesConcedidas(rolPermiso, request.getAcciones());
+        asignarAccionesConcedidas(rolPermiso, acciones);
         concesionesService.invalidarPermisosDelRol(rol.getIdRol());
         return toResponse(rolPermiso);
     }
 
+    /** Editar una asignación solo cambia sus acciones (o su estado activo/inactivo). */
     @Transactional
     public RolPermisoResponse update(Integer id, RolPermisoRequest request) {
         RolPermiso rolPermiso = findRolPermiso(id);
-        Set<Integer> rolesAInvalidar = new LinkedHashSet<>();
-        if (rolPermiso.getRol() != null && rolPermiso.getRol().getIdRol() != null) {
-            rolesAInvalidar.add(rolPermiso.getRol().getIdRol());
+        if (request.getIdRol() != null && !request.getIdRol().equals(rolPermiso.getRol().getIdRol())) {
+            throw new IllegalArgumentException("Una asignación no se puede pasar a otro rol");
         }
-        if (rolPermiso.getPermiso() != null && rolPermiso.getPermiso().getIdPermiso() != null) {
+        if (request.getIdPermiso() != null && !request.getIdPermiso().equals(rolPermiso.getPermiso().getIdPermiso())) {
+            throw new IllegalArgumentException("Una asignación no se puede cambiar a otro permiso");
         }
-        if (request.getIdRol() != null) {
-            rolPermiso.setRol(findRol(request.getIdRol()));
-            rolesAInvalidar.add(rolPermiso.getRol().getIdRol());
-        }
-        if (request.getIdPermiso() != null) {
-            Permiso nuevoPermiso = findPermiso(request.getIdPermiso());
-            RolPermiso existente = rolPermisoRepository
-                    .findByRolIdRolAndPermisoIdPermiso(rolPermiso.getRol().getIdRol(), nuevoPermiso.getIdPermiso())
-                    .orElse(null);
-            if (existente != null && !existente.getIdRolPermiso().equals(rolPermiso.getIdRolPermiso())) {
-                if (existente.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO)) {
-                    existente.setAcceso(accesoRepository.findById(request.getAccesoId() != null ? request.getAccesoId() : AccesoConstants.ACTIVO).orElseThrow());
-                    reemplazarAccionesConcedidas(existente, accionesConcedidasDeRolPermiso(rolPermiso.getIdRolPermiso()));
-                    rolPermisoRepository.save(existente);
-                    rolPermiso.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
-                    rolPermisoRepository.save(rolPermiso);
-                    concesionesService.invalidarCambioPermisos(rolesAInvalidar, Set.of());
-                    return toResponse(existente);
-                }
-                throw new IllegalArgumentException("El permiso ya está asignado a este rol");
-            }
-            rolPermiso.setPermiso(nuevoPermiso);
-            revalidarAccionesContraPermiso(rolPermiso);
-        }
+        List<String> antes = accionesConcedidasDeRolPermiso(rolPermiso.getIdRolPermiso());
+        List<String> despues = request.getAcciones() == null ? antes : request.getAcciones();
+        validarCambio(rolPermiso.getRol(), rolPermiso.getPermiso(), antes, despues);
         if (request.getAccesoId() != null) {
-            rolPermiso.setAcceso(accesoRepository.findById(request.getAccesoId()).orElseThrow());
+            rolPermiso.setAcceso(accesoParaAsignacion(request.getAccesoId()));
         }
         rolPermiso = rolPermisoRepository.save(rolPermiso);
         if (request.getAcciones() != null) {
             reemplazarAccionesConcedidas(rolPermiso, request.getAcciones());
         }
-        concesionesService.invalidarCambioPermisos(rolesAInvalidar, Set.of());
+        concesionesService.invalidarPermisosDelRol(rolPermiso.getRol().getIdRol());
         return toResponse(rolPermiso);
     }
 
@@ -125,9 +109,55 @@ public class RolPermisoService {
     public void delete(Integer id) {
         RolPermiso rolPermiso = findRolPermiso(id);
         Rol rol = rolPermiso.getRol();
+        validarCambio(rol, rolPermiso.getPermiso(), accionesConcedidasDeRolPermiso(rolPermiso.getIdRolPermiso()), List.of());
         rolPermiso.setAcceso(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
         rolPermisoRepository.save(rolPermiso);
         if (rol != null) concesionesService.invalidarPermisosDelRol(rol.getIdRol());
+    }
+
+    /**
+     * Reglas para no darse más poder (el ADMIN no las tiene):
+     * - el rol ADMIN no se configura: ya tiene todo;
+     * - nadie cambia los permisos de sus propios roles;
+     * - solo se dan o quitan acciones que uno mismo tiene en ese permiso.
+     */
+    private void validarCambio(Rol rol, Permiso permiso, List<String> antes, List<String> despues) {
+        if (RolConstants.esAdmin(rol.getNombre())) {
+            throw new IllegalArgumentException("El rol ADMIN tiene acceso a todo: sus permisos no se configuran");
+        }
+        if (actorSeguridad.esAdminOSistema()) {
+            return;
+        }
+        if (actorSeguridad.idsRolesActuales().contains(rol.getIdRol())) {
+            throw new AccesoDenegadoException("No puedes modificar los permisos de tu propio rol");
+        }
+        Integer idActor = actorSeguridad.idActual().orElseThrow();
+        Set<String> propias = concesionesService.accionesPorPermiso(idActor).get(permiso.getCodigo());
+        if (propias == null) {
+            throw new AccesoDenegadoException("No puedes asignar ni quitar el permiso " + permiso.getNombre()
+                    + " porque tú no lo tienes");
+        }
+        Set<String> cambiadas = new HashSet<>(antes);
+        cambiadas.addAll(despues);
+        Set<String> comunes = new HashSet<>(antes);
+        comunes.retainAll(despues);
+        cambiadas.removeAll(comunes);
+        cambiadas.removeAll(propias);
+        if (!cambiadas.isEmpty()) {
+            throw new AccesoDenegadoException("Solo puedes dar o quitar acciones que tú tienes en "
+                    + permiso.getNombre() + ": " + String.join(", ", new java.util.TreeSet<>(cambiadas)));
+        }
+    }
+
+    /** Una asignación solo queda activa o inactiva por aquí; quitarla es con DELETE. */
+    private Acceso accesoParaAsignacion(Long accesoId) {
+        if (accesoId == null) {
+            return accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow();
+        }
+        if (!AccesoConstants.ACTIVO.equals(accesoId) && !AccesoConstants.INACTIVO.equals(accesoId)) {
+            throw new IllegalArgumentException("Estado no válido: para quitar un permiso usa la opción Quitar");
+        }
+        return accesoRepository.findById(accesoId).orElseThrow();
     }
 
     public PermisosRolResponse obtenerPermisosDelRol(Integer idRol) {
@@ -260,15 +290,6 @@ public class RolPermisoService {
                 throw new IllegalArgumentException("El permiso " + rolPermiso.getPermiso().getCodigo()
                         + " no permite la acción " + codigo);
             }
-        }
-    }
-
-    private void revalidarAccionesContraPermiso(RolPermiso rolPermiso) {
-        List<String> actuales = accionesConcedidasDeRolPermiso(rolPermiso.getIdRolPermiso());
-        Set<String> soportadas = accionesSoportadas(rolPermiso.getPermiso().getIdPermiso());
-        List<String> validas = actuales.stream().filter(soportadas::contains).toList();
-        if (!validas.equals(actuales)) {
-            reemplazarAccionesConcedidas(rolPermiso, validas);
         }
     }
 

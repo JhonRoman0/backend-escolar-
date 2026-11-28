@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -39,14 +40,14 @@ public class AccesoContextoService {
 
     /** Qué parte de los datos de un módulo ve el usuario. */
     public enum Alcance {
-        TODO, DOCENTE, APODERADO, DOCENTE_Y_APODERADO, NINGUNO;
+        TODO, DOCENTE, APODERADO, NINGUNO;
 
         public boolean incluyeDocente() {
-            return this == DOCENTE || this == DOCENTE_Y_APODERADO;
+            return this == DOCENTE;
         }
 
         public boolean incluyeApoderado() {
-            return this == APODERADO || this == DOCENTE_Y_APODERADO;
+            return this == APODERADO;
         }
     }
 
@@ -61,58 +62,68 @@ public class AccesoContextoService {
             "PORTAL_APODERADO", "ALUMNOS", "MATRICULAS", "APODERADOS");
 
     public Integer idUsuarioAutenticado() {
+        UsuarioAutenticado principal = principalAutenticado();
+        return principal == null ? null : principal.idUsuario();
+    }
+
+    public Integer idRolActivoAutenticado() {
+        UsuarioAutenticado principal = principalAutenticado();
+        return principal == null ? null : principal.idRolActivo();
+    }
+
+    private UsuarioAutenticado principalAutenticado() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        UsuarioAutenticado principal = (UsuarioAutenticado) authentication.getPrincipal();
-        return principal.idUsuario();
+        if (authentication == null || !(authentication.getPrincipal() instanceof UsuarioAutenticado)) {
+            return null;
+        }
+        return (UsuarioAutenticado) authentication.getPrincipal();
     }
 
-    public List<String> rolesAutenticados() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        UsuarioAutenticado principal = (UsuarioAutenticado) authentication.getPrincipal();
-        return principal.roles();
+    public Alcance alcance(String permisoCodigo, Integer idUsuario, Integer idRolActivo) {
+        return alcance(permisoCodigo, Operacion.LECTURA, idUsuario, idRolActivo);
     }
 
-    public boolean esAdmin(List<String> roles) {
-        return roles != null && roles.stream().anyMatch(r -> "ADMIN".equalsIgnoreCase(r));
-    }
-
-    public Alcance alcance(String permisoCodigo, Integer idUsuario, List<String> roles) {
-        return alcance(permisoCodigo, Operacion.LECTURA, idUsuario, roles);
-    }
-
-    /**
-     * Permisos y alcance se resuelven juntos, por rol y operación. La unión de
-     * acciones de un rol nunca se combina con el vínculo de otro.
-     */
-    public Alcance alcance(String permisoCodigo, Operacion operacion, Integer idUsuario, List<String> roles) {
-        if (esAdmin(roles)) {
+    public Alcance alcance(String permisoCodigo, Operacion operacion, Integer idUsuario, Integer idRolActivo) {
+        if (!contextoValido(idUsuario, idRolActivo)) {
+            return Alcance.NINGUNO;
+        }
+        if (concesionesService.esAdminActivo(idUsuario, idRolActivo)) {
             return Alcance.TODO;
         }
-
-        boolean concedido = concesionesService.accionesPorPermisoYRol(idUsuario).values().stream()
-                .anyMatch(permisos -> permisos.containsKey(permisoCodigo)
-                        && permiteOperacion(operacion, permisos.get(permisoCodigo)));
-        if (!concedido) {
+        Set<String> permitidas = concesionesService.accionesPorPermiso(idUsuario, idRolActivo).get(permisoCodigo);
+        if (permitidas == null || !permiteOperacion(operacion, permitidas)) {
             return Alcance.NINGUNO;
         }
         if (!PERMISOS_VINCULADOS.contains(permisoCodigo)) {
             return Alcance.TODO;
         }
-        boolean docente = !asignacionesActivasDeDocente(idUsuario).isEmpty();
-        boolean apoderado = operacion != Operacion.ESCRITURA
-                && !"EVALUACIONES".equals(permisoCodigo)
-                && tieneAlumnosVinculados(idUsuario);
-        if (docente && apoderado) {
-            return Alcance.DOCENTE_Y_APODERADO;
+        String nombreRol = concesionesService.nombreRolActivo(idUsuario, idRolActivo);
+        if (esRolDocente(nombreRol)) {
+            return asignacionesActivasDeDocente(idUsuario).isEmpty() ? Alcance.NINGUNO : Alcance.DOCENTE;
         }
-        if (docente) {
-            return Alcance.DOCENTE;
+        if (esRolApoderado(nombreRol)) {
+            return operacion != Operacion.ESCRITURA
+                    && !"EVALUACIONES".equals(permisoCodigo)
+                    && tieneAlumnosVinculados(idUsuario) ? Alcance.APODERADO : Alcance.NINGUNO;
         }
-        return apoderado ? Alcance.APODERADO : Alcance.NINGUNO;
+        return Alcance.NINGUNO;
     }
 
-    public Alcance vinculoEfectivo(Integer idUsuario, List<String> roles) {
-        return esAdmin(roles) ? Alcance.TODO : vinculo(idUsuario);
+    public Alcance vinculoEfectivo(Integer idUsuario, Integer idRolActivo) {
+        if (!contextoValido(idUsuario, idRolActivo)) {
+            return Alcance.NINGUNO;
+        }
+        if (concesionesService.esAdminActivo(idUsuario, idRolActivo)) {
+            return Alcance.TODO;
+        }
+        String nombreRol = concesionesService.nombreRolActivo(idUsuario, idRolActivo);
+        if (esRolDocente(nombreRol)) {
+            return asignacionesActivasDeDocente(idUsuario).isEmpty() ? Alcance.NINGUNO : Alcance.DOCENTE;
+        }
+        if (esRolApoderado(nombreRol)) {
+            return tieneAlumnosVinculados(idUsuario) ? Alcance.APODERADO : Alcance.NINGUNO;
+        }
+        return Alcance.NINGUNO;
     }
 
     public Alcance vinculo(Integer idUsuario) {
@@ -120,6 +131,18 @@ public class AccesoContextoService {
             return Alcance.DOCENTE;
         }
         return tieneAlumnosVinculados(idUsuario) ? Alcance.APODERADO : Alcance.NINGUNO;
+    }
+
+    private boolean contextoValido(Integer idUsuario, Integer idRolActivo) {
+        return idUsuario != null && idRolActivo != null && concesionesService.rolActivoValido(idUsuario, idRolActivo);
+    }
+
+    private boolean esRolDocente(String nombreRol) {
+        return nombreRol != null && UsuarioService.ROL_DOCENTE.equalsIgnoreCase(nombreRol.trim());
+    }
+
+    private boolean esRolApoderado(String nombreRol) {
+        return nombreRol != null && RolConstants.APODERADO.equalsIgnoreCase(nombreRol.trim());
     }
 
     private boolean tieneAlumnosVinculados(Integer idUsuario) {
@@ -143,14 +166,18 @@ public class AccesoContextoService {
                 .orElseGet(List::of);
     }
 
-    public boolean tieneAccion(String permisoCodigo, String accionCodigo, Integer idUsuario, List<String> roles) {
-        return esAdmin(roles) || concesionesService.accionesPorPermiso(idUsuario)
-                .getOrDefault(permisoCodigo, Set.of()).contains(accionCodigo);
+    public boolean tieneAccion(String permisoCodigo, String accionCodigo, Integer idUsuario, Integer idRolActivo) {
+        return contextoValido(idUsuario, idRolActivo)
+                && (concesionesService.esAdminActivo(idUsuario, idRolActivo)
+                || concesionesService.accionesPorPermiso(idUsuario, idRolActivo)
+                .getOrDefault(permisoCodigo, Set.of()).contains(accionCodigo));
     }
 
     /** Tiene el permiso, aunque sea solo para leer. */
-    public boolean tienePermiso(String permisoCodigo, Integer idUsuario, List<String> roles) {
-        return esAdmin(roles) || concesionesService.accionesPorPermiso(idUsuario).containsKey(permisoCodigo);
+    public boolean tienePermiso(String permisoCodigo, Integer idUsuario, Integer idRolActivo) {
+        return contextoValido(idUsuario, idRolActivo)
+                && (concesionesService.esAdminActivo(idUsuario, idRolActivo)
+                || concesionesService.accionesPorPermiso(idUsuario, idRolActivo).containsKey(permisoCodigo));
     }
 
     public Optional<Docente> docenteDeUsuario(Integer idUsuario) {

@@ -36,12 +36,12 @@ public class BoletaService {
     private final NotaFinalAnualRepository notaAnualRepository;
 
     @Transactional(readOnly = true)
-    public BoletaResponse boletas(Integer idGradoSeccion, Integer periodo, Integer idUsuario, List<String> roles) {
+    public BoletaResponse boletas(Integer idGradoSeccion, Integer periodo, Integer idUsuario, Integer idRolActivo) {
         Acceso eliminado = accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow();
         GradoSeccion gs = gradoSeccionRepository.findById(idGradoSeccion)
                 .filter(g -> !AccesoConstants.ELIMINADO.equals(g.getAcceso().getIdAcceso()))
                 .orElseThrow(() -> new ResourceNotFoundException("Sección no encontrada"));
-        if (!notaFinalService.puedeExportarSeccionCompleta(idUsuario, roles)) {
+        if (!notaFinalService.puedeExportarSeccionCompleta(idUsuario, idRolActivo)) {
             throw new ResourceNotFoundException("Sección no encontrada o fuera de tus asignaciones");
         }
         AnioEscolar anio = gs.getAnioEscolar();

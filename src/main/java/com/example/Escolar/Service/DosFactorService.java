@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -69,6 +70,27 @@ public class DosFactorService {
     public record Verificado(Usuario usuario, String tokenDispositivo, Integer idDispositivo) {
     }
 
+    public enum PropositoDesafio {
+        DOS_FACTOR("2FA:"),
+        SELECCION_ROL("SELROL:");
+
+        private final String prefijo;
+
+        PropositoDesafio(String prefijo) {
+            this.prefijo = prefijo;
+        }
+
+        public String prefijo() {
+            return prefijo;
+        }
+
+        public static PropositoDesafio desde(String desafio) {
+            return desafio != null && desafio.startsWith(SELECCION_ROL.prefijo)
+                    ? SELECCION_ROL
+                    : DOS_FACTOR;
+        }
+    }
+
     public boolean activo() {
         return activo;
     }
@@ -109,18 +131,18 @@ public class DosFactorService {
     }
 
     /** Contraseña correcta: crea el desafío y envía el primer código. */
+    @Transactional
     public Desafio iniciar(Usuario usuario, Contexto contexto) {
         String correo = correoDe(usuario);
         LocalDateTime ahora = LocalDateTime.now();
         validarEnviosPorHora(usuario, ahora);
-        String desafio = HashSeguro.tokenAleatorio();
-        usuario.setDosFactorDesafio(HashSeguro.sha256(desafio));
-        usuario.setDosFactorDesafioExpiracion(ahora.plusMinutes(MINUTOS_DESAFIO));
-        enviarCodigo(usuario, correo, contexto, ahora);
+        String desafio = emitirDesafio(usuario, PropositoDesafio.DOS_FACTOR, MINUTOS_DESAFIO);
+        enviarCodigo(usuario, correo, contexto, ahora, HashSeguro.sha256(desafio));
         return new Desafio(desafio, enmascarar(correo), AuthService.SEGUNDOS_REENVIO_CODIGO, MINUTOS_CODIGO);
     }
 
     /** Código nuevo para el mismo desafío; el anterior deja de valer. */
+    @Transactional
     public Desafio reenviar(String desafio, Contexto contexto) {
         Usuario usuario = porDesafio(desafio);
         String correo = correoDe(usuario);
@@ -133,7 +155,7 @@ public class DosFactorService {
             }
         }
         validarEnviosPorHora(usuario, ahora);
-        enviarCodigo(usuario, correo, contexto, ahora);
+        enviarCodigo(usuario, correo, contexto, ahora, HashSeguro.sha256(desafio));
         return new Desafio(desafio, enmascarar(correo), AuthService.SEGUNDOS_REENVIO_CODIGO, MINUTOS_CODIGO);
     }
 
@@ -141,8 +163,9 @@ public class DosFactorService {
      * Valida el código. Los errores suman a los intentos fallidos de la cuenta (los
      * mismos de la contraseña): al llegar al tope la cuenta se bloquea.
      */
+    @Transactional(noRollbackFor = {ResourceNotFoundException.class, CuentaBloqueadaException.class})
     public Verificado verificar(String desafio, String codigo, boolean recordar, String tokenDispositivo,
-                                Contexto contexto) {
+                                 Contexto contexto) {
         Usuario usuario = porDesafio(desafio);
         int intentos = usuario.getIntentosFallidos() == null ? 0 : usuario.getIntentosFallidos();
         if (usuario.getFechaBloqueo() != null && intentos >= AuthService.MAX_INTENTOS_FALLIDOS) {
@@ -157,30 +180,30 @@ public class DosFactorService {
         if (!HashSeguro.sha256(codigo).equals(usuario.getDosFactorCodigo())) {
             intentos++;
             usuario.setIntentosFallidos(intentos);
+            String hash = HashSeguro.sha256(desafio);
+            LocalDateTime bloqueo = intentos >= AuthService.MAX_INTENTOS_FALLIDOS ? ahora : null;
+            int afectadas = usuarioRepository.registrarIntentos(usuario.getIdUsuario(), hash, intentos, bloqueo);
+            if (afectadas == 0) {
+                throw new DosFactorVencidoException("La verificación ya no es válida. Vuelve a iniciar sesión.");
+            }
             if (intentos >= AuthService.MAX_INTENTOS_FALLIDOS) {
-                usuario.setFechaBloqueo(ahora);
+                usuario.setFechaBloqueo(bloqueo);
+                usuarioRepository.limpiarDesafioPorHash(usuario.getIdUsuario(), hash);
                 limpiar(usuario);
-                usuarioRepository.save(usuario);
                 throw new CuentaBloqueadaException(AuthService.MENSAJE_BLOQUEO);
             }
-            usuarioRepository.save(usuario);
             int restantes = AuthService.MAX_INTENTOS_FALLIDOS - intentos;
             throw new ResourceNotFoundException("El código ingresado es incorrecto. Te queda"
                     + (restantes == 1 ? "" : "n") + " " + restantes + " intento" + (restantes == 1 ? "" : "s")
                     + " antes del bloqueo.");
         }
-        limpiar(usuario);
-        // El tope por hora frena códigos que nadie usa; uno bien usado lo reinicia
-        // (entrar y salir varias veces no debe bloquear al dueño del correo).
-        usuario.setDosFactorEnvios(0);
-        usuario.setDosFactorVentana(null);
-        Usuario guardado = usuarioRepository.save(usuario);
+        consumirDesafioDosFactor(usuario, desafio);
         String token = tokenDispositivo == null || tokenDispositivo.isBlank() || tokenDispositivo.length() > 100
                 ? HashSeguro.tokenAleatorio() : tokenDispositivo;
-        DispositivoUsuario dispositivo = registrarDispositivo(guardado, token, recordar, contexto, ahora);
+        DispositivoUsuario dispositivo = registrarDispositivo(usuario, token, recordar, contexto, ahora);
         // Sus otras pestañas ven el dispositivo (nuevo o con su último uso) en Mi perfil.
-        eventosService.avisarCuenta(guardado.getIdUsuario());
-        return new Verificado(guardado, token, dispositivo.getIdDispositivo());
+        eventosService.avisarCuenta(usuario.getIdUsuario());
+        return new Verificado(usuario, token, dispositivo.getIdDispositivo());
     }
 
     // ───────────── Dispositivos del usuario (Mi perfil) ─────────────
@@ -210,12 +233,21 @@ public class DosFactorService {
 
     // ───────────── Internos ─────────────
 
-    private void enviarCodigo(Usuario usuario, String correo, Contexto contexto, LocalDateTime ahora) {
+    private void enviarCodigo(Usuario usuario, String correo, Contexto contexto, LocalDateTime ahora,
+                              String desafioHash) {
         String codigo = HashSeguro.codigo6Digitos();
-        usuario.setDosFactorCodigo(HashSeguro.sha256(codigo));
-        usuario.setDosFactorCodigoExpiracion(ahora.plusMinutes(MINUTOS_CODIGO));
+        String hash = HashSeguro.sha256(codigo);
+        LocalDateTime expiracion = ahora.plusMinutes(MINUTOS_CODIGO);
+        LocalDateTime ventana = usuario.getDosFactorVentana();
+        Integer envios = usuario.getDosFactorEnvios();
+        int afectadas = usuarioRepository.guardarCodigo(usuario.getIdUsuario(), desafioHash, hash,
+                expiracion, ahora, envios, ventana);
+        if (afectadas == 0) {
+            throw new DosFactorVencidoException("La verificación ya no es válida. Vuelve a iniciar sesión.");
+        }
+        usuario.setDosFactorCodigo(hash);
+        usuario.setDosFactorCodigoExpiracion(expiracion);
         usuario.setDosFactorEnviado(ahora);
-        usuarioRepository.save(usuario);
         boolean enviado = emailService.enviarCodigoDosFactor(correo, usuario.getNombre(), codigo, MINUTOS_CODIGO,
                 contexto.navegador(), FORMATO_FECHA.format(LocalDateTime.now(FechaColegio.ZONA)));
         if (!enviado) {
@@ -239,22 +271,127 @@ public class DosFactorService {
         usuario.setDosFactorEnvios(envios + 1);
     }
 
-    private Usuario porDesafio(String desafio) {
-        Usuario usuario = desafio == null || desafio.isBlank() ? null
-                : usuarioRepository.findByDosFactorDesafio(HashSeguro.sha256(desafio)).orElse(null);
+    @Transactional
+    public String emitirDesafio(Usuario usuario, PropositoDesafio proposito, int minutos) {
+        return emitirDesafio(usuario, proposito, minutos, null);
+    }
+
+    @Transactional
+    public String emitirDesafio(Usuario usuario, PropositoDesafio proposito, int minutos, Integer idDispositivo) {
+        String desafio = nuevoToken(proposito, usuario, idDispositivo);
+        String hash = HashSeguro.sha256(desafio);
+        LocalDateTime expiracion = LocalDateTime.now().plusMinutes(minutos);
+        int afectadas = usuarioRepository.guardarDesafio(usuario.getIdUsuario(), hash, expiracion);
+        if (afectadas == 0) {
+            throw new DosFactorVencidoException("La verificación ya no es válida. Vuelve a iniciar sesión.");
+        }
+        usuario.setDosFactorDesafio(hash);
+        usuario.setDosFactorDesafioExpiracion(expiracion);
+        return desafio;
+    }
+
+    public Usuario validarDesafio(String desafio, PropositoDesafio proposito) {
+        validarProposito(desafio, proposito);
+        Usuario usuario = usuarioRepository.findByDosFactorDesafio(HashSeguro.sha256(desafio)).orElse(null);
         if (usuario == null) {
             throw new DosFactorVencidoException("La verificación ya no es válida. Vuelve a iniciar sesión.");
         }
         if (usuario.getDosFactorDesafioExpiracion() == null
                 || LocalDateTime.now().isAfter(usuario.getDosFactorDesafioExpiracion())) {
-            limpiar(usuario);
-            usuarioRepository.save(usuario);
+            int afectadas = usuarioRepository.limpiarDesafioPorHash(usuario.getIdUsuario(), HashSeguro.sha256(desafio));
+            if (afectadas > 0) {
+                limpiar(usuario);
+            }
             throw new DosFactorVencidoException("Se acabó el tiempo para verificar. Vuelve a iniciar sesión.");
         }
-        if (!AccesoConstants.ACTIVO.equals(usuario.getAcceso().getIdAcceso())) {
+        if (usuario.getAcceso() == null
+                || !AccesoConstants.ACTIVO.equals(usuario.getAcceso().getIdAcceso())) {
             throw new DosFactorVencidoException("La verificación ya no es válida. Vuelve a iniciar sesión.");
         }
         return usuario;
+    }
+
+    @Transactional
+    public void consumirDesafio(Usuario usuario, String desafio, PropositoDesafio proposito) {
+        validarProposito(desafio, proposito);
+        int version = version(desafio, proposito, usuario);
+        int afectadas = usuarioRepository.consumirDesafio(usuario.getIdUsuario(), HashSeguro.sha256(desafio),
+                LocalDateTime.now(), AccesoConstants.ACTIVO, version);
+        if (afectadas == 0) {
+            throw new DosFactorVencidoException("La verificación ya no es válida. Vuelve a iniciar sesión.");
+        }
+        limpiarDesafio(usuario);
+    }
+
+    @Transactional
+    public void consumirDesafioDosFactor(Usuario usuario, String desafio) {
+        validarProposito(desafio, PropositoDesafio.DOS_FACTOR);
+        int afectadas = usuarioRepository.consumirDesafioDosFactor(usuario.getIdUsuario(), HashSeguro.sha256(desafio),
+                LocalDateTime.now(), AccesoConstants.ACTIVO, version(usuario));
+        if (afectadas == 0) {
+            throw new DosFactorVencidoException("La verificación ya no es válida. Vuelve a iniciar sesión.");
+        }
+        limpiar(usuario);
+        usuario.setIntentosFallidos(0);
+        usuario.setFechaBloqueo(null);
+        usuario.setDosFactorEnvios(0);
+        usuario.setDosFactorVentana(null);
+    }
+
+    private Usuario porDesafio(String desafio) {
+        return validarDesafio(desafio, PropositoDesafio.DOS_FACTOR);
+    }
+
+    private void validarProposito(String desafio, PropositoDesafio esperado) {
+        if (desafio == null || desafio.isBlank() || PropositoDesafio.desde(desafio) != esperado) {
+            throw new DosFactorVencidoException("La verificación ya no es válida. Vuelve a iniciar sesión.");
+        }
+    }
+
+    public Integer idDispositivo(String desafio, PropositoDesafio proposito) {
+        validarProposito(desafio, proposito);
+        if (proposito != PropositoDesafio.SELECCION_ROL) {
+            return null;
+        }
+        String[] partes = desafio.substring(proposito.prefijo().length()).split(":", -1);
+        if (partes.length < 3) {
+            throw new DosFactorVencidoException("La verificación ya no es válida. Vuelve a iniciar sesión.");
+        }
+        try {
+            int id = Integer.parseInt(partes[1]);
+            return id == 0 ? null : id;
+        } catch (NumberFormatException e) {
+            throw new DosFactorVencidoException("La verificación ya no es válida. Vuelve a iniciar sesión.");
+        }
+    }
+
+    private String nuevoToken(PropositoDesafio proposito, Usuario usuario, Integer idDispositivo) {
+        String aleatorio = HashSeguro.tokenAleatorio();
+        if (proposito != PropositoDesafio.SELECCION_ROL) {
+            return proposito.prefijo() + aleatorio;
+        }
+        int dispositivo = idDispositivo == null ? 0 : idDispositivo;
+        return proposito.prefijo() + version(usuario) + ":" + dispositivo + ":" + aleatorio;
+    }
+
+    private int version(String desafio, PropositoDesafio proposito, Usuario usuario) {
+        if (proposito != PropositoDesafio.SELECCION_ROL) {
+            return version(usuario);
+        }
+        String resto = desafio.substring(proposito.prefijo().length());
+        int separador = resto.indexOf(':');
+        if (separador <= 0) {
+            return -1;
+        }
+        try {
+            return Integer.parseInt(resto.substring(0, separador));
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    private int version(Usuario usuario) {
+        return usuario.getVersionToken() == null ? 0 : usuario.getVersionToken();
     }
 
     // La cookie identifica al navegador; si varias personas lo comparten, cada
@@ -305,10 +442,14 @@ public class DosFactorService {
     }
 
     private void limpiar(Usuario usuario) {
-        usuario.setDosFactorDesafio(null);
-        usuario.setDosFactorDesafioExpiracion(null);
+        limpiarDesafio(usuario);
         usuario.setDosFactorCodigo(null);
         usuario.setDosFactorCodigoExpiracion(null);
+    }
+
+    private void limpiarDesafio(Usuario usuario) {
+        usuario.setDosFactorDesafio(null);
+        usuario.setDosFactorDesafioExpiracion(null);
     }
 
     private String correoDe(Usuario usuario) {

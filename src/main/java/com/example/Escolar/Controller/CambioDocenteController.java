@@ -43,7 +43,7 @@ public class CambioDocenteController {
     @GetMapping("/docente/{idDocente}/asignaciones")
     public List<AsignacionResponse> asignacionesParaCambio(@PathVariable Integer idDocente) {
         return asignacionService.asignacionesParaCambio(idDocente,
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 
     @PostMapping

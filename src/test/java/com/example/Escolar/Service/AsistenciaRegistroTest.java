@@ -52,7 +52,7 @@ class AsistenciaRegistroTest {
 
     private final Acceso activo = new Acceso(AccesoConstants.ACTIVO, "Activo");
     private final Acceso eliminado = new Acceso(AccesoConstants.ELIMINADO, "Eliminado");
-    private final List<String> roles = List.of("Auxiliar");
+    private final Integer idRolActivo = 1;
     private final LocalDate hoy = LocalDate.now();
     private Turno turno;
     private Alumno alumno;
@@ -100,11 +100,11 @@ class AsistenciaRegistroTest {
 
         when(alumnoRepository.findByCodigoAndAccesoNot("A2026001", eliminado)).thenReturn(Optional.of(alumno));
         when(accesoContextoService.matriculaActual(9)).thenReturn(Optional.of(matricula));
-        when(accesoContextoService.tieneAccion("ASISTENCIAS", "CREAR", 7, roles)).thenReturn(true);
-        when(accesoContextoService.tieneAccion("ASISTENCIAS", "ELIMINAR", 7, roles)).thenReturn(true);
-        when(accesoContextoService.alcance(eq("ASISTENCIAS"), eq(AccesoContextoService.Operacion.LECTURA), eq(7), any()))
+        when(accesoContextoService.tieneAccion("ASISTENCIAS", "CREAR", 7, idRolActivo)).thenReturn(true);
+        when(accesoContextoService.tieneAccion("ASISTENCIAS", "ELIMINAR", 7, idRolActivo)).thenReturn(true);
+        when(accesoContextoService.alcance(eq("ASISTENCIAS"), eq(AccesoContextoService.Operacion.LECTURA), eq(7), eq(idRolActivo)))
                 .thenReturn(Alcance.TODO);
-        when(accesoContextoService.alcance(eq("ASISTENCIAS"), eq(AccesoContextoService.Operacion.ESCRITURA), eq(7), any()))
+        when(accesoContextoService.alcance(eq("ASISTENCIAS"), eq(AccesoContextoService.Operacion.ESCRITURA), eq(7), eq(idRolActivo)))
                 .thenReturn(Alcance.TODO);
         when(accesoContextoService.docenteDeUsuario(7)).thenReturn(Optional.empty());
         when(calendario.esDiaDeClase(eq(anio), any(), any())).thenReturn(true);
@@ -155,7 +155,7 @@ class AsistenciaRegistroTest {
     void ingresoJustificadoExigeQuienLoTrajo() {
         pasadoElLimiteDeTardanza();
 
-        var ex = assertThrows(IllegalArgumentException.class, () -> service.confirmar(pedido(" "), foto(), 7, roles));
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.confirmar(pedido(" "), foto(), 7, idRolActivo));
 
         assertTrue(ex.getMessage().contains("persona"), ex.getMessage());
         verify(asistenciaAlumnoRepository, never()).save(any());
@@ -165,7 +165,7 @@ class AsistenciaRegistroTest {
     void ingresoJustificadoExigeLaFoto() {
         pasadoElLimiteDeTardanza();
 
-        var ex = assertThrows(IllegalArgumentException.class, () -> service.confirmar(pedido("María López"), null, 7, roles));
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.confirmar(pedido("María López"), null, 7, idRolActivo));
 
         assertTrue(ex.getMessage().contains("foto"), ex.getMessage());
         verifyNoInteractions(cloudinaryService);
@@ -179,7 +179,7 @@ class AsistenciaRegistroTest {
         subida.setPublicId("asistencias/evidencias/abc");
         when(cloudinaryService.upload(any(), eq(AsistenciaService.CARPETA_EVIDENCIAS))).thenReturn(subida);
 
-        var respuesta = service.confirmar(pedido("María López"), foto(), 7, roles);
+        var respuesta = service.confirmar(pedido("María López"), foto(), 7, idRolActivo);
 
         ArgumentCaptor<AsistenciaAlumno> guardada = ArgumentCaptor.forClass(AsistenciaAlumno.class);
         verify(asistenciaAlumnoRepository).save(guardada.capture());
@@ -196,20 +196,20 @@ class AsistenciaRegistroTest {
         subida.setUrl("https://img/e.jpg");
         when(cloudinaryService.upload(any(), anyString())).thenReturn(subida);
 
-        service.previsualizar(pedido("Maria Lopez"), 7, roles);
-        service.confirmar(pedido("Maria Lopez"), foto(), 7, roles);
+        service.previsualizar(pedido("Maria Lopez"), 7, idRolActivo);
+        service.confirmar(pedido("Maria Lopez"), foto(), 7, idRolActivo);
 
         verify(asistenciaAlumnoRepository).save(any());
         verify(accesoContextoService, never()).gradoSeccionIdsDeDocente(7);
-        assertThrows(IllegalArgumentException.class, () -> service.justificar(11, new JustificarRequest(), 7, roles));
+        assertThrows(IllegalArgumentException.class, () -> service.justificar(11, new JustificarRequest(), 7, idRolActivo));
         verify(asistenciaAlumnoRepository, never()).findByIdAsistenciaAndAccesoNot(any(), any());
     }
 
     @Test
     void actualizarPermiteJustificarSinAsignacionesPeroNoRegistrarNiAnular() {
-        when(accesoContextoService.tieneAccion("ASISTENCIAS", "CREAR", 7, roles)).thenReturn(false);
-        when(accesoContextoService.tieneAccion("ASISTENCIAS", "ELIMINAR", 7, roles)).thenReturn(false);
-        when(accesoContextoService.tieneAccion("ASISTENCIAS", "ACTUALIZAR", 7, roles)).thenReturn(true);
+        when(accesoContextoService.tieneAccion("ASISTENCIAS", "CREAR", 7, idRolActivo)).thenReturn(false);
+        when(accesoContextoService.tieneAccion("ASISTENCIAS", "ELIMINAR", 7, idRolActivo)).thenReturn(false);
+        when(accesoContextoService.tieneAccion("ASISTENCIAS", "ACTUALIZAR", 7, idRolActivo)).thenReturn(true);
         AsistenciaAlumno marca = new AsistenciaAlumno();
         marca.setIdAsistencia(11);
         marca.setMatricula(matricula);
@@ -223,38 +223,38 @@ class AsistenciaRegistroTest {
         JustificarRequest request = new JustificarRequest();
         request.setIdJustificacion(4);
 
-        service.justificar(11, request, 7, roles);
+        service.justificar(11, request, 7, idRolActivo);
 
         assertEquals(AsistenciaService.ESTADO_JUSTIFICADA, marca.getEstado().getNombre());
         verify(accesoContextoService, never()).gradoSeccionIdsDeDocente(7);
-        assertThrows(IllegalArgumentException.class, () -> service.confirmar(pedido(null), null, 7, roles));
-        assertThrows(IllegalArgumentException.class, () -> service.anular(11, "Motivo suficiente", 7, roles));
+        assertThrows(IllegalArgumentException.class, () -> service.confirmar(pedido(null), null, 7, idRolActivo));
+        assertThrows(IllegalArgumentException.class, () -> service.anular(11, "Motivo suficiente", 7, idRolActivo));
         anio.setEstado(AnioEscolarService.ESTADO_CERRADO);
-        assertThrows(IllegalArgumentException.class, () -> service.justificar(11, request, 7, roles));
+        assertThrows(IllegalArgumentException.class, () -> service.justificar(11, request, 7, idRolActivo));
         verify(asistenciaAlumnoRepository, times(1)).save(any());
     }
 
     @Test
     void alcanceCentralSoloAplicaALaConsultaOperativaDeHoy() {
         turno.setHoraFaltaLimite(LocalTime.MAX);
-        when(accesoContextoService.alcance("ASISTENCIAS", AccesoContextoService.Operacion.LECTURA, 7, roles))
+        when(accesoContextoService.alcance("ASISTENCIAS", AccesoContextoService.Operacion.LECTURA, 7, idRolActivo))
                 .thenReturn(Alcance.DOCENTE);
         when(accesoContextoService.gradoSeccionIdsDeDocente(7)).thenReturn(Set.of(99));
         var filtro = AsistenciaService.Filtro.delAnio(null);
-        assertEquals(1, service.asistenciasHoy(7, roles, filtro, Pageable.unpaged()).getTotalElements());
-        assertTrue(service.matrizSemanal(hoy, Pageable.unpaged(), 7, roles, filtro).isEmpty());
+        assertEquals(1, service.asistenciasHoy(7, idRolActivo, filtro, Pageable.unpaged()).getTotalElements());
+        assertTrue(service.matrizSemanal(hoy, Pageable.unpaged(), 7, idRolActivo, filtro).isEmpty());
 
-        when(accesoContextoService.tieneAccion("ASISTENCIAS", "CREAR", 7, roles)).thenReturn(false);
-        assertTrue(service.asistenciasHoy(7, roles, filtro, Pageable.unpaged()).isEmpty());
+        when(accesoContextoService.tieneAccion("ASISTENCIAS", "CREAR", 7, idRolActivo)).thenReturn(false);
+        assertTrue(service.asistenciasHoy(7, idRolActivo, filtro, Pageable.unpaged()).isEmpty());
 
-        when(accesoContextoService.alcance("ASISTENCIAS", AccesoContextoService.Operacion.LECTURA, 7, roles))
+        when(accesoContextoService.alcance("ASISTENCIAS", AccesoContextoService.Operacion.LECTURA, 7, idRolActivo))
                 .thenReturn(Alcance.APODERADO);
-        assertTrue(service.asistenciasHoy(7, roles, filtro, Pageable.unpaged()).isEmpty());
+        assertTrue(service.asistenciasHoy(7, idRolActivo, filtro, Pageable.unpaged()).isEmpty());
         Apoderado apoderado = new Apoderado();
         when(accesoContextoService.apoderadoDeUsuario(7)).thenReturn(Optional.of(apoderado));
         when(accesoContextoService.matriculasDeHijos(apoderado)).thenReturn(List.of(matricula));
-        assertEquals(1, service.asistenciasHoy(7, roles, filtro, Pageable.unpaged()).getTotalElements());
-        assertThrows(IllegalArgumentException.class, () -> service.previsualizar(pedido(null), 7, roles));
+        assertEquals(1, service.asistenciasHoy(7, idRolActivo, filtro, Pageable.unpaged()).getTotalElements());
+        assertThrows(IllegalArgumentException.class, () -> service.previsualizar(pedido(null), 7, idRolActivo));
     }
 
     @Test
@@ -267,12 +267,12 @@ class AsistenciaRegistroTest {
         marca.setAcceso(activo);
         when(asistenciaAlumnoRepository.findByIdAsistenciaAndAccesoNot(11, eliminado)).thenReturn(Optional.of(marca));
 
-        assertThrows(IllegalArgumentException.class, () -> service.anular(11, "Se escaneó otro QR", 7, roles));
+        assertThrows(IllegalArgumentException.class, () -> service.anular(11, "Se escaneó otro QR", 7, idRolActivo));
 
         marca.setFecha(hoy);
-        assertThrows(IllegalArgumentException.class, () -> service.anular(11, "  ", 7, roles));
+        assertThrows(IllegalArgumentException.class, () -> service.anular(11, "  ", 7, idRolActivo));
 
-        service.anular(11, "Se escaneó otro QR", 7, roles);
+        service.anular(11, "Se escaneó otro QR", 7, idRolActivo);
         assertEquals(AccesoConstants.ELIMINADO, marca.getAcceso().getIdAcceso());
         // Queda como avisado: la tarea de faltas no le escribe al apoderado.
         verify(avisoFaltaRepository).save(any(AvisoFalta.class));
@@ -282,7 +282,7 @@ class AsistenciaRegistroTest {
     void enUnDiaSinClasesNoSeRegistra() {
         when(calendario.esDiaDeClase(eq(anio), any(), any())).thenReturn(false);
 
-        assertThrows(IllegalArgumentException.class, () -> service.confirmar(pedido(null), null, 7, roles));
+        assertThrows(IllegalArgumentException.class, () -> service.confirmar(pedido(null), null, 7, idRolActivo));
         verify(asistenciaAlumnoRepository, never()).save(any());
     }
 
@@ -290,7 +290,7 @@ class AsistenciaRegistroTest {
     void soloConMatriculaEnElAnioVigente() {
         anio.setEstado(AnioEscolarService.ESTADO_CERRADO);
 
-        var ex = assertThrows(IllegalArgumentException.class, () -> service.confirmar(pedido(null), null, 7, roles));
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.confirmar(pedido(null), null, 7, idRolActivo));
 
         assertTrue(ex.getMessage().contains("año escolar vigente"), ex.getMessage());
     }
@@ -310,11 +310,11 @@ class AsistenciaRegistroTest {
     @Test
     void laBusquedaEncuentraPorDniYPorNombre() {
         turno.setHoraFaltaLimite(LocalTime.MAX);
-        var porDni = service.asistenciasHoy(7, roles,
+        var porDni = service.asistenciasHoy(7, idRolActivo,
                 new AsistenciaService.Filtro(null, null, null, null, null, null, "71234567", null), Pageable.unpaged());
-        var porNombre = service.asistenciasHoy(7, roles,
+        var porNombre = service.asistenciasHoy(7, idRolActivo,
                 new AsistenciaService.Filtro(null, null, null, null, null, null, "ana perez", null), Pageable.unpaged());
-        var otro = service.asistenciasHoy(7, roles,
+        var otro = service.asistenciasHoy(7, idRolActivo,
                 new AsistenciaService.Filtro(null, null, null, null, null, null, "luis", null), Pageable.unpaged());
 
         assertEquals(1, porDni.getContent().size());
@@ -327,9 +327,9 @@ class AsistenciaRegistroTest {
     void elFiltroDeEstadoFiltraDeVerdad() {
         turno.setHoraFaltaLimite(LocalTime.MAX);
 
-        assertEquals(1, service.asistenciasHoy(7, roles, new AsistenciaService.Filtro(null, null, null, null, null, null, null,
+        assertEquals(1, service.asistenciasHoy(7, idRolActivo, new AsistenciaService.Filtro(null, null, null, null, null, null, null,
                 AsistenciaService.ESTADO_PENDIENTE), Pageable.unpaged()).getContent().size());
-        assertTrue(service.asistenciasHoy(7, roles, new AsistenciaService.Filtro(null, null, null, null, null, null, null,
+        assertTrue(service.asistenciasHoy(7, idRolActivo, new AsistenciaService.Filtro(null, null, null, null, null, null, null,
                 AsistenciaService.ESTADO_TARDANZA), Pageable.unpaged()).getContent().isEmpty());
     }
 }

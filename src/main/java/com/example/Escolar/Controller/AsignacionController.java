@@ -26,17 +26,17 @@ public class AsignacionController {
 
     @GetMapping
     public List<AsignacionResponse> getAll() {
-        return asignacionService.getAll(accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+        return asignacionService.getAll(accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 
     @GetMapping("/{id}")
     public AsignacionResponse getById(@PathVariable Integer id) {
-        return asignacionService.getById(id, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+        return asignacionService.getById(id, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 
     @GetMapping("/docente/{idDocente}")
     public List<AsignacionResponse> getByDocente(@PathVariable Integer idDocente) {
-        return asignacionService.getByDocente(idDocente, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+        return asignacionService.getByDocente(idDocente, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 
     /**

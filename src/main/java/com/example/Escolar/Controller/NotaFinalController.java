@@ -21,35 +21,35 @@ public class NotaFinalController {
 
     @GetMapping("/cursos")
     public List<NotaFinalResponse.Curso> cursos(@RequestParam Integer idAnio) {
-        return notaFinalService.cursos(idAnio, usuario(), roles());
+        return notaFinalService.cursos(idAnio, usuario(), idRolActivo());
     }
 
     @GetMapping
     public NotaFinalResponse.Detalle detalle(@RequestParam Integer idGradoSeccion, @RequestParam Integer idArea,
                                              @RequestParam Integer periodo) {
-        return notaFinalService.detalle(idGradoSeccion, idArea, periodo, usuario(), roles());
+        return notaFinalService.detalle(idGradoSeccion, idArea, periodo, usuario(), idRolActivo());
     }
 
     @PutMapping
     public NotaFinalResponse.Detalle registrar(@Valid @RequestBody NotaFinalRequest request) {
-        return notaFinalService.registrar(request, usuario(), roles());
+        return notaFinalService.registrar(request, usuario(), idRolActivo());
     }
 
     @PutMapping("/correccion")
     public NotaFinalResponse.Detalle corregir(@Valid @RequestBody NotaFinalRequest request) {
-        return notaFinalService.corregir(request, usuario(), roles());
+        return notaFinalService.corregir(request, usuario(), idRolActivo());
     }
 
     @PostMapping("/reapertura")
     public NotaFinalResponse.Detalle reabrir(@Valid @RequestBody ReaperturaNotaRequest request) {
-        return notaFinalService.reabrir(request, usuario(), roles());
+        return notaFinalService.reabrir(request, usuario(), idRolActivo());
     }
 
     private Integer usuario() {
         return accesoContextoService.idUsuarioAutenticado();
     }
 
-    private List<String> roles() {
-        return accesoContextoService.rolesAutenticados();
+    private Integer idRolActivo() {
+        return accesoContextoService.idRolActivoAutenticado();
     }
 }

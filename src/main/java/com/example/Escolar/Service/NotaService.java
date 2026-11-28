@@ -35,7 +35,7 @@ public class NotaService {
     private final AccesoContextoService accesoContextoService;
     private final AccesoRepository accesoRepository;
 
-    public List<NotaResponse> getPorCompetencia(Integer idCompetencia, Byte bimestre, Integer idUsuario, List<String> roles) {
+    public List<NotaResponse> getPorCompetencia(Integer idCompetencia, Byte bimestre, Integer idUsuario, Integer idRolActivo) {
         findCompetencia(idCompetencia);
         List<Nota> notas;
         if (bimestre != null) {
@@ -46,7 +46,7 @@ public class NotaService {
                 notas = notaRepository.findByCompetenciaIdCompetenciaAndBimestreAndAccesoNot(idCompetencia, (byte) 1, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
             }
         }
-        Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, roles);
+        Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, idRolActivo);
         Visibilidad visibilidad = visibilidad(alcance, idUsuario);
         return notas.stream()
                 .filter(visibilidad::incluye)
@@ -54,9 +54,9 @@ public class NotaService {
                 .toList();
     }
 
-    public List<NotaResponse> getPorMatricula(Integer idMatricula, Integer idUsuario, List<String> roles) {
+    public List<NotaResponse> getPorMatricula(Integer idMatricula, Integer idUsuario, Integer idRolActivo) {
         Matricula matricula = findMatricula(idMatricula);
-        Visibilidad visibilidad = visibilidad(accesoContextoService.alcance(PERMISO, idUsuario, roles), idUsuario);
+        Visibilidad visibilidad = visibilidad(accesoContextoService.alcance(PERMISO, idUsuario, idRolActivo), idUsuario);
         if (!visibilidad.puedeConsultar(matricula)) {
             throw new ResourceNotFoundException("Matricula no encontrada con id " + idMatricula);
         }
@@ -73,8 +73,8 @@ public class NotaService {
 
     @Transactional(readOnly = true)
     public List<NotaReporteResponse> reporte(LocalDate inicio, LocalDate fin, Integer idGradoSeccion, Integer bimestre,
-                                             Integer idUsuario, List<String> roles) {
-        Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, roles);
+                                             Integer idUsuario, Integer idRolActivo) {
+        Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, idRolActivo);
         Visibilidad visibilidad = visibilidad(alcance, idUsuario);
         return notaRepository.findByFechaRegistroBetweenAndAccesoNot(inicio, fin, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
                 .filter(visibilidad::incluye)

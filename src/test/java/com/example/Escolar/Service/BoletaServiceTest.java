@@ -39,7 +39,7 @@ class BoletaServiceTest {
 
     private final Acceso activo = new Acceso(AccesoConstants.ACTIVO, "Activo");
     private final Acceso eliminado = new Acceso(AccesoConstants.ELIMINADO, "Eliminado");
-    private final List<String> roles = List.of("ADMIN");
+    private final Integer idRolActivo = 1;
     private final LocalDate hoy = LocalDate.now();
     private Competencia c1;
     private Matricula ana;
@@ -137,7 +137,7 @@ class BoletaServiceTest {
 
     @Test
     void llevaLosPeriodosHastaElElegido() {
-        BoletaResponse boleta = service.boletas(26, 2, 7, roles);
+        BoletaResponse boleta = service.boletas(26, 2, 7, idRolActivo);
 
         assertEquals(List.of(1, 2), boleta.periodos().stream().map(PeriodoEvaluacionResponse::numero).toList());
         assertEquals("1ro", boleta.seccion().grado());
@@ -145,7 +145,7 @@ class BoletaServiceTest {
 
     @Test
     void juntaLasNotasDeCadaPeriodoPorCompetencia() {
-        BoletaResponse.AlumnoBoleta fila = service.boletas(26, 2, 7, roles).alumnos().get(0);
+        BoletaResponse.AlumnoBoleta fila = service.boletas(26, 2, 7, idRolActivo).alumnos().get(0);
 
         assertEquals("B", fila.notas().get(11).get(1));
         assertEquals("A", fila.notas().get(11).get(2));
@@ -154,12 +154,12 @@ class BoletaServiceTest {
 
     @Test
     void lasConclusionesSonSoloDelPeriodoElegido() {
-        assertTrue(service.boletas(26, 2, 7, roles).alumnos().get(0).conclusiones().isEmpty());
+        assertTrue(service.boletas(26, 2, 7, idRolActivo).alumnos().get(0).conclusiones().isEmpty());
     }
 
     @Test
     void resumeLaAsistenciaDelPeriodo() {
-        BoletaResponse.Asistencia asistencia = service.boletas(26, 2, 7, roles).alumnos().get(0).asistencia();
+        BoletaResponse.Asistencia asistencia = service.boletas(26, 2, 7, idRolActivo).alumnos().get(0).asistencia();
 
         assertEquals(2, asistencia.puntual());
         assertEquals(1, asistencia.tardanza());
@@ -171,7 +171,7 @@ class BoletaServiceTest {
     void unaSeccionAjenaNoSeImprime() {
         when(notaFinalService.puedeExportarSeccionCompleta(any(), any())).thenReturn(false);
 
-        assertThrows(ResourceNotFoundException.class, () -> service.boletas(26, 2, 7, roles));
+        assertThrows(ResourceNotFoundException.class, () -> service.boletas(26, 2, 7, idRolActivo));
     }
 
     @Test
@@ -182,14 +182,14 @@ class BoletaServiceTest {
         anual.setCalificacion("A");
         anual.setConclusionDescriptiva("Logra lo esperado");
         when(notaAnualRepository.findByMatriculaGradoSeccionIdGradoSeccionAndAccesoNot(26, eliminado)).thenReturn(List.of(anual));
-        assertFalse(service.boletas(26, 2, 7, roles).conFinal());
+        assertFalse(service.boletas(26, 2, 7, idRolActivo).conFinal());
 
         PeriodoEvaluacion tercero = new PeriodoEvaluacion();
         tercero.setNumero((byte) 3);
         tercero.setFechaInicio(hoy.minusDays(5));
         tercero.setFechaFin(hoy.minusDays(1));
         when(configuracionService.periodos(any(), any())).thenReturn(List.of(tercero));
-        BoletaResponse boleta = service.boletas(26, 3, 7, roles);
+        BoletaResponse boleta = service.boletas(26, 3, 7, idRolActivo);
 
         assertTrue(boleta.conFinal());
         assertEquals("A", boleta.alumnos().get(0).finales().get(11));
@@ -198,6 +198,6 @@ class BoletaServiceTest {
 
     @Test
     void unPeriodoInexistenteSeRechaza() {
-        assertThrows(IllegalArgumentException.class, () -> service.boletas(26, 4, 7, roles));
+        assertThrows(IllegalArgumentException.class, () -> service.boletas(26, 4, 7, idRolActivo));
     }
 }

@@ -70,7 +70,7 @@ public class MatriculaService {
     private final AccesoContextoService accesoContextoService;
     private final BloqueoCalificaciones bloqueo;
 
-    public Page<MatriculaResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles,
+    public Page<MatriculaResponse> getAll(Pageable pageable, Integer idUsuario, Integer idRolActivo,
                                           Integer idNivel, Integer idGrado, Integer idSeccion,
                                           Integer idTurno, Integer idGradoSeccion, Integer idAnio,
                                           Long idAcceso, MatriculaResponse.TipoIngreso tipoIngreso) {
@@ -78,7 +78,7 @@ public class MatriculaService {
                 && !AccesoConstants.INACTIVO.equals(idAcceso)) {
             throw new IllegalArgumentException("El estado debe ser activo o inactivo");
         }
-        Set<Integer> visibles = idsMatriculasVisibles(idUsuario, roles);
+        Set<Integer> visibles = idsMatriculasVisibles(idUsuario, idRolActivo);
         boolean esGestion = visibles == null;
 
         if (tipoIngreso != null) {
@@ -125,23 +125,23 @@ public class MatriculaService {
         }
     }
 
-    public Page<MatriculaResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles,
+    public Page<MatriculaResponse> getAll(Pageable pageable, Integer idUsuario, Integer idRolActivo,
                                           Integer idNivel, Integer idGrado, Integer idSeccion,
                                           Integer idTurno, Integer idGradoSeccion, Integer idAnio,
                                           Long idAcceso) {
-        return getAll(pageable, idUsuario, roles, idNivel, idGrado, idSeccion,
+        return getAll(pageable, idUsuario, idRolActivo, idNivel, idGrado, idSeccion,
                 idTurno, idGradoSeccion, idAnio, idAcceso, null);
     }
 
-    public Page<MatriculaResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles,
+    public Page<MatriculaResponse> getAll(Pageable pageable, Integer idUsuario, Integer idRolActivo,
                                           Integer idNivel, Integer idGrado, Integer idSeccion,
                                           Integer idTurno, Integer idGradoSeccion, Integer idAnio) {
-        return getAll(pageable, idUsuario, roles, idNivel, idGrado, idSeccion,
+        return getAll(pageable, idUsuario, idRolActivo, idNivel, idGrado, idSeccion,
                 idTurno, idGradoSeccion, idAnio, null);
     }
 
-    public Page<MatriculaResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles) {
-        return getAll(pageable, idUsuario, roles, null, null, null, null, null, null);
+    public Page<MatriculaResponse> getAll(Pageable pageable, Integer idUsuario, Integer idRolActivo) {
+        return getAll(pageable, idUsuario, idRolActivo, null, null, null, null, null, null);
     }
 
     private Page<MatriculaResponse> paginarMatriculasEnMemoria(List<Matricula> lista, Pageable pageable) {
@@ -179,9 +179,9 @@ public class MatriculaService {
         return ((Comparable<Object>) primero).compareTo(segundo);
     }
 
-    public MatriculaResponse getById(Integer id, Integer idUsuario, List<String> roles) {
+    public MatriculaResponse getById(Integer id, Integer idUsuario, Integer idRolActivo) {
         Matricula matricula = findMatricula(id);
-        if (!esVisible(matricula.getIdMatricula(), idUsuario, roles)) {
+        if (!esVisible(matricula.getIdMatricula(), idUsuario, idRolActivo)) {
             throw new ResourceNotFoundException("Matrícula no encontrada con id " + id);
         }
         return toResponse(matricula);
@@ -226,9 +226,9 @@ public class MatriculaService {
         return toResponse(matricula);
     }
 
-    public List<PagoMatriculaResponse> pagos(Integer idMatricula, Integer idUsuario, List<String> roles) {
+    public List<PagoMatriculaResponse> pagos(Integer idMatricula, Integer idUsuario, Integer idRolActivo) {
         Matricula matricula = findMatricula(idMatricula);
-        if (!esVisible(matricula.getIdMatricula(), idUsuario, roles)) {
+        if (!esVisible(matricula.getIdMatricula(), idUsuario, idRolActivo)) {
             throw new ResourceNotFoundException("Matrícula no encontrada con id " + idMatricula);
         }
         return pagoMatriculaRepository.findByMatriculaIdMatriculaAndAccesoNotOrderByFecha(idMatricula, eliminado()).stream()
@@ -257,8 +257,8 @@ public class MatriculaService {
     @Transactional(readOnly = true)
     public List<MatriculaReporteResponse> reporte(LocalDate inicio, LocalDate fin, Integer idAnio, Integer idNivel,
             Integer idGrado, Integer idGradoSeccion, Long idAcceso, MatriculaResponse.TipoIngreso tipoIngreso,
-            Integer idUsuario, List<String> roles) {
-        Set<Integer> visibles = idsMatriculasVisibles(idUsuario, roles);
+            Integer idUsuario, Integer idRolActivo) {
+        Set<Integer> visibles = idsMatriculasVisibles(idUsuario, idRolActivo);
         List<Matricula> candidatas = matriculaRepository.findFiltradasList(AccesoConstants.ELIMINADO, idNivel, idGrado,
                 null, null, idGradoSeccion, idAnio, idAcceso);
         Map<Integer, String> primeros = primerosAnios(candidatas);
@@ -271,13 +271,13 @@ public class MatriculaService {
     }
 
     public List<MatriculaReporteResponse> reporte(LocalDate inicio, LocalDate fin, Integer idAnio, Integer idNivel,
-            Integer idGrado, Integer idGradoSeccion, Long idAcceso, Integer idUsuario, List<String> roles) {
-        return reporte(inicio, fin, idAnio, idNivel, idGrado, idGradoSeccion, idAcceso, null, idUsuario, roles);
+            Integer idGrado, Integer idGradoSeccion, Long idAcceso, Integer idUsuario, Integer idRolActivo) {
+        return reporte(inicio, fin, idAnio, idNivel, idGrado, idGradoSeccion, idAcceso, null, idUsuario, idRolActivo);
     }
 
-    public FichaMatriculaResponse ficha(Integer id, Integer idUsuario, List<String> roles) {
+    public FichaMatriculaResponse ficha(Integer id, Integer idUsuario, Integer idRolActivo) {
         Matricula matricula = findMatricula(id);
-        if (!esVisible(matricula.getIdMatricula(), idUsuario, roles)) {
+        if (!esVisible(matricula.getIdMatricula(), idUsuario, idRolActivo)) {
             throw new ResourceNotFoundException("Matrícula no encontrada con id " + id);
         }
         Alumno alumno = matricula.getAlumnoApoderado().getAlumno();
@@ -377,8 +377,8 @@ public class MatriculaService {
                 });
     }
 
-    private Set<Integer> idsMatriculasVisibles(Integer idUsuario, List<String> roles) {
-        Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, roles);
+    private Set<Integer> idsMatriculasVisibles(Integer idUsuario, Integer idRolActivo) {
+        Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, idRolActivo);
         if (alcance == Alcance.TODO) {
             return null;
         }
@@ -402,8 +402,8 @@ public class MatriculaService {
         return ids;
     }
 
-    private boolean esVisible(Integer idMatricula, Integer idUsuario, List<String> roles) {
-        Set<Integer> visibles = idsMatriculasVisibles(idUsuario, roles);
+    private boolean esVisible(Integer idMatricula, Integer idUsuario, Integer idRolActivo) {
+        Set<Integer> visibles = idsMatriculasVisibles(idUsuario, idRolActivo);
         return visibles == null || visibles.contains(idMatricula);
     }
 

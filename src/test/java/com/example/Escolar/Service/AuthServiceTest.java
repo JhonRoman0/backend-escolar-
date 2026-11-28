@@ -3,6 +3,9 @@ package com.example.Escolar.Service;
 import com.example.Escolar.Dto.LoginRequest;
 import com.example.Escolar.Dto.LoginResponse;
 import com.example.Escolar.Dto.PermisosRolResponse;
+import com.example.Escolar.Dto.RolAsignadoSesionResponse;
+import com.example.Escolar.Dto.RolAsignadoSesionResponse.EstadoRol;
+import com.example.Escolar.Exception.AccesoDenegadoException;
 import com.example.Escolar.Exception.CodigoRecuperacionAgotadoException;
 import com.example.Escolar.Exception.CuentaBloqueadaException;
 import com.example.Escolar.Exception.CuentaInactivaException;
@@ -10,9 +13,7 @@ import com.example.Escolar.Exception.EsperaReenvioCodigoException;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Exception.VigenciaNoValidaException;
 import com.example.Escolar.Model.Acceso;
-import com.example.Escolar.Model.Rol;
 import com.example.Escolar.Model.Usuario;
-import com.example.Escolar.Model.UsuarioRol;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
@@ -28,6 +29,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDate;
@@ -38,13 +40,16 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -71,6 +76,10 @@ class AuthServiceTest {
     private AccesoContextoService accesoContextoService;
     @Mock
     private VigenciaService vigenciaService;
+    @Mock
+    private SeleccionRolDesafioService seleccionRolDesafioService;
+    @Mock
+    private RolAsignadoResolver rolAsignadoResolver;
 
     @InjectMocks
     private AuthService authService;
@@ -112,17 +121,61 @@ class AuthServiceTest {
         return request;
     }
 
+    private RolAsignadoSesionResponse rolActivo() {
+        return new RolAsignadoSesionResponse(2, "Docente", EstadoRol.ACTIVO);
+    }
+
+    private RolAsignadoSesionResponse rolAsignado(int idRol, String nombre, EstadoRol estado) {
+        return new RolAsignadoSesionResponse(idRol, nombre, estado);
+    }
+
+    private PermisosRolResponse stubPermisos(int idRol) {
+        PermisosRolResponse permisos = new PermisosRolResponse();
+        permisos.setIdRol(idRol);
+        permisos.setNombreRol(idRol == 3 ? "ADMIN" : "Docente");
+        when(rolPermisoService.obtenerPermisosDelUsuario(1, idRol)).thenReturn(permisos);
+        when(accesoContextoService.vinculoEfectivo(eq(1), eq(idRol)))
+                .thenReturn(AccesoContextoService.Alcance.TODO);
+        return permisos;
+    }
+
+    private void stubToken(String token, Usuario usuario, Integer idRol, List<String> roles,
+                           Integer versionToken, Integer idDispositivo) {
+        when(jwtService.generarToken(eq(usuario.getIdUsuario()), eq(usuario.getCodigo()), eq(idRol), eq(roles),
+                eq(false), eq(usuario.getFechaFinVigencia()), eq(versionToken), eq(idDispositivo)))
+                .thenReturn(token);
+    }
+
+    private void verificarToken(Usuario usuario, Integer idRol, List<String> roles,
+                                Integer versionToken, Integer idDispositivo) {
+        verify(jwtService).generarToken(eq(usuario.getIdUsuario()), eq(usuario.getCodigo()), eq(idRol), eq(roles),
+                eq(false), eq(usuario.getFechaFinVigencia()), eq(versionToken), eq(idDispositivo));
+    }
+
+    private void stubIngresoDirecto() {
+        when(seleccionRolDesafioService.evaluar(1)).thenReturn(new SeleccionRolDesafioService.Evaluacion(
+                SeleccionRolDesafioService.Resultado.INGRESO_DIRECTO, List.of(rolActivo())));
+    }
+
+    private void stubPermisos() {
+        when(rolPermisoService.obtenerPermisosDelUsuario(1, 2)).thenReturn(new PermisosRolResponse());
+        when(accesoContextoService.vinculoEfectivo(eq(1), eq(2))).thenReturn(AccesoContextoService.Alcance.TODO);
+    }
+
     @Test
     void loginExitosoReseteaIntentosFallidos() {
         stubAccesoRepository();
         Usuario usuario = usuario(3);
         usuario.setFechaBloqueo(LocalDateTime.now().minusMinutes(31));
         when(usuarioRepository.findByCodigoAndAccesoNot(anyString(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(eq(1), any(Acceso.class))).thenReturn(Optional.of(usuario));
         when(passwordEncoder.matches("clave", "$2a$10$hash")).thenReturn(true);
-        when(usuarioRolRepository.findByUsuarioIdUsuario(1)).thenReturn(List.of());
-        when(jwtService.generarToken(1, "ADM20240001", List.of(), false, null, 0)).thenReturn("token");
-        when(rolPermisoService.obtenerPermisosDelUsuario(1)).thenReturn(new PermisosRolResponse());
-        when(accesoContextoService.vinculoEfectivo(eq(1), any())).thenReturn(AccesoContextoService.Alcance.TODO);
+        stubIngresoDirecto();
+        when(rolAsignadoResolver.resolver(1)).thenReturn(List.of(rolActivo()));
+        when(jwtService.generarToken(eq(1), eq("ADM20240001"), eq(2), eq(List.of("Docente")),
+                eq(false), org.mockito.ArgumentMatchers.isNull(), eq(0), org.mockito.ArgumentMatchers.isNull()))
+                .thenReturn("token");
+        stubPermisos();
 
         authService.login(request());
 
@@ -130,6 +183,50 @@ class AuthServiceTest {
         verify(usuarioRepository).save(captor.capture());
         assertEquals(0, captor.getValue().getIntentosFallidos());
         assertNull(captor.getValue().getFechaBloqueo());
+        verify(rolPermisoService).obtenerPermisosDelUsuario(1, 2);
+    }
+
+    @Test
+    void emitirSesionCalculaVinculoConRolActivoSinContextoAutenticado() {
+        stubAccesoRepository();
+        SecurityContextHolder.clearContext();
+        Usuario usuario = usuario(0);
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(eq(1), any(Acceso.class))).thenReturn(Optional.of(usuario));
+        when(rolAsignadoResolver.resolver(1)).thenReturn(List.of(rolActivo()));
+        when(jwtService.generarToken(eq(1), eq("ADM20240001"), eq(2), eq(List.of("Docente")),
+                eq(false), org.mockito.ArgumentMatchers.isNull(), eq(0), org.mockito.ArgumentMatchers.isNull()))
+                .thenReturn("token");
+        when(rolPermisoService.obtenerPermisosDelUsuario(1, 2)).thenReturn(new PermisosRolResponse());
+        when(accesoContextoService.vinculoEfectivo(1, 2)).thenReturn(AccesoContextoService.Alcance.DOCENTE);
+
+        LoginResponse response = authService.emitirSesion(usuario, null, rolActivo());
+
+        verify(accesoContextoService).vinculoEfectivo(1, 2);
+        assertEquals("DOCENTE", response.getPermisos().getVinculo());
+    }
+
+    @Test
+    void emitirSesionConservaIdentidadDelRolSeleccionadoSinPermisos() {
+        stubAccesoRepository();
+        SecurityContextHolder.clearContext();
+        Usuario usuario = usuario(0);
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(eq(1), any(Acceso.class))).thenReturn(Optional.of(usuario));
+        when(rolAsignadoResolver.resolver(1)).thenReturn(List.of(rolActivo()));
+        when(jwtService.generarToken(eq(1), eq("ADM20240001"), eq(2), eq(List.of("Docente")),
+                eq(false), org.mockito.ArgumentMatchers.isNull(), eq(0), org.mockito.ArgumentMatchers.isNull()))
+                .thenReturn("token");
+        PermisosRolResponse permisos = new PermisosRolResponse();
+        permisos.setIdRol(2);
+        permisos.setNombreRol("Docente");
+        permisos.setModulos(List.of());
+        when(rolPermisoService.obtenerPermisosDelUsuario(1, 2)).thenReturn(permisos);
+        when(accesoContextoService.vinculoEfectivo(1, 2)).thenReturn(AccesoContextoService.Alcance.TODO);
+
+        LoginResponse response = authService.emitirSesion(usuario, null, rolActivo());
+
+        assertEquals(2, response.getPermisos().getIdRol());
+        assertEquals("Docente", response.getPermisos().getNombreRol());
+        assertTrue(response.getPermisos().getModulos().isEmpty());
     }
 
     @Test
@@ -382,6 +479,7 @@ class AuthServiceTest {
         when(usuarioRepository.findByIdUsuarioAndAccesoNot(any(), any(Acceso.class))).thenReturn(Optional.of(usuario));
         when(passwordEncoder.matches("claveActual", "$2a$10$hash")).thenReturn(true);
         when(passwordEncoder.encode("ClaveNueva1@")).thenReturn("$2a$10$nuevo");
+        when(rolAsignadoResolver.resolver(1)).thenReturn(List.of(rolActivo()));
 
         authService.cambiarContrasena(1, "claveActual", "ClaveNueva1@");
 
@@ -397,13 +495,36 @@ class AuthServiceTest {
         stubAccesoRepository();
         Usuario usuario = usuario(0);
         when(usuarioRepository.findByIdUsuarioAndAccesoNot(any(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+        when(usuarioRepository.tieneDispositivo(1, 40)).thenReturn(true);
         when(passwordEncoder.matches("claveActual", "$2a$10$hash")).thenReturn(true);
         when(passwordEncoder.encode("ClaveNueva1@")).thenReturn("$2a$10$nuevo");
+        when(rolAsignadoResolver.resolver(1)).thenReturn(List.of(rolActivo()));
 
-        authService.cambiarContrasena(1, "claveActual", "ClaveNueva1@", 40);
+        authService.cambiarContrasena(1, "claveActual", "ClaveNueva1@", 40, 2);
 
-        verify(jwtService).generarToken(org.mockito.ArgumentMatchers.eq(1), anyString(), any(), org.mockito.ArgumentMatchers.eq(false),
+        verify(jwtService).generarToken(org.mockito.ArgumentMatchers.eq(1), anyString(),
+                org.mockito.ArgumentMatchers.eq(2), eq(List.of("Docente")), org.mockito.ArgumentMatchers.eq(false),
                 any(), org.mockito.ArgumentMatchers.eq(0), org.mockito.ArgumentMatchers.eq(40));
+    }
+
+    @Test
+    void cambiarContrasenaConservaElRolActivoDeLaSesionConMultiplesRoles() {
+        stubAccesoRepository();
+        Usuario usuario = usuario(0);
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(any(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+        when(usuarioRepository.tieneDispositivo(1, 40)).thenReturn(true);
+        when(passwordEncoder.matches("claveActual", "$2a$10$hash")).thenReturn(true);
+        when(passwordEncoder.encode("ClaveNueva1@")).thenReturn("$2a$10$nuevo");
+        when(rolAsignadoResolver.resolver(1)).thenReturn(List.of(
+                rolActivo(), rolAsignado(3, "ADMIN", EstadoRol.ACTIVO)));
+        when(jwtService.generarToken(eq(1), eq("ADM20240001"), eq(2), eq(List.of("Docente")),
+                eq(false), org.mockito.ArgumentMatchers.isNull(), eq(0), eq(40)))
+                .thenReturn("jwt-mismo-rol");
+
+        String token = authService.cambiarContrasena(1, "claveActual", "ClaveNueva1@", 40, 2);
+
+        assertEquals("jwt-mismo-rol", token);
+        verificarToken(usuario, 2, List.of("Docente"), 0, 40);
     }
 
     @Test
@@ -460,11 +581,14 @@ class AuthServiceTest {
         Usuario usuario = usuario(0);
         usuario.setDebeCambiarContrasena(true);
         when(usuarioRepository.findByCodigoAndAccesoNot(anyString(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(eq(1), any(Acceso.class))).thenReturn(Optional.of(usuario));
         when(passwordEncoder.matches("clave", "$2a$10$hash")).thenReturn(true);
-        when(usuarioRolRepository.findByUsuarioIdUsuario(1)).thenReturn(List.of());
-        when(jwtService.generarToken(1, "ADM20240001", List.of(), true, null, 0)).thenReturn("tokenPendiente");
-        when(rolPermisoService.obtenerPermisosDelUsuario(1)).thenReturn(new PermisosRolResponse());
-        when(accesoContextoService.vinculoEfectivo(eq(1), any())).thenReturn(AccesoContextoService.Alcance.TODO);
+        stubIngresoDirecto();
+        when(rolAsignadoResolver.resolver(1)).thenReturn(List.of(rolActivo()));
+        when(jwtService.generarToken(eq(1), eq("ADM20240001"), eq(2), eq(List.of("Docente")),
+                eq(true), org.mockito.ArgumentMatchers.isNull(), eq(0), org.mockito.ArgumentMatchers.isNull()))
+                .thenReturn("tokenPendiente");
+        stubPermisos();
 
         LoginResponse response = authService.login(request());
 
@@ -479,10 +603,10 @@ class AuthServiceTest {
         when(usuarioRepository.findByIdUsuarioAndAccesoNot(any(), any(Acceso.class))).thenReturn(Optional.of(usuario));
         when(passwordEncoder.matches("claveTemporal", "$2a$10$hash")).thenReturn(true);
         when(passwordEncoder.encode("ClaveNueva1@")).thenReturn("$2a$10$nuevo");
-        when(usuarioRolRepository.findByUsuarioIdUsuario(1)).thenReturn(List.of());
-        when(jwtService.generarToken(1, "ADM20240001", List.of(), false, null, 0)).thenReturn("tokenLimpio");
-        when(rolPermisoService.obtenerPermisosDelUsuario(1)).thenReturn(new PermisosRolResponse());
-        when(accesoContextoService.vinculoEfectivo(eq(1), any())).thenReturn(AccesoContextoService.Alcance.TODO);
+        when(rolAsignadoResolver.resolver(1)).thenReturn(List.of(rolActivo()));
+        when(jwtService.generarToken(eq(1), eq("ADM20240001"), eq(2), eq(List.of("Docente")),
+                eq(false), org.mockito.ArgumentMatchers.isNull(), eq(0), org.mockito.ArgumentMatchers.isNull()))
+                .thenReturn("tokenLimpio");
 
         String token = authService.cambiarContrasena(1, "claveTemporal", "ClaveNueva1@");
 
@@ -521,38 +645,122 @@ class AuthServiceTest {
     }
 
     @Test
-    void loginNoIncluyeRolesInactivosEnElToken() {
+    void loginConRolActivoEInactivoRequiereSeleccion() {
         stubAccesoRepository();
         Usuario usuario = usuario(0);
         when(usuarioRepository.findByCodigoAndAccesoNot(anyString(), any(Acceso.class)))
                 .thenReturn(Optional.of(usuario));
         when(passwordEncoder.matches("clave", "$2a$10$hash")).thenReturn(true);
-        when(jwtService.generarToken(org.mockito.ArgumentMatchers.eq(1), anyString(), any(),
-                org.mockito.ArgumentMatchers.eq(false), org.mockito.ArgumentMatchers.isNull(),
-                org.mockito.ArgumentMatchers.eq(0))).thenReturn("token");
-        when(rolPermisoService.obtenerPermisosDelUsuario(1)).thenReturn(new PermisosRolResponse());
-        when(accesoContextoService.vinculoEfectivo(eq(1), any())).thenReturn(AccesoContextoService.Alcance.TODO);
+        RolAsignadoSesionResponse activo = rolActivo();
+        RolAsignadoSesionResponse inactivo = new RolAsignadoSesionResponse(3, "Administrador", EstadoRol.INACTIVO);
+        when(seleccionRolDesafioService.evaluar(1)).thenReturn(new SeleccionRolDesafioService.Evaluacion(
+                SeleccionRolDesafioService.Resultado.SELECCION_REQUERIDA, List.of(activo, inactivo)));
+        when(seleccionRolDesafioService.emitir(usuario, null)).thenReturn("SELROL:0:0:abc");
 
-        Rol activoRol = new Rol();
-        activoRol.setNombre("Docente");
-        activoRol.setAcceso(mockAcceso(AccesoConstants.ACTIVO));
-        Rol inactivoRol = new Rol();
-        inactivoRol.setNombre("Administrador");
-        inactivoRol.setAcceso(mockAcceso(AccesoConstants.INACTIVO));
-        UsuarioRol activoUsuarioRol = new UsuarioRol();
-        activoUsuarioRol.setRol(activoRol);
-        UsuarioRol inactivoUsuarioRol = new UsuarioRol();
-        inactivoUsuarioRol.setRol(inactivoRol);
-        when(usuarioRolRepository.findByUsuarioIdUsuario(1))
-                .thenReturn(List.of(activoUsuarioRol, inactivoUsuarioRol));
+        LoginResponse response = authService.login(request());
 
-        authService.login(request());
+        assertNull(response.getToken());
+        assertTrue(response.isRequiereSeleccionRol());
+        assertEquals("SELROL:0:0:abc", response.getDesafioSeleccionRol());
+        assertEquals(List.of(activo, inactivo), response.getRoles());
+        verifyNoInteractions(jwtService);
+        verify(usuarioRepository, never()).save(any());
+    }
 
-        ArgumentCaptor<List<String>> captor = ArgumentCaptor.forClass(List.class);
-        verify(jwtService).generarToken(org.mockito.ArgumentMatchers.eq(1), anyString(),
-                captor.capture(), org.mockito.ArgumentMatchers.eq(false),
-                org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.eq(0));
-        assertEquals(List.of("Docente"), captor.getValue());
+    @Test
+    void iniciarSesionConSeleccionDeRolNoGeneraTokenNiReiniciaIntentos() {
+        Usuario usuario = usuario(3);
+        RolAsignadoSesionResponse suspendido = new RolAsignadoSesionResponse(1, "Portero", EstadoRol.SUSPENDIDO);
+        RolAsignadoSesionResponse activo = rolActivo();
+        when(seleccionRolDesafioService.evaluar(1)).thenReturn(new SeleccionRolDesafioService.Evaluacion(
+                SeleccionRolDesafioService.Resultado.SELECCION_REQUERIDA, List.of(suspendido, activo)));
+        when(seleccionRolDesafioService.emitir(usuario, 40)).thenReturn("SELROL:0:40:abc");
+
+        LoginResponse response = authService.iniciarSesion(usuario, 40);
+
+        assertNull(response.getToken());
+        assertTrue(response.isRequiereSeleccionRol());
+        assertEquals("SELROL:0:40:abc", response.getDesafioSeleccionRol());
+        assertEquals(List.of(suspendido, activo), response.getRoles());
+        assertEquals(3, usuario.getIntentosFallidos());
+        verifyNoInteractions(jwtService);
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    void iniciarSesionSinRolesActivosNiegaElIngreso() {
+        Usuario usuario = usuario(0);
+        when(seleccionRolDesafioService.evaluar(1)).thenReturn(new SeleccionRolDesafioService.Evaluacion(
+                SeleccionRolDesafioService.Resultado.SIN_ROLES_DISPONIBLES, List.of()));
+
+        assertThrows(AccesoDenegadoException.class, () -> authService.iniciarSesion(usuario, null));
+        verifyNoInteractions(jwtService);
+    }
+
+    @Test
+    void cambiarContrasenaConRolInactivoNoRenuevaLaSesion() {
+        stubAccesoRepository();
+        Usuario usuario = usuario(0);
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(any(), any(Acceso.class))).thenReturn(Optional.of(usuario));
+        when(passwordEncoder.matches("claveActual", "$2a$10$hash")).thenReturn(true);
+        when(rolAsignadoResolver.resolver(1)).thenReturn(List.of(
+                new RolAsignadoSesionResponse(2, "Docente", EstadoRol.INACTIVO)));
+
+        assertThrows(AccesoDenegadoException.class,
+                () -> authService.cambiarContrasena(1, "claveActual", "ClaveNueva1@", null, 2));
+        verify(usuarioRepository, never()).save(any());
+        verifyNoInteractions(jwtService);
+    }
+
+    @Test
+    void emitirSesionRechazaCuentaInactivaDelContexto() {
+        stubAccesoRepository();
+        Usuario contexto = usuario(0);
+        Usuario actual = usuario(0);
+        actual.setAcceso(mockAcceso(AccesoConstants.INACTIVO));
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(eq(1), any(Acceso.class))).thenReturn(Optional.of(actual));
+
+        VigenciaNoValidaException ex = assertThrows(VigenciaNoValidaException.class,
+                () -> authService.emitirSesion(contexto, null, rolActivo()));
+
+        assertEquals(VigenciaNoValidaException.CODIGO_CUENTA_INACTIVA, ex.getCodigo());
+        verifyNoInteractions(jwtService);
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    void emitirSesionRechazaVigenciaVencidaDelContextoActual() {
+        stubAccesoRepository();
+        Usuario contexto = usuario(0);
+        Usuario actual = usuario(0);
+        LocalDate inicio = actual.getFechaInicioVigencia();
+        when(vigenciaService.datosNoDisponibles(inicio, null)).thenReturn(false);
+        when(vigenciaService.esValida(inicio, null)).thenReturn(false);
+        when(vigenciaService.evaluar(inicio, null)).thenReturn(EstadoVigencia.VENCIDA);
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(eq(1), any(Acceso.class))).thenReturn(Optional.of(actual));
+
+        VigenciaNoValidaException ex = assertThrows(VigenciaNoValidaException.class,
+                () -> authService.emitirSesion(contexto, null, rolActivo()));
+
+        assertEquals(VigenciaNoValidaException.CODIGO_VIGENCIA_VENCIDA, ex.getCodigo());
+        verifyNoInteractions(jwtService);
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    void emitirSesionRechazaVersionTokenDistintaDelContextoOriginal() {
+        stubAccesoRepository();
+        Usuario contexto = usuario(0);
+        Usuario actual = usuario(0);
+        actual.setVersionToken(1);
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(eq(1), any(Acceso.class))).thenReturn(Optional.of(actual));
+
+        VigenciaNoValidaException ex = assertThrows(VigenciaNoValidaException.class,
+                () -> authService.emitirSesion(contexto, null, rolActivo()));
+
+        assertEquals(VigenciaNoValidaException.CODIGO_TOKEN_OBSOLETO, ex.getCodigo());
+        verifyNoInteractions(jwtService);
+        verify(usuarioRepository, never()).save(any());
     }
 
     private String sha256(String valor) {
@@ -578,5 +786,161 @@ class AuthServiceTest {
                 () -> authService.cambiarContrasena(999, "claveActual", "ClaveNueva1@"));
 
         verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    void cambiarRolEmiteSesionConRolSolicitadoYConservaDispositivo() {
+        stubAccesoRepository();
+        Usuario original = usuario(0);
+        original.setVersionToken(1);
+        Usuario actualizado = usuario(0);
+        actualizado.setVersionToken(2);
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(eq(1), any(Acceso.class)))
+                .thenReturn(Optional.of(original), Optional.of(actualizado));
+        when(rolAsignadoResolver.resolver(1)).thenReturn(List.of(
+                rolActivo(), rolAsignado(3, "ADMIN", EstadoRol.INACTIVO)));
+        when(usuarioRepository.incrementarVersionTokenSiCoincide(1, 1, AccesoConstants.ELIMINADO)).thenReturn(1);
+        when(usuarioRepository.tieneDispositivo(1, 40)).thenReturn(true);
+        stubToken("jwt-rol-2", actualizado, 2, List.of("Docente"), 2, 40);
+        stubPermisos(2);
+
+        LoginResponse response = authService.cambiarRol(1, 2, 1, 40, 1);
+
+        assertEquals("jwt-rol-2", response.getToken());
+        assertEquals(2, response.getPermisos().getIdRol());
+        assertEquals("Docente", response.getPermisos().getNombreRol());
+        assertTrue(!response.isEsAdmin());
+        verify(usuarioRepository).incrementarVersionTokenSiCoincide(1, 1, AccesoConstants.ELIMINADO);
+        verificarToken(actualizado, 2, List.of("Docente"), 2, 40);
+    }
+
+    @Test
+    void cambiarRolConVersionTokenNuloUsaCeroComoVersionEsperada() {
+        stubAccesoRepository();
+        Usuario original = usuario(0);
+        Usuario actualizado = usuario(0);
+        actualizado.setVersionToken(1);
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(eq(1), any(Acceso.class)))
+                .thenReturn(Optional.of(original), Optional.of(actualizado));
+        when(rolAsignadoResolver.resolver(1)).thenReturn(List.of(rolActivo()));
+        when(usuarioRepository.incrementarVersionTokenSiCoincide(1, 0, AccesoConstants.ELIMINADO)).thenReturn(1);
+        when(usuarioRepository.tieneDispositivo(1, 40)).thenReturn(true);
+        stubToken("jwt-version-nula", actualizado, 2, List.of("Docente"), 1, 40);
+        stubPermisos(2);
+
+        LoginResponse response = authService.cambiarRol(1, 2, 1, 40, null);
+
+        assertEquals("jwt-version-nula", response.getToken());
+        verify(usuarioRepository).incrementarVersionTokenSiCoincide(1, 0, AccesoConstants.ELIMINADO);
+    }
+
+    @Test
+    void cambiarRolRechazaRolYaActivoSinModificarSesion() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> authService.cambiarRol(1, 2, 2, 40, 1));
+
+        assertEquals("El rol ya está activo en la sesión.", ex.getMessage());
+        verifyNoInteractions(usuarioRepository, jwtService);
+    }
+
+    @Test
+    void cambiarRolRechazaRolNoDisponibleParaLaCuenta() {
+        stubAccesoRepository();
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(eq(1), any(Acceso.class)))
+                .thenReturn(Optional.of(usuario(0)));
+        when(rolAsignadoResolver.resolver(1)).thenReturn(List.of(
+                rolActivo(), rolAsignado(3, "ADMIN", EstadoRol.INACTIVO)));
+
+        AccesoDenegadoException ex = assertThrows(AccesoDenegadoException.class,
+                () -> authService.cambiarRol(1, 3, 1, 40, 1));
+
+        assertEquals("El rol solicitado no está disponible para esta cuenta.", ex.getMessage());
+        verify(usuarioRepository, never()).incrementarVersionTokenSiCoincide(
+                eq(1), eq(1), eq(AccesoConstants.ELIMINADO));
+        verifyNoInteractions(jwtService);
+    }
+
+    @Test
+    void cambiarRolConVersionTokenObsoletoNoEmiteNuevaSesion() {
+        stubAccesoRepository();
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(eq(1), any(Acceso.class)))
+                .thenReturn(Optional.of(usuario(0)));
+        when(rolAsignadoResolver.resolver(1)).thenReturn(List.of(rolActivo()));
+        when(usuarioRepository.incrementarVersionTokenSiCoincide(1, 0, AccesoConstants.ELIMINADO)).thenReturn(0);
+
+        VigenciaNoValidaException ex = assertThrows(VigenciaNoValidaException.class,
+                () -> authService.cambiarRol(1, 2, 1, 40, 0));
+
+        assertEquals(VigenciaNoValidaException.CODIGO_TOKEN_OBSOLETO, ex.getCodigo());
+        verifyNoInteractions(jwtService);
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    void cambiarRolPropagaFalloDeEmisionTrasIncrementarVersion() {
+        stubAccesoRepository();
+        Usuario original = usuario(0);
+        original.setVersionToken(1);
+        Usuario actualizado = usuario(0);
+        actualizado.setVersionToken(2);
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(eq(1), any(Acceso.class)))
+                .thenReturn(Optional.of(original), Optional.of(actualizado));
+        when(rolAsignadoResolver.resolver(1)).thenReturn(List.of(rolActivo()));
+        when(usuarioRepository.incrementarVersionTokenSiCoincide(1, 1, AccesoConstants.ELIMINADO)).thenReturn(1);
+        when(usuarioRepository.tieneDispositivo(1, 40)).thenReturn(true);
+        RuntimeException fallo = new RuntimeException("fallo al emitir");
+        doThrow(fallo).when(jwtService)
+                .generarToken(eq(1), eq(actualizado.getCodigo()), eq(2), eq(List.of("Docente")), eq(false),
+                        eq(actualizado.getFechaFinVigencia()), eq(2), eq(40));
+
+        RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> authService.cambiarRol(1, 2, 1, 40, 1));
+
+        assertSame(fallo, ex);
+        verify(usuarioRepository).incrementarVersionTokenSiCoincide(1, 1, AccesoConstants.ELIMINADO);
+        verify(usuarioRepository).save(any());
+    }
+
+    @Test
+    void cambiarRolRechazaDispositivoQueYaNoPerteneceALaSesion() {
+        stubAccesoRepository();
+        Usuario original = usuario(0);
+        original.setVersionToken(1);
+        Usuario actualizado = usuario(0);
+        actualizado.setVersionToken(2);
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(eq(1), any(Acceso.class)))
+                .thenReturn(Optional.of(original), Optional.of(actualizado));
+        when(rolAsignadoResolver.resolver(1)).thenReturn(List.of(rolActivo()));
+        when(usuarioRepository.incrementarVersionTokenSiCoincide(1, 1, AccesoConstants.ELIMINADO)).thenReturn(1);
+        when(usuarioRepository.tieneDispositivo(1, 40)).thenReturn(false);
+
+        assertThrows(AccesoDenegadoException.class,
+                () -> authService.cambiarRol(1, 2, 1, 40, 1));
+
+        verifyNoInteractions(jwtService);
+    }
+
+    @Test
+    void cambiarRolHaciaAdminRespetaRolActivoYConservaDispositivo() {
+        stubAccesoRepository();
+        Usuario original = usuario(0);
+        original.setVersionToken(1);
+        Usuario actualizado = usuario(0);
+        actualizado.setVersionToken(2);
+        when(usuarioRepository.findByIdUsuarioAndAccesoNot(eq(1), any(Acceso.class)))
+                .thenReturn(Optional.of(original), Optional.of(actualizado));
+        when(rolAsignadoResolver.resolver(1)).thenReturn(List.of(
+                rolActivo(), rolAsignado(3, "ADMIN", EstadoRol.ACTIVO)));
+        when(usuarioRepository.incrementarVersionTokenSiCoincide(1, 1, AccesoConstants.ELIMINADO)).thenReturn(1);
+        when(usuarioRepository.tieneDispositivo(1, 40)).thenReturn(true);
+        stubToken("jwt-admin", actualizado, 3, List.of("ADMIN"), 2, 40);
+        stubPermisos(3);
+
+        LoginResponse response = authService.cambiarRol(1, 3, 1, 40, 1);
+
+        assertTrue(response.isEsAdmin());
+        assertEquals(3, response.getPermisos().getIdRol());
+        assertEquals("ADMIN", response.getPermisos().getNombreRol());
+        verificarToken(actualizado, 3, List.of("ADMIN"), 2, 40);
     }
 }

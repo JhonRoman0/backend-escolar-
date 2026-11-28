@@ -15,7 +15,9 @@ import com.example.Escolar.Repository.AsignacionRepository;
 import com.example.Escolar.Repository.DocenteRepository;
 import com.example.Escolar.Repository.MatriculaRepository;
 import com.example.Escolar.Security.ConcesionesService;
+import com.example.Escolar.Security.UsuarioAutenticado;
 import com.example.Escolar.Service.AccesoContextoService.Alcance;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,6 +26,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.List;
 import java.util.Map;
@@ -35,6 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -45,7 +50,8 @@ import static org.mockito.Mockito.when;
 class AccesoContextoServiceTest {
 
     private static final Integer USUARIO = 50;
-    private static final List<String> ROLES = List.of("Docente");
+    private static final Integer ROL_ACTIVO = 90;
+    private static final Integer OTRO_ROL = 91;
 
     @Mock
     private DocenteRepository docenteRepository;
@@ -73,11 +79,28 @@ class AccesoContextoServiceTest {
         when(apoderadoRepository.findByUsuarioIdUsuarioAndAccesoNot(any(), any())).thenReturn(Optional.empty());
     }
 
-    private void concede(String rol, String permiso, String... acciones) {
+    @AfterEach
+    void limpiarContexto() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private void autenticar(Integer idUsuario, Integer idRolActivo, List<String> roles) {
+        UsuarioAutenticado principal = new UsuarioAutenticado(idUsuario, "COD", roles, 1, idRolActivo);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(principal, null, List.of()));
+    }
+
+    private void concede(String nombreRol, String permiso, String... acciones) {
         Set<String> permitidas = Set.of(acciones);
-        when(concesionesService.accionesPorPermiso(USUARIO)).thenReturn(Map.of(permiso, permitidas));
-        when(concesionesService.accionesPorPermisoYRol(USUARIO))
-                .thenReturn(Map.of(rol, Map.of(permiso, permitidas)));
+        when(concesionesService.rolActivoValido(USUARIO, ROL_ACTIVO)).thenReturn(true);
+        when(concesionesService.esAdminActivo(USUARIO, ROL_ACTIVO)).thenReturn(false);
+        when(concesionesService.accionesPorPermiso(USUARIO, ROL_ACTIVO)).thenReturn(Map.of(permiso, permitidas));
+        when(concesionesService.nombreRolActivo(USUARIO, ROL_ACTIVO)).thenReturn(nombreRol);
+    }
+
+    private void adminActivo() {
+        when(concesionesService.rolActivoValido(USUARIO, ROL_ACTIVO)).thenReturn(true);
+        when(concesionesService.esAdminActivo(USUARIO, ROL_ACTIVO)).thenReturn(true);
     }
 
     private void esApoderadoConHijos() {
@@ -120,7 +143,7 @@ class AccesoContextoServiceTest {
         when(docenteRepository.findByUsuarioIdUsuario(USUARIO)).thenReturn(Optional.of(docente));
         if (AccesoConstants.ACTIVO.equals(acceso)) {
             when(accesoRepository.findById(AccesoConstants.ACTIVO)).thenReturn(Optional.of(estado));
-            when(asignacionRepository.findByDocenteIdDocenteAndAcceso(11, estado))
+            when(asignacionRepository.findByDocenteIdDocenteAndAcceso(eq(11), any()))
                     .thenReturn(List.of(new com.example.Escolar.Model.Asignacion()));
         }
     }
@@ -129,7 +152,7 @@ class AccesoContextoServiceTest {
     void elDocenteConSoloLecturaVeLoSuyo() {
         esDocente();
         concede("DOCENTE", "ASIGNACIONES");
-        assertEquals(Alcance.DOCENTE, accesoContextoService.alcance("ASIGNACIONES", USUARIO, ROLES));
+        assertEquals(Alcance.DOCENTE, accesoContextoService.alcance("ASIGNACIONES", USUARIO, ROL_ACTIVO));
     }
 
     @Test
@@ -149,42 +172,42 @@ class AccesoContextoServiceTest {
     }
 
     @Test
-    void rolPersonalizadoDependeDeLaAsignacionVigente() {
+    void rolPersonalizadoNoHeredaAlcanceDocentePorTenerAsignaciones() {
         esDocente();
         concede("Coordinacion", "NOTAS", "CREAR");
-        assertEquals(Alcance.DOCENTE, accesoContextoService.alcance(
-                "NOTAS", AccesoContextoService.Operacion.ESCRITURA, USUARIO, List.of("Coordinacion")));
+        assertEquals(Alcance.NINGUNO, accesoContextoService.alcance(
+                "NOTAS", AccesoContextoService.Operacion.ESCRITURA, USUARIO, ROL_ACTIVO));
 
         when(asignacionRepository.findByDocenteIdDocenteAndAcceso(eq(11), any())).thenReturn(List.of());
         assertEquals(Alcance.NINGUNO, accesoContextoService.alcance(
-                "NOTAS", AccesoContextoService.Operacion.ESCRITURA, USUARIO, List.of("Coordinacion")));
+                "NOTAS", AccesoContextoService.Operacion.ESCRITURA, USUARIO, ROL_ACTIVO));
     }
 
     @Test
     void elDocenteConEscrituraNoSeVuelveGlobal() {
         esDocente();
         concede("DOCENTE", "ASIGNACIONES", "ACTUALIZAR", "ELIMINAR");
-        assertEquals(Alcance.DOCENTE, accesoContextoService.alcance("ASIGNACIONES", USUARIO, ROLES));
+        assertEquals(Alcance.DOCENTE, accesoContextoService.alcance("ASIGNACIONES", USUARIO, ROL_ACTIVO));
         assertEquals(Alcance.DOCENTE, accesoContextoService.alcance(
-                "ASIGNACIONES", AccesoContextoService.Operacion.ESCRITURA, USUARIO, ROLES));
+                "ASIGNACIONES", AccesoContextoService.Operacion.ESCRITURA, USUARIO, ROL_ACTIVO));
     }
 
     @Test
     void imprimirNoCuentaComoEscritura() {
         esDocente();
         concede("DOCENTE", "HORARIOS", "IMPRIMIR_EXPORTAR");
-        assertEquals(Alcance.DOCENTE, accesoContextoService.alcance("HORARIOS", USUARIO, ROLES));
+        assertEquals(Alcance.DOCENTE, accesoContextoService.alcance("HORARIOS", USUARIO, ROL_ACTIVO));
         assertEquals(Alcance.DOCENTE, accesoContextoService.alcance(
-                "HORARIOS", AccesoContextoService.Operacion.REPORTE, USUARIO, ROLES));
+                "HORARIOS", AccesoContextoService.Operacion.REPORTE, USUARIO, ROL_ACTIVO));
         assertEquals(Alcance.NINGUNO, accesoContextoService.alcance(
-                "HORARIOS", AccesoContextoService.Operacion.ESCRITURA, USUARIO, ROLES));
+                "HORARIOS", AccesoContextoService.Operacion.ESCRITURA, USUARIO, ROL_ACTIVO));
     }
 
     @Test
     void elApoderadoConSoloLecturaVeLoDeSusHijos() {
         esApoderadoConHijos();
-        concede("APODERADO", "NOTAS");
-        assertEquals(Alcance.APODERADO, accesoContextoService.alcance("NOTAS", USUARIO, List.of("Apoderado")));
+        concede("Apoderado", "NOTAS");
+        assertEquals(Alcance.APODERADO, accesoContextoService.alcance("NOTAS", USUARIO, ROL_ACTIVO));
     }
 
     @Test
@@ -203,7 +226,7 @@ class AccesoContextoServiceTest {
     void siLeQuitaronElRolDocenteYaNoVeSoloLoSuyo() {
         esDocente(AccesoConstants.ELIMINADO);
         concede("PORTERO", "ASIGNACIONES");
-        assertEquals(Alcance.NINGUNO, accesoContextoService.alcance("ASIGNACIONES", USUARIO, List.of("Portero")));
+        assertEquals(Alcance.NINGUNO, accesoContextoService.alcance("ASIGNACIONES", USUARIO, ROL_ACTIVO));
     }
 
     @Test
@@ -211,67 +234,157 @@ class AccesoContextoServiceTest {
         esDocente(AccesoConstants.INACTIVO);
         concede("PORTERO", "ASIGNACIONES");
 
-        assertEquals(Alcance.NINGUNO, accesoContextoService.alcance("ASIGNACIONES", USUARIO, List.of("Portero")));
+        assertEquals(Alcance.NINGUNO, accesoContextoService.alcance("ASIGNACIONES", USUARIO, ROL_ACTIVO));
     }
 
     @Test
     void docenteSuspendidoSinOtroRolNoVeTodoConSoloLecturaDeNotas() {
         esDocente(AccesoConstants.INACTIVO);
         concede("DOCENTE", "NOTAS");
+        when(concesionesService.rolActivoValido(USUARIO, ROL_ACTIVO)).thenReturn(false);
 
-        assertEquals(Alcance.NINGUNO, accesoContextoService.alcance("NOTAS", USUARIO, List.of("Docente")));
+        assertEquals(Alcance.NINGUNO, accesoContextoService.alcance("NOTAS", USUARIO, ROL_ACTIVO));
     }
 
     @Test
     void variosRolesSinVinculoNoOtorganAlcance() {
         esDocente(AccesoConstants.INACTIVO);
-        when(concesionesService.accionesPorPermisoYRol(USUARIO)).thenReturn(Map.of(
-                "DOCENTE", Map.of("NOTAS", Set.of()),
-                "PORTERO", Map.of("NOTAS", Set.of())));
+        concede("PORTERO", "NOTAS");
+        when(concesionesService.accionesPorPermiso(USUARIO, ROL_ACTIVO)).thenReturn(Map.of("NOTAS", Set.of()));
+        when(concesionesService.accionesPorPermiso(USUARIO, OTRO_ROL))
+                .thenReturn(Map.of("NOTAS", Set.of("CREAR")));
 
-        assertEquals(Alcance.NINGUNO, accesoContextoService.alcance("NOTAS", USUARIO, List.of("Docente", "Portero")));
+        assertEquals(Alcance.NINGUNO, accesoContextoService.alcance("NOTAS", USUARIO, ROL_ACTIVO));
+    }
+
+    @Test
+    void permisosDeOtroRolNoSeCombinanEnEscritura() {
+        esDocente();
+        concede("DOCENTE", "NOTAS");
+        when(concesionesService.accionesPorPermiso(USUARIO, ROL_ACTIVO)).thenReturn(Map.of("NOTAS", Set.of()));
+        when(concesionesService.accionesPorPermiso(USUARIO, OTRO_ROL))
+                .thenReturn(Map.of("NOTAS", Set.of("CREAR")));
+        when(concesionesService.nombreRolActivo(USUARIO, OTRO_ROL)).thenReturn("DOCENTE");
+
+        assertEquals(Alcance.NINGUNO, accesoContextoService.alcance(
+                "NOTAS", AccesoContextoService.Operacion.ESCRITURA, USUARIO, ROL_ACTIVO));
+    }
+
+    @Test
+    void docenteYApoderadoNoSeCombinanSegunRolActivo() {
+        esDocente();
+        esApoderadoConHijos();
+        concede("DOCENTE", "NOTAS");
+        assertEquals(Alcance.DOCENTE, accesoContextoService.alcance("NOTAS", USUARIO, ROL_ACTIVO));
+
+        concede("Apoderado", "NOTAS");
+        assertEquals(Alcance.APODERADO, accesoContextoService.alcance("NOTAS", USUARIO, ROL_ACTIVO));
+
+        concede("Coordinacion", "NOTAS");
+        assertEquals(Alcance.NINGUNO, accesoContextoService.alcance("NOTAS", USUARIO, ROL_ACTIVO));
     }
 
     @Test
     void docenteInactivoConApoderadoNoUsaLaEscrituraDocenteSobreSusHijos() {
         esDocente(AccesoConstants.INACTIVO);
         esApoderadoConHijos();
-        when(concesionesService.accionesPorPermisoYRol(USUARIO)).thenReturn(Map.of(
-                "DOCENTE", Map.of("NOTAS", Set.of("CREAR")),
-                "APODERADO", Map.of("NOTAS", Set.of())));
+        concede("Apoderado", "NOTAS");
+        when(concesionesService.accionesPorPermiso(USUARIO, OTRO_ROL))
+                .thenReturn(Map.of("NOTAS", Set.of("CREAR")));
+        when(concesionesService.nombreRolActivo(USUARIO, OTRO_ROL)).thenReturn("DOCENTE");
 
-        assertEquals(Alcance.APODERADO, accesoContextoService.alcance(
-                "NOTAS", USUARIO, List.of("Docente", "Apoderado")));
+        assertEquals(Alcance.APODERADO, accesoContextoService.alcance("NOTAS", USUARIO, ROL_ACTIVO));
         assertEquals(Alcance.NINGUNO, accesoContextoService.alcance(
-                "NOTAS", AccesoContextoService.Operacion.ESCRITURA, USUARIO,
-                List.of("Docente", "Apoderado")));
+                "NOTAS", AccesoContextoService.Operacion.ESCRITURA, USUARIO, ROL_ACTIVO));
     }
 
     @Test
     void escrituraSinVinculoNoConcedeAlcanceGlobal() {
         concede("SECRETARIA", "NOTAS", "CREAR");
         assertEquals(Alcance.NINGUNO, accesoContextoService.alcance(
-                "NOTAS", AccesoContextoService.Operacion.ESCRITURA, USUARIO, List.of("Secretaria")));
+                "NOTAS", AccesoContextoService.Operacion.ESCRITURA, USUARIO, ROL_ACTIVO));
+    }
+
+    @Test
+    void permisoOperativoSinVinculoConservaSuRegla() {
+        concede("SECRETARIA", "USUARIOS", "CREAR");
+        assertEquals(Alcance.TODO, accesoContextoService.alcance(
+                "USUARIOS", AccesoContextoService.Operacion.ESCRITURA, USUARIO, ROL_ACTIVO));
     }
 
     @Test
     void rolPersonalizadoSinVinculoNoVeTodo() {
         concede("PORTERO", "ALUMNOS");
-        assertEquals(Alcance.NINGUNO, accesoContextoService.alcance("ALUMNOS", USUARIO, List.of("Portero")));
+        assertEquals(Alcance.NINGUNO, accesoContextoService.alcance("ALUMNOS", USUARIO, ROL_ACTIVO));
     }
 
     @Test
-    void elAdminSiempreVeTodo() {
+    void elAdminActivoSiempreVeTodo() {
+        adminActivo();
+        assertEquals(Alcance.TODO, accesoContextoService.alcance("NOTAS", USUARIO, ROL_ACTIVO));
+        assertEquals(Alcance.TODO, accesoContextoService.vinculoEfectivo(USUARIO, ROL_ACTIVO));
+        assertTrue(accesoContextoService.tieneAccion("NOTAS", "AUTORIZAR", USUARIO, ROL_ACTIVO));
+        assertTrue(accesoContextoService.tienePermiso("NOTAS", USUARIO, ROL_ACTIVO));
+    }
+
+    @Test
+    void adminActivoConVinculosPersonalesNoLosHereda() {
         esDocente();
-        assertEquals(Alcance.TODO, accesoContextoService.alcance("NOTAS", USUARIO, List.of("ADMIN")));
+        esApoderadoConHijos();
+        adminActivo();
+        clearInvocations(docenteRepository, apoderadoRepository, alumnoApoderadoRepository,
+                asignacionRepository, concesionesService);
+
+        assertEquals(Alcance.TODO, accesoContextoService.vinculoEfectivo(USUARIO, ROL_ACTIVO));
+
+        verify(docenteRepository, never()).findByUsuarioIdUsuario(USUARIO);
+        verify(apoderadoRepository, never()).findByUsuarioIdUsuarioAndAccesoNot(eq(USUARIO), any());
+        verify(asignacionRepository, never()).findByDocenteIdDocenteAndAcceso(any(), any());
+        verify(alumnoApoderadoRepository, never()).findByApoderado(any());
+    }
+
+    @Test
+    void sinRolActivoNiegaTodo() {
+        concede("ADMIN", "NOTAS");
+        Integer sinRol = null;
+
+        assertEquals(Alcance.NINGUNO, accesoContextoService.alcance("NOTAS", USUARIO, sinRol));
+        assertEquals(Alcance.NINGUNO, accesoContextoService.vinculoEfectivo(USUARIO, sinRol));
+        assertFalse(accesoContextoService.tieneAccion("NOTAS", "CREAR", USUARIO, sinRol));
+        assertFalse(accesoContextoService.tienePermiso("NOTAS", USUARIO, sinRol));
+    }
+
+    @Test
+    void rolNoValidadoNiegaTodo() {
+        concede("ADMIN", "NOTAS");
+        when(concesionesService.rolActivoValido(USUARIO, ROL_ACTIVO)).thenReturn(false);
+
+        assertEquals(Alcance.NINGUNO, accesoContextoService.alcance("NOTAS", USUARIO, ROL_ACTIVO));
+        assertEquals(Alcance.NINGUNO, accesoContextoService.vinculoEfectivo(USUARIO, ROL_ACTIVO));
+        assertFalse(accesoContextoService.tieneAccion("NOTAS", "CREAR", USUARIO, ROL_ACTIVO));
+        assertFalse(accesoContextoService.tienePermiso("NOTAS", USUARIO, ROL_ACTIVO));
+    }
+
+    @Test
+    void vinculoEfectivoDependeDelRolActivoYNuncaCombinaRelaciones() {
+        esDocente();
+        esApoderadoConHijos();
+        concede("DOCENTE", "NOTAS");
+        assertEquals(Alcance.DOCENTE, accesoContextoService.vinculoEfectivo(USUARIO, ROL_ACTIVO));
+
+        concede("Apoderado", "NOTAS");
+        assertEquals(Alcance.APODERADO, accesoContextoService.vinculoEfectivo(USUARIO, ROL_ACTIVO));
+
+        concede("Coordinacion", "NOTAS");
+        assertEquals(Alcance.NINGUNO, accesoContextoService.vinculoEfectivo(USUARIO, ROL_ACTIVO));
     }
 
     @Test
     void autorizarDependeDelPermisoYNoDelNombreDelRol() {
         concede("SECRETARIA", "NOTAS", "AUTORIZAR");
-        assertTrue(accesoContextoService.tieneAccion("NOTAS", "AUTORIZAR", USUARIO, List.of("Secretaria")));
+        assertTrue(accesoContextoService.tieneAccion("NOTAS", "AUTORIZAR", USUARIO, ROL_ACTIVO));
 
         concede("ADMINISTRADOR", "NOTAS", "CREAR");
-        assertFalse(accesoContextoService.tieneAccion("NOTAS", "AUTORIZAR", USUARIO, List.of("Administrador")));
+        assertFalse(accesoContextoService.tieneAccion("NOTAS", "AUTORIZAR", USUARIO, ROL_ACTIVO));
     }
 }

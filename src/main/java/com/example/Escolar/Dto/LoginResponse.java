@@ -3,6 +3,8 @@ package com.example.Escolar.Dto;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.List;
+
 @Getter
 @Setter
 public class LoginResponse {
@@ -16,4 +18,7 @@ public class LoginResponse {
     private String correoEnmascarado;
     private Long segundosReenvio;
     private Integer minutosCodigo;
+    private boolean requiereSeleccionRol;
+    private String desafioSeleccionRol;
+    private List<RolAsignadoSesionResponse> roles;
 }

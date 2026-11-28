@@ -43,6 +43,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private final JwtService jwtService;
     private final ObjectProvider<UsuarioRepository> usuarioRepositoryProvider;
     private final VigenciaService vigenciaService;
+    private final ConcesionesService concesionesService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -62,7 +63,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     Integer.valueOf(claims.getSubject()),
                     claims.get("codigo", String.class),
                     claims.get("roles", List.class),
-                    jwtService.getDispositivo(claims));
+                    jwtService.getDispositivo(claims),
+                    jwtService.getIdRolActivo(claims),
+                    jwtService.getVersionToken(claims));
             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                     principal,
                     null,
@@ -76,6 +79,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     EstadoVigencia estado = bloqueo.getEstado();
                     escribir403(response, bloqueo.getCodigo(), bloqueo.getMessage(), bloqueo.getFechaInicio(),
                             bloqueo.getFechaFin(), estado == null ? null : estado.name(), true);
+                    return;
+                }
+
+                bloqueo = validarRolActivo(claims);
+                if (bloqueo != null) {
+                    escribir403(response, bloqueo.getCodigo(), bloqueo.getMessage(), null, null, null, false);
                     return;
                 }
             }
@@ -132,6 +141,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         EstadoVigencia estado = vigenciaService.evaluar(fechaInicio, fechaFin);
         if (!vigenciaService.esValida(estado)) {
             return new VigenciaNoValidaException(estado, fechaInicio, fechaFin);
+        }
+        return null;
+    }
+
+    private VigenciaNoValidaException validarRolActivo(Claims claims) {
+        Integer idUsuario = Integer.valueOf(claims.getSubject());
+        Integer idRolActivo = jwtService.getIdRolActivo(claims);
+        if (idRolActivo == null || !concesionesService.rolActivoValido(idUsuario, idRolActivo)) {
+            return new VigenciaNoValidaException(VigenciaNoValidaException.CODIGO_ROL_NO_DISPONIBLE,
+                    VigenciaNoValidaException.MENSAJE_ROL_NO_DISPONIBLE);
         }
         return null;
     }

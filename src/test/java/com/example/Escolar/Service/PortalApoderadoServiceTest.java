@@ -50,6 +50,7 @@ class PortalApoderadoServiceTest {
     private Matricula anterior;
     private Alumno alumno;
     private Curso matematica;
+    private final Integer idRolActivo = 1;
 
     private Matricula matricula(int id, int idAnio, String anioTexto, byte estado) {
         AnioEscolar anio = new AnioEscolar();
@@ -91,6 +92,10 @@ class PortalApoderadoServiceTest {
         // Usuario 7 es apoderado de Ana; el 8 no.
         when(accesoContextoService.esApoderadoDe(eq(7), any())).thenReturn(true);
         when(accesoContextoService.esApoderadoDe(eq(8), any())).thenReturn(false);
+        when(accesoContextoService.vinculoEfectivo(7, idRolActivo))
+                .thenReturn(AccesoContextoService.Alcance.APODERADO);
+        when(accesoContextoService.vinculoEfectivo(8, idRolActivo))
+                .thenReturn(AccesoContextoService.Alcance.NINGUNO);
         matematica = new Curso();
         matematica.setIdCurso(1);
         matematica.setNombre("Matemática");
@@ -98,12 +103,22 @@ class PortalApoderadoServiceTest {
 
     @Test
     void otroApoderadoNoVeAlAlumno() {
-        assertThrows(ResourceNotFoundException.class, () -> service.notas(5, 8));
-        assertThrows(ResourceNotFoundException.class, () -> service.pagos(5, 8));
-        assertThrows(ResourceNotFoundException.class, () -> service.asistencia(5, null, 8));
-        assertThrows(ResourceNotFoundException.class, () -> service.horario(5, 8));
-        assertThrows(ResourceNotFoundException.class, () -> service.resumen(5, 8));
-        assertThrows(ResourceNotFoundException.class, () -> service.recreos(5, 8));
+        assertThrows(ResourceNotFoundException.class, () -> service.notas(5, 8, idRolActivo));
+        assertThrows(ResourceNotFoundException.class, () -> service.pagos(5, 8, idRolActivo));
+        assertThrows(ResourceNotFoundException.class, () -> service.asistencia(5, null, 8, idRolActivo));
+        assertThrows(ResourceNotFoundException.class, () -> service.horario(5, 8, idRolActivo));
+        assertThrows(ResourceNotFoundException.class, () -> service.resumen(5, 8, idRolActivo));
+        assertThrows(ResourceNotFoundException.class, () -> service.recreos(5, 8, idRolActivo));
+    }
+
+    @Test
+    void rolDocenteActivoNoAbreLaMatriculaDeOtroApoderado() {
+        when(accesoContextoService.vinculoEfectivo(9, idRolActivo))
+                .thenReturn(AccesoContextoService.Alcance.DOCENTE);
+
+        assertThrows(ResourceNotFoundException.class, () -> service.notas(5, 9, idRolActivo));
+
+        verify(accesoContextoService, never()).esApoderadoDe(eq(9), any());
     }
 
     @Test
@@ -115,7 +130,7 @@ class PortalApoderadoServiceTest {
         when(alumnoApoderadoRepository.findByApoderado(apoderado)).thenReturn(List.of(vinculo));
         when(matriculaRepository.findByAlumnoApoderadoAlumnoIdAlumnoAndAccesoNot(9, eliminado)).thenReturn(List.of(anterior, actual));
 
-        var hijos = service.hijos(7);
+        var hijos = service.hijos(7, idRolActivo);
 
         assertEquals(1, hijos.size());
         assertEquals("ANA PEREZ RUIZ", hijos.get(0).nombre());
@@ -128,7 +143,7 @@ class PortalApoderadoServiceTest {
     @Test
     void sinSerApoderadoNoTieneHijos() {
         when(accesoContextoService.apoderadoDeUsuario(1)).thenReturn(Optional.empty());
-        assertTrue(service.hijos(1).isEmpty());
+        assertTrue(service.hijos(1, idRolActivo).isEmpty());
     }
 
     @Test
@@ -149,7 +164,7 @@ class PortalApoderadoServiceTest {
         NotaEvaluacion nota = nota(1, examen, "AD");
         when(notaEvaluacionRepository.findByMatriculaIdMatriculaAndAccesoNot(5, eliminado)).thenReturn(List.of(nota));
 
-        var cursos = service.notas(5, 7);
+        var cursos = service.notas(5, 7, idRolActivo);
 
         var periodo = cursos.get(0).periodos().get(0);
         assertEquals("Primer bimestre", periodo.nombre());
@@ -187,7 +202,7 @@ class PortalApoderadoServiceTest {
         reconocida.setVigencia(ReconocimientoCalificacion.VIGENTE);
         when(reconocimientoRepository.findByNotaOrigenMatriculaIdMatricula(5)).thenReturn(List.of(reconocida));
 
-        var evaluaciones = service.notas(5, 7).get(0).periodos().get(0).evaluaciones();
+        var evaluaciones = service.notas(5, 7, idRolActivo).get(0).periodos().get(0).evaluaciones();
 
         assertEquals(1, evaluaciones.size());
         assertEquals("15", evaluaciones.get(0).calificacion());
@@ -223,7 +238,7 @@ class PortalApoderadoServiceTest {
         pago.setFecha(LocalDateTime.now());
         when(pagoMatriculaRepository.findByMatriculaIdMatriculaAndAccesoNotOrderByFecha(5, eliminado)).thenReturn(List.of(pago));
 
-        var pagos = service.pagos(5, 7);
+        var pagos = service.pagos(5, 7, idRolActivo);
 
         assertEquals(new BigDecimal("100.00"), pagos.saldo());
         assertEquals(1, pagos.pagos().size());
@@ -238,7 +253,7 @@ class PortalApoderadoServiceTest {
                 dia(5, AsistenciaService.ESTADO_TARDANZA),
                 dia(6, AsistenciaService.ESTADO_INASISTENCIA)));
 
-        var asistencia = service.asistencia(4, mes, 7);
+        var asistencia = service.asistencia(4, mes, 7, idRolActivo);
 
         assertEquals(1, asistencia.puntuales());
         assertEquals(1, asistencia.tardanzas());

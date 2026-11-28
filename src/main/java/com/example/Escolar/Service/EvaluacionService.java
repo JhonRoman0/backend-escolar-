@@ -58,8 +58,8 @@ public class EvaluacionService {
     // ── Consultas ──
 
     @Transactional(readOnly = true)
-    public List<EvaluacionResponse.Curso> cursos(Integer idAnio, Integer idUsuario, List<String> roles) {
-        List<Asignacion> delAnio = asignacionesVisibles(idUsuario, roles).stream()
+    public List<EvaluacionResponse.Curso> cursos(Integer idAnio, Integer idUsuario, Integer idRolActivo) {
+        List<Asignacion> delAnio = asignacionesVisibles(idUsuario, idRolActivo).stream()
                 .filter(a -> a.getAnioEscolar().getIdAnio().equals(idAnio))
                 .toList();
         // Lo que comparten las filas se calcula una vez: configuración por nivel,
@@ -93,8 +93,8 @@ public class EvaluacionService {
     }
 
     @Transactional(readOnly = true)
-    public List<EvaluacionResponse.Resumen> listar(Integer idAsignacion, Integer periodo, Integer idUsuario, List<String> roles) {
-        Asignacion asignacion = asignacionAccesible(idAsignacion, idUsuario, roles);
+    public List<EvaluacionResponse.Resumen> listar(Integer idAsignacion, Integer periodo, Integer idUsuario, Integer idRolActivo) {
+        Asignacion asignacion = asignacionAccesible(idAsignacion, idUsuario, idRolActivo);
         List<Evaluacion> evaluaciones = evaluacionRepository
                 .findByAsignacionIdAsignacionAndPeriodoAndAccesoNotOrderByFechaAscIdEvaluacionAsc(
                         idAsignacion, periodo.byteValue(), eliminado());
@@ -107,8 +107,8 @@ public class EvaluacionService {
     }
 
     @Transactional(readOnly = true)
-    public EvaluacionResponse.Detalle detalle(Integer idEvaluacion, Integer idUsuario, List<String> roles) {
-        Evaluacion evaluacion = evaluacionAccesible(idEvaluacion, idUsuario, roles);
+    public EvaluacionResponse.Detalle detalle(Integer idEvaluacion, Integer idUsuario, Integer idRolActivo) {
+        Evaluacion evaluacion = evaluacionAccesible(idEvaluacion, idUsuario, idRolActivo);
         Map<Integer, String> notas = notaRepository.findByEvaluacionIdEvaluacionAndAccesoNot(idEvaluacion, eliminado()).stream()
                 .collect(Collectors.toMap(n -> n.getMatricula().getIdMatricula(), NotaEvaluacion::getCalificacion));
         List<Matricula> matriculas = alumnosDe(evaluacion.getAsignacion());
@@ -133,8 +133,8 @@ public class EvaluacionService {
 
     /** Quién y cuándo la creó, fecha, competencias y avance de notas. */
     @Transactional(readOnly = true)
-    public EvaluacionResponse.Ficha resumen(Integer idEvaluacion, Integer idUsuario, List<String> roles) {
-        Evaluacion e = evaluacionAccesible(idEvaluacion, idUsuario, roles);
+    public EvaluacionResponse.Ficha resumen(Integer idEvaluacion, Integer idUsuario, Integer idRolActivo) {
+        Evaluacion e = evaluacionAccesible(idEvaluacion, idUsuario, idRolActivo);
         Set<Integer> actuales = alumnosDe(e.getAsignacion()).stream().map(Matricula::getIdMatricula).collect(Collectors.toSet());
         long conNota = notaRepository.findByEvaluacionIdEvaluacionAndAccesoNot(idEvaluacion, eliminado()).stream()
                 .filter(n -> actuales.contains(n.getMatricula().getIdMatricula()))
@@ -151,11 +151,11 @@ public class EvaluacionService {
     // ── Escritura ──
 
     @Transactional
-    public EvaluacionResponse.Resumen crear(EvaluacionRequest request, Integer idUsuario, List<String> roles) {
+    public EvaluacionResponse.Resumen crear(EvaluacionRequest request, Integer idUsuario, Integer idRolActivo) {
         if (request.idAsignacion() == null || request.periodo() == null) {
             throw new IllegalArgumentException("Elige el curso y el periodo");
         }
-        Asignacion asignacion = asignacionAccesible(request.idAsignacion(), idUsuario, roles);
+        Asignacion asignacion = asignacionAccesible(request.idAsignacion(), idUsuario, idRolActivo);
         PeriodoEvaluacion periodo = periodoAbierto(asignacion, request.periodo());
         bloqueo.asignacion(asignacion.getIdAsignacion());
         Evaluacion evaluacion = new Evaluacion();
@@ -170,8 +170,8 @@ public class EvaluacionService {
     }
 
     @Transactional
-    public EvaluacionResponse.Resumen editar(Integer idEvaluacion, EvaluacionRequest request, Integer idUsuario, List<String> roles) {
-        Evaluacion evaluacion = evaluacionAccesible(idEvaluacion, idUsuario, roles);
+    public EvaluacionResponse.Resumen editar(Integer idEvaluacion, EvaluacionRequest request, Integer idUsuario, Integer idRolActivo) {
+        Evaluacion evaluacion = evaluacionAccesible(idEvaluacion, idUsuario, idRolActivo);
         bloqueo.asignacion(evaluacion.getAsignacion().getIdAsignacion());
         bloqueo.evaluacion(idEvaluacion);
         PeriodoEvaluacion periodo = periodoAbierto(evaluacion.getAsignacion(), (int) evaluacion.getPeriodo());
@@ -181,14 +181,14 @@ public class EvaluacionService {
         }
         aplicar(evaluacion, request, periodo);
         evaluacionRepository.save(evaluacion);
-        return detalle(idEvaluacion, idUsuario, roles).evaluacion();
+        return detalle(idEvaluacion, idUsuario, idRolActivo).evaluacion();
     }
 
     @Transactional
     public EvaluacionResponse.Detalle registrarNotas(Integer idEvaluacion, NotasEvaluacionRequest request,
-                                                     Integer idUsuario, List<String> roles) {
+                                                     Integer idUsuario, Integer idRolActivo) {
         request.notas().stream().map(NotasEvaluacionRequest.Item::idMatricula).distinct().sorted().forEach(bloqueo::matricula);
-        Evaluacion evaluacion = evaluacionAccesible(idEvaluacion, idUsuario, roles);
+        Evaluacion evaluacion = evaluacionAccesible(idEvaluacion, idUsuario, idRolActivo);
         bloqueo.asignacion(evaluacion.getAsignacion().getIdAsignacion());
         bloqueo.evaluacion(idEvaluacion);
         periodoAbierto(evaluacion.getAsignacion(), (int) evaluacion.getPeriodo());
@@ -237,12 +237,12 @@ public class EvaluacionService {
             nota.setAcceso(activo);
             notaRepository.save(nota);
         }
-        return detalle(idEvaluacion, idUsuario, roles);
+        return detalle(idEvaluacion, idUsuario, idRolActivo);
     }
 
     @Transactional
-    public void eliminar(Integer idEvaluacion, Integer idUsuario, List<String> roles) {
-        Evaluacion evaluacion = evaluacionAccesible(idEvaluacion, idUsuario, roles);
+    public void eliminar(Integer idEvaluacion, Integer idUsuario, Integer idRolActivo) {
+        Evaluacion evaluacion = evaluacionAccesible(idEvaluacion, idUsuario, idRolActivo);
         bloqueo.asignacion(evaluacion.getAsignacion().getIdAsignacion());
         bloqueo.evaluacion(idEvaluacion);
         periodoAbierto(evaluacion.getAsignacion(), (int) evaluacion.getPeriodo());
@@ -258,8 +258,8 @@ public class EvaluacionService {
      * curso y periodo, y por competencia las que la afectan (en vigesimal, su promedio).
      */
     @Transactional(readOnly = true)
-    public EvaluacionResponse.Registro registro(Integer idAsignacion, Integer periodo, Integer idUsuario, List<String> roles) {
-        Asignacion asignacion = asignacionAccesible(idAsignacion, idUsuario, roles);
+    public EvaluacionResponse.Registro registro(Integer idAsignacion, Integer periodo, Integer idUsuario, Integer idRolActivo) {
+        Asignacion asignacion = asignacionAccesible(idAsignacion, idUsuario, idRolActivo);
         ConfiguracionAcademicaResponse config = configuracion(asignacion);
         EscalaCalificacion escala = config.getEscala();
         String notaMinima = config.getNotaMinima() != null ? config.getNotaMinima() : Calificaciones.minimaPorDefecto(escala);
@@ -305,8 +305,8 @@ public class EvaluacionService {
 
     /** Por competencia del curso: cuántos alumnos ya tienen su nota final en el periodo. */
     @Transactional(readOnly = true)
-    public List<EvaluacionResponse.AvanceFinal> avance(Integer idAsignacion, Integer periodo, Integer idUsuario, List<String> roles) {
-        Asignacion asignacion = asignacionAccesible(idAsignacion, idUsuario, roles);
+    public List<EvaluacionResponse.AvanceFinal> avance(Integer idAsignacion, Integer periodo, Integer idUsuario, Integer idRolActivo) {
+        Asignacion asignacion = asignacionAccesible(idAsignacion, idUsuario, idRolActivo);
         Map<Integer, EvaluacionResponse.AvanceFinal> avance = avanceFinales(asignacion, periodo.byteValue());
         return competenciasDe(asignacion.getCurso()).stream().map(c -> avance.get(c.getIdCompetencia())).toList();
     }
@@ -480,11 +480,11 @@ public class EvaluacionService {
                 .toList();
     }
 
-    private List<Asignacion> asignacionesVisibles(Integer idUsuario, List<String> roles) {
-        AccesoContextoService.Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, roles);
+    private List<Asignacion> asignacionesVisibles(Integer idUsuario, Integer idRolActivo) {
+        AccesoContextoService.Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, idRolActivo);
         List<Asignacion> asignaciones = switch (alcance) {
             case TODO -> asignacionRepository.findByAccesoNot(eliminado());
-            case DOCENTE, DOCENTE_Y_APODERADO -> accesoContextoService.docenteDeUsuario(idUsuario)
+            case DOCENTE -> accesoContextoService.docenteDeUsuario(idUsuario)
                     .map(d -> asignacionRepository.findByDocenteIdDocenteAndAccesoNot(d.getIdDocente(), eliminado()))
                     .orElseGet(List::of);
             case APODERADO, NINGUNO -> List.of();
@@ -494,17 +494,17 @@ public class EvaluacionService {
                 .toList();
     }
 
-    Asignacion asignacionAccesible(Integer idAsignacion, Integer idUsuario, List<String> roles) {
-        return asignacionesVisibles(idUsuario, roles).stream()
+    Asignacion asignacionAccesible(Integer idAsignacion, Integer idUsuario, Integer idRolActivo) {
+        return asignacionesVisibles(idUsuario, idRolActivo).stream()
                 .filter(a -> a.getIdAsignacion().equals(idAsignacion))
                 .findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException("Curso no encontrado o fuera de tus asignaciones"));
     }
 
-    private Evaluacion evaluacionAccesible(Integer idEvaluacion, Integer idUsuario, List<String> roles) {
+    private Evaluacion evaluacionAccesible(Integer idEvaluacion, Integer idUsuario, Integer idRolActivo) {
         Evaluacion evaluacion = evaluacionRepository.findByIdEvaluacionAndAccesoNot(idEvaluacion, eliminado())
                 .orElseThrow(() -> new ResourceNotFoundException("Evaluación no encontrada"));
-        asignacionAccesible(evaluacion.getAsignacion().getIdAsignacion(), idUsuario, roles);
+        asignacionAccesible(evaluacion.getAsignacion().getIdAsignacion(), idUsuario, idRolActivo);
         return evaluacion;
     }
 

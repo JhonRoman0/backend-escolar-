@@ -37,18 +37,18 @@ public class AlumnoController {
                                        @RequestParam(required = false) Integer idGradoSeccion,
                                        @RequestParam(required = false) Integer idAnio,
                                        @RequestParam(required = false) String search) {
-        return alumnoService.getAll(pageable, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados(),
+        return alumnoService.getAll(pageable, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado(),
                 idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio, search);
     }
 
     @GetMapping("/{id}")
     public AlumnoResponse getById(@PathVariable Integer id) {
-        return alumnoService.getById(id, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+        return alumnoService.getById(id, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 
     @GetMapping("/dni/{documento}")
     public AlumnoResponse getByDocumento(@PathVariable String documento) {
-        return alumnoService.getByDocumento(documento, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+        return alumnoService.getByDocumento(documento, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 
     @PutMapping("/{id}")
@@ -71,7 +71,7 @@ public class AlumnoController {
     }
 
     private void validarEdicion(Integer id) {
-        alumnoService.validarEdicion(id, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+        alumnoService.validarEdicion(id, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 
     @GetMapping("/reporte")
@@ -81,6 +81,6 @@ public class AlumnoController {
             @RequestParam(required = false) Integer idGrado,
             @RequestParam(required = false) Integer idGradoSeccion) {
         return alumnoService.reporte(idAnio, idNivel, idGrado, idGradoSeccion,
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 }

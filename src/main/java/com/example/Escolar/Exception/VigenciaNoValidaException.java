@@ -13,9 +13,12 @@ public class VigenciaNoValidaException extends RuntimeException {
     public static final String CODIGO_TOKEN_OBSOLETO = "VIGENCIA_TOKEN_OBSOLETO";
     public static final String CODIGO_NO_DISPONIBLE = "VIGENCIA_NO_DISPONIBLE";
     public static final String CODIGO_CUENTA_INACTIVA = "VIGENCIA_CUENTA_INACTIVA";
+    public static final String CODIGO_ROL_NO_DISPONIBLE = "VIGENCIA_ROL_NO_DISPONIBLE";
     public static final String MENSAJE_CUENTA_INACTIVA =
             "Su cuenta está inactiva. Comuníquese con el administrador.";
     public static final String MENSAJE_NO_DISPONIBLE = "No se pudo verificar la vigencia de su cuenta.";
+    public static final String MENSAJE_ROL_NO_DISPONIBLE =
+            "El rol activo de su sesión ya no está disponible. Vuelva a iniciar sesión.";
 
     private final String codigo;
     private final LocalDate fechaInicio;

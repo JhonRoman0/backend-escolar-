@@ -68,8 +68,8 @@ public class AsignacionService {
 
     // En una transacción, los horarios reutilizan las asignaciones ya cargadas.
     @Transactional(readOnly = true)
-    public List<AsignacionResponse> getAll(Integer idUsuario, List<String> roles) {
-        Predicate<Asignacion> visible = visibles(idUsuario, roles);
+    public List<AsignacionResponse> getAll(Integer idUsuario, Integer idRolActivo) {
+        Predicate<Asignacion> visible = visibles(idUsuario, idRolActivo);
         List<Asignacion> asignaciones = asignacionRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
                 .filter(visible)
                 .toList();
@@ -90,18 +90,18 @@ public class AsignacionService {
                 .collect(java.util.stream.Collectors.groupingBy(h -> h.getAsignacion().getIdAsignacion()));
     }
 
-    public List<AsignacionResponse> getByDocente(Integer idDocente, Integer idUsuario, List<String> roles) {
+    public List<AsignacionResponse> getByDocente(Integer idDocente, Integer idUsuario, Integer idRolActivo) {
         findDocente(idDocente);
-        Predicate<Asignacion> visible = visibles(idUsuario, roles);
+        Predicate<Asignacion> visible = visibles(idUsuario, idRolActivo);
         return asignacionesVigentes(idDocente).stream().filter(visible)
                 .map(this::toResponse)
                 .toList();
     }
 
     @Transactional(readOnly = true)
-    public List<AsignacionResponse> asignacionesParaCambio(Integer idDocente, Integer idUsuario, List<String> roles) {
-        if (!accesoContextoService.tieneAccion("CAMBIOS_DOCENTE", "CREAR", idUsuario, roles)
-                && !accesoContextoService.tieneAccion("CAMBIOS_DOCENTE", "ACTUALIZAR", idUsuario, roles)) {
+    public List<AsignacionResponse> asignacionesParaCambio(Integer idDocente, Integer idUsuario, Integer idRolActivo) {
+        if (!accesoContextoService.tieneAccion("CAMBIOS_DOCENTE", "CREAR", idUsuario, idRolActivo)
+                && !accesoContextoService.tieneAccion("CAMBIOS_DOCENTE", "ACTUALIZAR", idUsuario, idRolActivo)) {
             throw new org.springframework.security.access.AccessDeniedException("Sin permiso para gestionar cambios de docente");
         }
         findDocente(idDocente);
@@ -120,9 +120,9 @@ public class AsignacionService {
                 accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow());
     }
 
-    public AsignacionResponse getById(Integer id, Integer idUsuario, List<String> roles) {
+    public AsignacionResponse getById(Integer id, Integer idUsuario, Integer idRolActivo) {
         Asignacion asignacion = findAsignacion(id);
-        if (!visibles(idUsuario, roles).test(asignacion)) {
+        if (!visibles(idUsuario, idRolActivo).test(asignacion)) {
             throw new ResourceNotFoundException("Asignación no encontrada con id " + id);
         }
         return toResponse(asignacion);
@@ -417,8 +417,8 @@ public class AsignacionService {
     }
 
     // Se calcula una vez por consulta: el alcance lee los permisos del usuario.
-    private Predicate<Asignacion> visibles(Integer idUsuario, List<String> roles) {
-        AccesoContextoService.Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, roles);
+    private Predicate<Asignacion> visibles(Integer idUsuario, Integer idRolActivo) {
+        AccesoContextoService.Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, idRolActivo);
         if (alcance == AccesoContextoService.Alcance.TODO) {
             return asignacion -> true;
         }

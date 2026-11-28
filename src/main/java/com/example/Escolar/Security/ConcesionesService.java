@@ -1,5 +1,7 @@
 package com.example.Escolar.Security;
 
+import com.example.Escolar.Dto.RolAsignadoSesionResponse;
+import com.example.Escolar.Dto.RolAsignadoSesionResponse.EstadoRol;
 import com.example.Escolar.Model.Accion;
 import com.example.Escolar.Model.Permiso;
 import com.example.Escolar.Model.Rol;
@@ -12,6 +14,8 @@ import com.example.Escolar.Repository.RolPermisoRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
 import com.example.Escolar.Repository.UsuarioRolRepository;
 import com.example.Escolar.Service.AccesoConstants;
+import com.example.Escolar.Service.RolAsignadoResolver;
+import com.example.Escolar.Service.RolConstants;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -21,6 +25,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -29,7 +34,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
- * Permisos activos del usuario (sumando todos sus roles) con las acciones concedidas en cada uno.
+ * Permisos del rol activo del usuario con las acciones concedidas en él.
  * Una misma petición los consulta varias veces (autorización y alcance), así que se recuerdan
  * unos segundos: un cambio en Accesos se aplica, como mucho, VIGENCIA_MS después.
  */
@@ -41,36 +46,60 @@ public class ConcesionesService {
     private final RolPermisoRepository rolPermisoRepository;
     private final RolPermisoAccionRepository rolPermisoAccionRepository;
     private final UsuarioRepository usuarioRepository;
+    private final RolAsignadoResolver rolAsignadoResolver;
 
     static final long VIGENCIA_MS = 5_000;
 
-    private record Calculo(Map<String, Set<String>> acciones,
-                           Map<String, Map<String, Set<String>>> accionesPorRol) {
+    private record RolActivo(Map<String, Set<String>> acciones, String nombre, boolean admin) {
     }
 
-    private record Guardado(long hasta, Calculo calculo) {
+    private record Guardado(long hasta, Map<Integer, RolActivo> rolesPorId) {
+    }
+
+    private static final class ConstruccionRol {
+        private final Map<String, Set<String>> acciones = new HashMap<>();
+        private String nombre;
+        private boolean admin;
     }
 
     private final Map<Integer, Guardado> recientes = new ConcurrentHashMap<>();
 
-    public Map<String, Set<String>> accionesPorPermiso(Integer idUsuario) {
-        return calculoVigente(idUsuario).acciones();
+    /** Acciones del rol activo, sin mezclar permisos de otros roles del usuario. */
+    public Map<String, Set<String>> accionesPorPermiso(Integer idUsuario, Integer idRolActivo) {
+        RolActivo rol = rolActivo(idUsuario, idRolActivo);
+        return rol == null ? Map.of() : rol.acciones();
     }
 
-    /** Acciones por rol activo, para no mezclar permisos de un rol con vínculos de otro. */
-    public Map<String, Map<String, Set<String>>> accionesPorPermisoYRol(Integer idUsuario) {
-        return copiaPorRol(calculoVigente(idUsuario).accionesPorRol());
+    public boolean rolActivoValido(Integer idUsuario, Integer idRolActivo) {
+        return rolActivo(idUsuario, idRolActivo) != null;
     }
 
-    private Calculo calculoVigente(Integer idUsuario) {
+    public boolean esAdminActivo(Integer idUsuario, Integer idRolActivo) {
+        RolActivo rol = rolActivo(idUsuario, idRolActivo);
+        return rol != null && rol.admin();
+    }
+
+    public String nombreRolActivo(Integer idUsuario, Integer idRolActivo) {
+        RolActivo rol = rolActivo(idUsuario, idRolActivo);
+        return rol == null ? null : rol.nombre();
+    }
+
+    private RolActivo rolActivo(Integer idUsuario, Integer idRolActivo) {
+        if (idUsuario == null || idRolActivo == null) {
+            return null;
+        }
+        return calculoVigente(idUsuario).get(idRolActivo);
+    }
+
+    private Map<Integer, RolActivo> calculoVigente(Integer idUsuario) {
         if (idUsuario == null) {
-            return new Calculo(Map.of(), Map.of());
+            return Map.of();
         }
         long ahora = System.currentTimeMillis();
         Guardado guardado = recientes.compute(idUsuario, (id, anterior) ->
                 anterior != null && anterior.hasta() > ahora
                         ? anterior : new Guardado(ahora + VIGENCIA_MS, calcular(id)));
-        return new Calculo(copia(guardado.calculo().acciones()), copiaPorRol(guardado.calculo().accionesPorRol()));
+        return guardado.rolesPorId();
     }
 
     public void invalidarCambioRoles(Integer idUsuario) {
@@ -180,57 +209,55 @@ public class ConcesionesService {
         }
     }
 
-    /** Copia: quien la recibe puede modificarla sin tocar lo guardado. */
-    private static Map<String, Set<String>> copia(Map<String, Set<String>> acciones) {
-        Map<String, Set<String>> c = new HashMap<>();
-        acciones.forEach((k, v) -> c.put(k, new HashSet<>(v)));
-        return c;
-    }
-
-    private static Map<String, Map<String, Set<String>>> copiaPorRol(
-            Map<String, Map<String, Set<String>>> accionesPorRol) {
-        Map<String, Map<String, Set<String>>> copia = new HashMap<>();
-        accionesPorRol.forEach((rol, acciones) -> copia.put(rol, copia(acciones)));
-        return copia;
-    }
-
-    private Calculo calcular(Integer idUsuario) {
-        Map<String, Set<String>> accionesPorPermiso = new HashMap<>();
-        Map<String, Map<String, Set<String>>> accionesPorRol = new HashMap<>();
-        for (UsuarioRol usuarioRol : usuarioRolRepository.findByUsuarioIdUsuario(idUsuario)) {
+    private Map<Integer, RolActivo> calcular(Integer idUsuario) {
+        Map<Integer, ConstruccionRol> porId = new HashMap<>();
+        List<UsuarioRol> vinculos = usuarioRolRepository.findByUsuarioIdUsuario(idUsuario);
+        List<Rol> roles = vinculos.stream().map(UsuarioRol::getRol).filter(Objects::nonNull).toList();
+        Set<Integer> idsRolesActivos = rolAsignadoResolver.resolver(idUsuario, roles).stream()
+                .filter(estado -> estado.estado() == EstadoRol.ACTIVO)
+                .map(RolAsignadoSesionResponse::idRol)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        for (UsuarioRol usuarioRol : vinculos) {
             Rol rol = usuarioRol.getRol();
-            if (!AccesoConstants.ACTIVO.equals(rol.getAcceso().getIdAcceso()) || rol.getNombre() == null) {
+            if (rol == null || rol.getIdRol() == null || rol.getAcceso() == null
+                    || !AccesoConstants.ACTIVO.equals(rol.getAcceso().getIdAcceso()) || rol.getNombre() == null
+                    || !idsRolesActivos.contains(rol.getIdRol())) {
                 continue;
             }
             String nombreRol = rol.getNombre().toUpperCase(Locale.ROOT);
-            Map<String, Set<String>> delRol = accionesPorRol.computeIfAbsent(nombreRol, k -> new HashMap<>());
+            ConstruccionRol construccion = porId.computeIfAbsent(rol.getIdRol(), k -> new ConstruccionRol());
+            construccion.nombre = rol.getNombre();
+            construccion.admin = RolConstants.esAdmin(nombreRol);
             for (RolPermiso rolPermiso : rolPermisoRepository.findByRolIdRol(rol.getIdRol())) {
                 if (!AccesoConstants.ACTIVO.equals(rolPermiso.getAcceso().getIdAcceso())) {
                     continue;
                 }
                 Permiso permiso = rolPermiso.getPermiso();
-                if (!AccesoConstants.ACTIVO.equals(permiso.getAcceso().getIdAcceso())) {
+                if (!AccesoConstants.ACTIVO.equals(permiso.getAcceso().getIdAcceso())
+                        || !AccesoConstants.ACTIVO.equals(permiso.getModulo().getAcceso().getIdAcceso())) {
                     continue;
                 }
-                if (!AccesoConstants.ACTIVO.equals(permiso.getModulo().getAcceso().getIdAcceso())) {
-                    continue;
-                }
-                Set<String> acciones = delRol.computeIfAbsent(permiso.getCodigo(), k -> new HashSet<>());
-                Set<String> todas = accionesPorPermiso.computeIfAbsent(permiso.getCodigo(), k -> new HashSet<>());
+                Set<String> acciones = construccion.acciones
+                        .computeIfAbsent(permiso.getCodigo(), k -> new HashSet<>());
                 for (RolPermisoAccion rolPermisoAccion : rolPermisoAccionRepository
                         .findByRolPermisoIdRolPermiso(rolPermiso.getIdRolPermiso())) {
                     if (!AccesoConstants.ACTIVO.equals(rolPermisoAccion.getAcceso().getIdAcceso())) {
                         continue;
                     }
                     Accion accion = rolPermisoAccion.getAccion();
-                    if (!AccesoConstants.ACTIVO.equals(accion.getAcceso().getIdAcceso())) {
-                        continue;
+                    if (AccesoConstants.ACTIVO.equals(accion.getAcceso().getIdAcceso())) {
+                        acciones.add(accion.getCodigo());
                     }
-                    acciones.add(accion.getCodigo());
-                    todas.add(accion.getCodigo());
                 }
             }
         }
-        return new Calculo(accionesPorPermiso, accionesPorRol);
+        Map<Integer, RolActivo> resultado = new HashMap<>();
+        porId.forEach((idRol, construccion) -> {
+            Map<String, Set<String>> acciones = new HashMap<>();
+            construccion.acciones.forEach((codigo, permitidas) -> acciones.put(codigo, Set.copyOf(permitidas)));
+            resultado.put(idRol, new RolActivo(Map.copyOf(acciones), construccion.nombre, construccion.admin));
+        });
+        return Map.copyOf(resultado);
     }
 }

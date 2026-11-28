@@ -39,7 +39,7 @@ public class ReporteController {
             @RequestParam(required = false) Integer idAnio,
             @PageableDefault(size = 10, sort = "fecha") Pageable pageable) {
         return asistenciaService.reporteGeneral(inicio, fin, pageable,
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados(),
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado(),
                 idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio);
     }
 
@@ -49,7 +49,7 @@ public class ReporteController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin) {
         return asistenciaService.reportePorAlumno(idAlumno, inicio, fin,
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 
     @GetMapping("/usuario/{idUsuario}")
@@ -58,6 +58,6 @@ public class ReporteController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin) {
         return asistenciaService.reportePorUsuario(idUsuario, inicio, fin,
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 }

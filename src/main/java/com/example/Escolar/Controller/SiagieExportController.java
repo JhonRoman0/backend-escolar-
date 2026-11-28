@@ -20,13 +20,13 @@ public class SiagieExportController {
     @GetMapping("/pendientes")
     public SiagieExportService.Pendientes pendientes(@RequestParam Integer idGradoSeccion, @RequestParam Integer periodo) {
         return siagieExportService.pendientes(idGradoSeccion, periodo,
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 
     @GetMapping
     public ResponseEntity<byte[]> exportar(@RequestParam Integer idGradoSeccion, @RequestParam Integer periodo) {
         SiagieExportService.Archivo archivo = siagieExportService.exportar(idGradoSeccion, periodo,
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(archivo.nombre()).build().toString())
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))

@@ -17,6 +17,6 @@ public class BoletaController {
     @GetMapping
     public BoletaResponse boletas(@RequestParam Integer idGradoSeccion, @RequestParam Integer periodo) {
         return boletaService.boletas(idGradoSeccion, periodo,
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 }

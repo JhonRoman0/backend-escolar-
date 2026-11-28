@@ -63,23 +63,23 @@ public class MatriculaController {
                                           @RequestParam(required = false) Integer idAnio,
                                           @RequestParam(required = false) Long idAcceso,
                                           @RequestParam(required = false) MatriculaResponse.TipoIngreso tipoIngreso) {
-        return matriculaService.getAll(pageable, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados(),
+        return matriculaService.getAll(pageable, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado(),
                 idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio, idAcceso, tipoIngreso);
     }
 
     @GetMapping("/{id}")
     public MatriculaResponse getById(@PathVariable Integer id) {
-        return matriculaService.getById(id, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+        return matriculaService.getById(id, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 
     @GetMapping("/{id}/ficha")
     public FichaMatriculaResponse ficha(@PathVariable Integer id) {
-        return matriculaService.ficha(id, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+        return matriculaService.ficha(id, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 
     @GetMapping("/{id}/pagos")
     public List<PagoMatriculaResponse> pagos(@PathVariable Integer id) {
-        return matriculaService.pagos(id, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+        return matriculaService.pagos(id, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 
     @GetMapping("/inscripcion/alumno/validar-dni/{dni}")
@@ -136,7 +136,7 @@ public class MatriculaController {
     @GetMapping("/{id}/cambio-seccion/pendientes")
     public List<String> pendientesCambioSeccion(@PathVariable Integer id) {
         // Valida que el usuario pueda ver la matrícula.
-        matriculaService.getById(id, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+        matriculaService.getById(id, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
         return notaFinalService.pendientesTraslado(id);
     }
 
@@ -164,6 +164,6 @@ public class MatriculaController {
             @RequestParam(required = false) Long idAcceso,
             @RequestParam(required = false) MatriculaResponse.TipoIngreso tipoIngreso) {
         return matriculaService.reporte(inicio, fin, idAnio, idNivel, idGrado, idGradoSeccion, idAcceso, tipoIngreso,
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 }

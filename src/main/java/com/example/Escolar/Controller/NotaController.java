@@ -28,13 +28,13 @@ public class NotaController {
             @PathVariable Integer idCompetencia,
             @RequestParam(required = false) Byte bimestre) {
         return notaService.getPorCompetencia(idCompetencia, bimestre,
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 
     @GetMapping("/matricula/{idMatricula}")
     public List<NotaResponse> getPorMatricula(@PathVariable Integer idMatricula) {
         return notaService.getPorMatricula(idMatricula,
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 
 
@@ -45,7 +45,7 @@ public class NotaController {
             @RequestParam(required = false) Integer idGradoSeccion,
             @RequestParam(required = false) Integer bimestre) {
         return notaService.reporte(inicio, fin, idGradoSeccion, bimestre,
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 
 }

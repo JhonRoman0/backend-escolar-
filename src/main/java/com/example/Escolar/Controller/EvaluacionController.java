@@ -26,55 +26,55 @@ public class EvaluacionController {
 
     @GetMapping("/cursos")
     public List<EvaluacionResponse.Curso> cursos(@RequestParam Integer idAnio) {
-        return evaluacionService.cursos(idAnio, usuario(), roles());
+        return evaluacionService.cursos(idAnio, usuario(), idRolActivo());
     }
 
     @GetMapping
     public List<EvaluacionResponse.Resumen> listar(@RequestParam Integer idAsignacion, @RequestParam Integer periodo) {
-        return evaluacionService.listar(idAsignacion, periodo, usuario(), roles());
+        return evaluacionService.listar(idAsignacion, periodo, usuario(), idRolActivo());
     }
 
     @GetMapping("/avance-finales")
     public List<EvaluacionResponse.AvanceFinal> avance(@RequestParam Integer idAsignacion, @RequestParam Integer periodo) {
-        return evaluacionService.avance(idAsignacion, periodo, usuario(), roles());
+        return evaluacionService.avance(idAsignacion, periodo, usuario(), idRolActivo());
     }
 
     @GetMapping("/registro")
     public EvaluacionResponse.Registro registro(@RequestParam Integer idAsignacion, @RequestParam Integer periodo) {
-        return evaluacionService.registro(idAsignacion, periodo, usuario(), roles());
+        return evaluacionService.registro(idAsignacion, periodo, usuario(), idRolActivo());
     }
 
     @GetMapping("/{id}")
     public EvaluacionResponse.Detalle detalle(@PathVariable Integer id) {
-        return evaluacionService.detalle(id, usuario(), roles());
+        return evaluacionService.detalle(id, usuario(), idRolActivo());
     }
 
     /** Pide la acción VER_RESUMEN (ver ApiPermisoRegistro). */
     @GetMapping("/{id}/resumen")
     public EvaluacionResponse.Ficha resumen(@PathVariable Integer id) {
-        return evaluacionService.resumen(id, usuario(), roles());
+        return evaluacionService.resumen(id, usuario(), idRolActivo());
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public EvaluacionResponse.Resumen crear(@Valid @RequestBody EvaluacionRequest request) {
-        return reconocimientoService.crear(request, usuario(), roles());
+        return reconocimientoService.crear(request, usuario(), idRolActivo());
     }
 
     @PutMapping("/{id}/notas")
     public EvaluacionResponse.Detalle registrarNotas(@PathVariable Integer id,
                                                      @Valid @RequestBody NotasEvaluacionRequest request) {
-        return evaluacionService.registrarNotas(id, request, usuario(), roles());
+        return evaluacionService.registrarNotas(id, request, usuario(), idRolActivo());
     }
 
     @PutMapping("/{id}")
     public EvaluacionResponse.Resumen editar(@PathVariable Integer id, @Valid @RequestBody EvaluacionRequest request) {
-        return reconocimientoService.editar(id, request, usuario(), roles());
+        return reconocimientoService.editar(id, request, usuario(), idRolActivo());
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> eliminar(@PathVariable Integer id) {
-        evaluacionService.eliminar(id, usuario(), roles());
+        evaluacionService.eliminar(id, usuario(), idRolActivo());
         return ResponseEntity.noContent().build();
     }
 
@@ -82,7 +82,7 @@ public class EvaluacionController {
         return accesoContextoService.idUsuarioAutenticado();
     }
 
-    private List<String> roles() {
-        return accesoContextoService.rolesAutenticados();
+    private Integer idRolActivo() {
+        return accesoContextoService.idRolActivoAutenticado();
     }
 }

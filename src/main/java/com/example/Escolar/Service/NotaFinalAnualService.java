@@ -57,13 +57,13 @@ public class NotaFinalAnualService {
     // ── Consultas ──
 
     @Transactional(readOnly = true)
-    public List<NotaFinalResponse.Curso> cursos(Integer idAnio, Integer idUsuario, List<String> roles) {
-        return notaFinalService.cursos(idAnio, idUsuario, roles, PERMISO);
+    public List<NotaFinalResponse.Curso> cursos(Integer idAnio, Integer idUsuario, Integer idRolActivo) {
+        return notaFinalService.cursos(idAnio, idUsuario, idRolActivo, PERMISO);
     }
 
     @Transactional(readOnly = true)
-    public NotaAnualResponse.Detalle detalle(Integer idGradoSeccion, Integer idArea, Integer idUsuario, List<String> roles) {
-        Contexto ctx = contexto(idGradoSeccion, idArea, idUsuario, roles, AccesoContextoService.Operacion.LECTURA);
+    public NotaAnualResponse.Detalle detalle(Integer idGradoSeccion, Integer idArea, Integer idUsuario, Integer idRolActivo) {
+        Contexto ctx = contexto(idGradoSeccion, idArea, idUsuario, idRolActivo, AccesoContextoService.Operacion.LECTURA);
         boolean vigesimal = ctx.config().getEscala() == EscalaCalificacion.VIGESIMAL;
         List<NotaAnualResponse.Alumno> filas = ctx.alumnos().stream().map(m -> {
             Alumno a = m.getAlumnoApoderado().getAlumno();
@@ -85,14 +85,14 @@ public class NotaFinalAnualService {
         }).toList();
 
         boolean disponible = ctx.noDisponible() == null;
-        boolean editable = disponible && notaFinalService.puedeEditar(ctx.alcance(), idUsuario, roles, PERMISO);
+        boolean editable = disponible && notaFinalService.puedeEditar(ctx.alcance(), idUsuario, idRolActivo, PERMISO);
         return new NotaAnualResponse.Detalle(notaFinalService.aCurso(ctx.alcance()), ctx.config().getEscala(),
                 ctx.periodos().stream()
                         .map(p -> new NotaAnualResponse.Periodo(p.getNumero(), ctx.config().getTipoPeriodo().nombre(p.getNumero())))
                         .toList(),
                 disponible, ctx.noDisponible(),
-                editable && accesoContextoService.tieneAccion(PERMISO, "CREAR", idUsuario, roles),
-                editable && accesoContextoService.tieneAccion(PERMISO, "ACTUALIZAR", idUsuario, roles),
+                editable && accesoContextoService.tieneAccion(PERMISO, "CREAR", idUsuario, idRolActivo),
+                editable && accesoContextoService.tieneAccion(PERMISO, "ACTUALIZAR", idUsuario, idRolActivo),
                 ctx.alcance().competencias().stream()
                         .map(c -> new EvaluacionResponse.Competencia(c.getIdCompetencia(), c.getCodigo(), c.getNombre()))
                         .toList(),
@@ -103,21 +103,21 @@ public class NotaFinalAnualService {
 
     /** Solo notas nuevas: una ya registrada se cambia con corregir. */
     @Transactional
-    public NotaAnualResponse.Detalle registrar(NotaAnualRequest request, Integer idUsuario, List<String> roles) {
-        return guardar(request, false, idUsuario, roles);
+    public NotaAnualResponse.Detalle registrar(NotaAnualRequest request, Integer idUsuario, Integer idRolActivo) {
+        return guardar(request, false, idUsuario, idRolActivo);
     }
 
     /** En literal cambia la nota o la conclusión con motivo; en vigesimal solo se reabre. */
     @Transactional
-    public NotaAnualResponse.Detalle corregir(NotaAnualRequest request, Integer idUsuario, List<String> roles) {
-        return guardar(request, true, idUsuario, roles);
+    public NotaAnualResponse.Detalle corregir(NotaAnualRequest request, Integer idUsuario, Integer idRolActivo) {
+        return guardar(request, true, idUsuario, idRolActivo);
     }
 
     /** Anula la nota del año con su motivo; luego se pueden reabrir las de los periodos. */
     @Transactional
-    public NotaAnualResponse.Detalle reabrir(ReaperturaNotaRequest request, Integer idUsuario, List<String> roles) {
+    public NotaAnualResponse.Detalle reabrir(ReaperturaNotaRequest request, Integer idUsuario, Integer idRolActivo) {
         bloqueo.matricula(request.idMatricula());
-        Contexto ctx = contexto(request.idGradoSeccion(), request.idArea(), idUsuario, roles, AccesoContextoService.Operacion.ESCRITURA);
+        Contexto ctx = contexto(request.idGradoSeccion(), request.idArea(), idUsuario, idRolActivo, AccesoContextoService.Operacion.ESCRITURA);
         vigente(ctx);
         Matricula m = alumno(ctx, request.idMatricula());
         Competencia c = competencia(ctx, request.idCompetencia());
@@ -126,13 +126,13 @@ public class NotaFinalAnualService {
             throw new IllegalArgumentException("No hay nota final del año que reabrir");
         }
         anular(actual, request.motivo().trim(), usuario(idUsuario));
-        return detalle(request.idGradoSeccion(), request.idArea(), idUsuario, roles);
+        return detalle(request.idGradoSeccion(), request.idArea(), idUsuario, idRolActivo);
     }
 
     private NotaAnualResponse.Detalle guardar(NotaAnualRequest request, boolean correccion,
-                                              Integer idUsuario, List<String> roles) {
+                                              Integer idUsuario, Integer idRolActivo) {
         request.notas().stream().map(NotaFinalRequest.Item::idMatricula).distinct().sorted().forEach(bloqueo::matricula);
-        Contexto ctx = contexto(request.idGradoSeccion(), request.idArea(), idUsuario, roles, AccesoContextoService.Operacion.ESCRITURA);
+        Contexto ctx = contexto(request.idGradoSeccion(), request.idArea(), idUsuario, idRolActivo, AccesoContextoService.Operacion.ESCRITURA);
         if (ctx.noDisponible() != null) {
             throw new IllegalArgumentException(ctx.noDisponible());
         }
@@ -187,20 +187,20 @@ public class NotaFinalAnualService {
             nota.setAcceso(activo);
             anualRepository.save(nota);
         }
-        return detalle(request.idGradoSeccion(), request.idArea(), idUsuario, roles);
+        return detalle(request.idGradoSeccion(), request.idArea(), idUsuario, idRolActivo);
     }
 
     // ── Apoyo ──
 
-    private Contexto contexto(Integer idGradoSeccion, Integer idArea, Integer idUsuario, List<String> roles,
+    private Contexto contexto(Integer idGradoSeccion, Integer idArea, Integer idUsuario, Integer idRolActivo,
                               AccesoContextoService.Operacion operacion) {
-        Alcance alcance = notaFinalService.alcance(idGradoSeccion, idArea, idUsuario, roles, PERMISO, operacion);
+        Alcance alcance = notaFinalService.alcance(idGradoSeccion, idArea, idUsuario, idRolActivo, PERMISO, operacion);
         GradoSeccion gs = alcance.gradoSeccion();
         ConfiguracionAcademicaResponse config = notaFinalService.configuracion(gs);
         List<PeriodoEvaluacion> periodos = configuracionService.periodos(gs.getAnioEscolar(), gs.getGrado().getNivel()).stream()
                 .sorted(Comparator.comparing(PeriodoEvaluacion::getNumero))
                 .toList();
-        List<Matricula> alumnos = notaFinalService.alumnosDe(alcance, idUsuario, roles, PERMISO, operacion);
+        List<Matricula> alumnos = notaFinalService.alumnosDe(alcance, idUsuario, idRolActivo, PERMISO, operacion);
         Set<Integer> competencias = alcance.competencias().stream().map(Competencia::getIdCompetencia).collect(Collectors.toSet());
         List<Integer> ids = alumnos.stream().map(Matricula::getIdMatricula).toList();
         Acceso eliminado = notaFinalService.eliminado();

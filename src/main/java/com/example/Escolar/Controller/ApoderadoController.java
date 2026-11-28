@@ -39,21 +39,21 @@ public class ApoderadoController {
     public List<ApoderadoResponse> getAll() {
         return apoderadoService.getAll(
                 accesoContextoService.idUsuarioAutenticado(),
-                accesoContextoService.rolesAutenticados());
+                accesoContextoService.idRolActivoAutenticado());
     }
 
     @GetMapping("/{id}")
     public ApoderadoResponse getById(@PathVariable Integer id) {
         return apoderadoService.getById(id,
                 accesoContextoService.idUsuarioAutenticado(),
-                accesoContextoService.rolesAutenticados());
+                accesoContextoService.idRolActivoAutenticado());
     }
 
     @GetMapping("/dni/{documento}")
     public ApoderadoResponse getByDocumento(@PathVariable String documento) {
         return apoderadoService.getByDocumento(documento,
                 accesoContextoService.idUsuarioAutenticado(),
-                accesoContextoService.rolesAutenticados());
+                accesoContextoService.idRolActivoAutenticado());
     }
 
     // Segundo apoderado de un alumno ya matriculado.

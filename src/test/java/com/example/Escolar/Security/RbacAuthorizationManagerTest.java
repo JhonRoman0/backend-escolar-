@@ -19,7 +19,10 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -35,16 +38,25 @@ class RbacAuthorizationManagerTest {
     }
 
     private boolean puede(String metodo, String ruta, Map<String, Set<String>> permisos) {
-        when(concesionesService.accionesPorPermiso(9))
+        when(concesionesService.accionesPorPermiso(9, 11))
                 .thenReturn(permisos);
         RbacAuthorizationManager manager = new RbacAuthorizationManager(new ApiPermisoRegistro(), concesionesService);
 
         HttpServletRequest request = mock(HttpServletRequest.class);
         when(request.getMethod()).thenReturn(metodo);
         when(request.getRequestURI()).thenReturn(ruta);
-        UsuarioAutenticado principal = new UsuarioAutenticado(9, "POR001", List.of("Portero"));
+        UsuarioAutenticado principal = new UsuarioAutenticado(9, "POR001", List.of("Portero"), null, 11);
         Authentication auth = new UsernamePasswordAuthenticationToken(principal, null, List.of());
 
+        return manager.authorize(() -> auth, new RequestAuthorizationContext(request)).isGranted();
+    }
+
+    private boolean puede(String metodo, String ruta, UsuarioAutenticado principal) {
+        RbacAuthorizationManager manager = new RbacAuthorizationManager(new ApiPermisoRegistro(), concesionesService);
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        when(request.getMethod()).thenReturn(metodo);
+        when(request.getRequestURI()).thenReturn(ruta);
+        Authentication auth = new UsernamePasswordAuthenticationToken(principal, null, List.of());
         return manager.authorize(() -> auth, new RequestAuthorizationContext(request)).isGranted();
     }
 
@@ -93,5 +105,61 @@ class RbacAuthorizationManagerTest {
             if (candidata.equals(accion)) assertTrue(autorizado);
             else assertFalse(autorizado);
         }
+    }
+
+    @Test
+    void sinIdRolActivoNiegaAunqueElTokenDigaAdmin() {
+        UsuarioAutenticado principal = new UsuarioAutenticado(9, "ADM001", List.of("ADMIN"));
+        when(concesionesService.accionesPorPermiso(9, 11)).thenReturn(Map.of("DOCENTES", Set.of("ACTUALIZAR")));
+
+        assertFalse(puede("GET", "/alumnos", principal));
+    }
+
+    @Test
+    void adminSoloSiElRolActivoEsAdmin() {
+        when(concesionesService.esAdminActivo(9, 11)).thenReturn(true);
+        UsuarioAutenticado admin = new UsuarioAutenticado(9, "ADM001", List.of("ADMIN"), null, 11);
+        assertTrue(puede("GET", "/alumnos", admin));
+        assertTrue(puede("POST", "/roles-permiso", admin));
+
+        when(concesionesService.esAdminActivo(9, 12)).thenReturn(false);
+        when(concesionesService.accionesPorPermiso(9, 12)).thenReturn(Map.of());
+        UsuarioAutenticado otro = new UsuarioAutenticado(9, "POR001", List.of("ADMIN"), null, 12);
+        assertFalse(puede("GET", "/alumnos", otro));
+    }
+
+    @Test
+    void adminAsignadoPeroNoSeleccionadoNoHaceBypass() {
+        when(concesionesService.esAdminActivo(9, 11)).thenReturn(false);
+        when(concesionesService.esAdminActivo(9, 12)).thenReturn(true);
+        when(concesionesService.accionesPorPermiso(9, 11))
+                .thenReturn(Map.of("DOCENTES", Set.of("ACTUALIZAR")));
+        UsuarioAutenticado principal = new UsuarioAutenticado(9, "USR001",
+                List.of("ADMIN", "Docente"), null, 11);
+
+        assertTrue(puede("GET", "/docentes", principal));
+        assertFalse(puede("GET", "/alumnos", principal));
+        verify(concesionesService, never()).esAdminActivo(eq(9), eq(12));
+    }
+
+    @Test
+    void noUsaPermisosDeOtrosRoles() {
+        when(concesionesService.accionesPorPermiso(9, 11)).thenReturn(Map.of());
+        when(concesionesService.accionesPorPermiso(9, 12)).thenReturn(Map.of("DOCENTES", Set.of("ACTUALIZAR")));
+        UsuarioAutenticado principal = new UsuarioAutenticado(9, "POR001", List.of("Docente"), null, 11);
+
+        assertFalse(puede("GET", "/alumnos", principal));
+    }
+
+    @Test
+    void noElevaPermisosUsandoOtroRolPropioParaConfigurarRolesPermiso() {
+        when(concesionesService.accionesPorPermiso(9, 11))
+                .thenReturn(Map.of("USUARIOS", Set.of("CREAR")));
+        when(concesionesService.accionesPorPermiso(9, 12))
+                .thenReturn(Map.of("ROLES_PERMISOS", Set.of("ACTUALIZAR")));
+        UsuarioAutenticado principal = new UsuarioAutenticado(9, "POR001",
+                List.of("Docente", "Portero"), null, 11);
+
+        assertFalse(puede("POST", "/roles-permiso", principal));
     }
 }

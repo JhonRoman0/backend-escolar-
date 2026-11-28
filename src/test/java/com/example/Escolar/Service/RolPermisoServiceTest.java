@@ -1,5 +1,6 @@
 package com.example.Escolar.Service;
 
+import com.example.Escolar.Dto.PermisosRolResponse;
 import com.example.Escolar.Dto.RolPermisoRequest;
 import com.example.Escolar.Dto.RolPermisoResponse;
 import com.example.Escolar.Model.Acceso;
@@ -16,7 +17,6 @@ import com.example.Escolar.Repository.PermisoRepository;
 import com.example.Escolar.Repository.RolPermisoAccionRepository;
 import com.example.Escolar.Repository.RolPermisoRepository;
 import com.example.Escolar.Repository.RolRepository;
-import com.example.Escolar.Repository.UsuarioRolRepository;
 import com.example.Escolar.Security.ConcesionesService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,12 +26,18 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -51,8 +57,6 @@ class RolPermisoServiceTest {
     private AccionRepository accionRepository;
     @Mock
     private PermisoAccionRepository permisoAccionRepository;
-    @Mock
-    private UsuarioRolRepository usuarioRolRepository;
     @Mock
     private AccesoRepository accesoRepository;
     @Mock
@@ -89,6 +93,14 @@ class RolPermisoServiceTest {
         return rol;
     }
 
+    private Rol rolConId(Integer id, String nombre) {
+        Rol rol = new Rol();
+        rol.setIdRol(id);
+        rol.setNombre(nombre);
+        rol.setAcceso(mockAcceso(AccesoConstants.ACTIVO));
+        return rol;
+    }
+
     private Permiso permiso() {
         Modulo modulo = new Modulo();
         modulo.setIdModulo(1);
@@ -111,6 +123,15 @@ class RolPermisoServiceTest {
         rp.setRol(rol());
         rp.setPermiso(permiso());
         rp.setAcceso(mockAcceso(accesoId));
+        return rp;
+    }
+
+    private RolPermiso rolPermisoDe(Rol rol) {
+        RolPermiso rp = new RolPermiso();
+        rp.setIdRolPermiso(2);
+        rp.setRol(rol);
+        rp.setPermiso(permiso());
+        rp.setAcceso(mockAcceso(AccesoConstants.ACTIVO));
         return rp;
     }
 
@@ -170,12 +191,13 @@ class RolPermisoServiceTest {
 
     // ───────────── Reglas contra la autoescalada (actor sin ADMIN) ─────────────
 
-    /** Actor sin ADMIN, con el rol 7 y la acción CREAR en Usuarios. */
+    /** Actor sin ADMIN, con el rol activo 7 y la acción CREAR en Usuarios. */
     private void actorConUsuariosCrear() {
         when(actorSeguridad.esAdminOSistema()).thenReturn(false);
         when(actorSeguridad.idActual()).thenReturn(Optional.of(50));
+        when(actorSeguridad.idRolActual()).thenReturn(Optional.of(7));
         when(actorSeguridad.idsRolesActuales()).thenReturn(java.util.Set.of(7));
-        when(concesionesService.accionesPorPermiso(50))
+        when(concesionesService.accionesPorPermiso(50, 7))
                 .thenReturn(java.util.Map.of("USUARIOS", java.util.Set.of("CREAR")));
     }
 
@@ -198,6 +220,22 @@ class RolPermisoServiceTest {
     }
 
     @Test
+    void nadieCambiaLosPermisosDeOtroRolPropioDistintoDelActivo() {
+        actorConUsuariosCrear();
+        when(actorSeguridad.idsRolesActuales()).thenReturn(java.util.Set.of(7, 12));
+        rolYPermisoExisten();
+        when(rolRepository.findByIdRolAndAccesoNot(any(Integer.class), any(Acceso.class)))
+                .thenReturn(Optional.of(rolConId(12, "Portero")));
+
+        RolPermisoRequest otroRolPropio = request();
+        otroRolPropio.setIdRol(12);
+        var e = assertThrows(com.example.Escolar.Exception.AccesoDenegadoException.class,
+                () -> service.create(otroRolPropio));
+        assertEquals("No puedes modificar los permisos de tu propio rol", e.getMessage());
+        verify(rolPermisoRepository, never()).save(any(RolPermiso.class));
+    }
+
+    @Test
     void soloSeConcedeLoQueUnoMismoTiene() {
         actorConUsuariosCrear();
         rolYPermisoExisten();
@@ -214,7 +252,7 @@ class RolPermisoServiceTest {
     @Test
     void sinElPermisoNoSePuedeAsignarNiQuitar() {
         actorConUsuariosCrear();
-        when(concesionesService.accionesPorPermiso(50)).thenReturn(java.util.Map.of());
+        when(concesionesService.accionesPorPermiso(50, 7)).thenReturn(java.util.Map.of());
         rolYPermisoExisten();
 
         var e = assertThrows(com.example.Escolar.Exception.AccesoDenegadoException.class, () -> service.create(request()));
@@ -267,5 +305,70 @@ class RolPermisoServiceTest {
         eliminado.setAccesoId(AccesoConstants.ELIMINADO);
         assertEquals("Estado no válido: para quitar un permiso usa la opción Quitar",
                 assertThrows(IllegalArgumentException.class, () -> service.update(9, eliminado)).getMessage());
+    }
+
+    @Test
+    void obtenerPermisosDelUsuarioSoloIncluyePermisosDelRolActivo() {
+        stubAccesoRepository();
+        when(concesionesService.rolActivoValido(1, 11)).thenReturn(true);
+        when(concesionesService.nombreRolActivo(1, 11)).thenReturn("Portero");
+        Rol activo = rolConId(11, "Portero");
+        when(rolPermisoRepository.findByRolIdRol(11)).thenReturn(List.of(rolPermisoDe(activo)));
+        Map<String, Set<String>> efectivas = Map.of("USUARIOS", Set.of("ACTUALIZAR"));
+        when(concesionesService.accionesPorPermiso(1, 11)).thenReturn(efectivas);
+        Accion actualizar = new Accion();
+        actualizar.setCodigo("ACTUALIZAR");
+        actualizar.setAcceso(mockAcceso(AccesoConstants.ACTIVO));
+        RolPermisoAccion concedida = new RolPermisoAccion();
+        concedida.setAcceso(mockAcceso(AccesoConstants.ACTIVO));
+        concedida.setAccion(actualizar);
+        when(rolPermisoAccionRepository.findByRolPermisoIdRolPermiso(2)).thenReturn(List.of(concedida));
+
+        PermisosRolResponse response = service.obtenerPermisosDelUsuario(1, 11);
+
+        assertEquals(11, response.getIdRol());
+        assertEquals("Portero", response.getNombreRol());
+        assertEquals(1, response.getModulos().size());
+        assertEquals("USUARIOS", response.getModulos().get(0).getPermisos().get(0).getCodigo());
+        assertEquals(efectivas.get("USUARIOS"),
+                Set.copyOf(response.getModulos().get(0).getPermisos().get(0).getAccionesConcedidas()));
+        verify(rolPermisoRepository, never()).findByRolIdRol(12);
+    }
+
+    @Test
+    void obtenerPermisosDelUsuarioConRolValidoSinPermisosDevuelveIdentidad() {
+        when(concesionesService.rolActivoValido(1, 12)).thenReturn(true);
+        when(concesionesService.nombreRolActivo(1, 12)).thenReturn("Docente");
+        when(rolPermisoRepository.findByRolIdRol(12)).thenReturn(List.of());
+
+        PermisosRolResponse response = service.obtenerPermisosDelUsuario(1, 12);
+
+        assertEquals(12, response.getIdRol());
+        assertEquals("Docente", response.getNombreRol());
+        assertTrue(response.getModulos().isEmpty());
+    }
+
+    @Test
+    void obtenerPermisosDelUsuarioSinRolActivoValidoDevuelveVacio() {
+        PermisosRolResponse response = service.obtenerPermisosDelUsuario(1, null);
+
+        assertNull(response.getIdRol());
+        assertNull(response.getNombreRol());
+        assertTrue(response.getModulos().isEmpty());
+        verify(rolPermisoRepository, never()).findByRolIdRol(any());
+        verify(concesionesService, never()).nombreRolActivo(1, null);
+    }
+
+    @Test
+    void obtenerPermisosDelUsuarioConRolNoAsignadoDevuelveVacio() {
+        when(concesionesService.rolActivoValido(1, 99)).thenReturn(false);
+
+        PermisosRolResponse response = service.obtenerPermisosDelUsuario(1, 99);
+
+        assertNull(response.getIdRol());
+        assertNull(response.getNombreRol());
+        assertTrue(response.getModulos().isEmpty());
+        verify(rolPermisoRepository, never()).findByRolIdRol(99);
+        verify(concesionesService, never()).nombreRolActivo(1, 99);
     }
 }

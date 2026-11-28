@@ -89,6 +89,7 @@ class AsignacionServiceTest {
     @InjectMocks
     private AsignacionService asignacionService;
 
+    private final Integer idRolActivo = 1;
     private Acceso activo;
     private Acceso inactivo;
     private AnioEscolar anio;
@@ -248,7 +249,7 @@ class AsignacionServiceTest {
     @Test
     void consultarAsignacionesParaCambioExigePermisoParaGestionarlo() {
         assertThrows(org.springframework.security.access.AccessDeniedException.class,
-                () -> asignacionService.asignacionesParaCambio(1, 7, java.util.List.of("Personalizado")));
+                () -> asignacionService.asignacionesParaCambio(1, 7, idRolActivo));
     }
 
     @Test
@@ -263,11 +264,11 @@ class AsignacionServiceTest {
         when(asignacionRepository.findByDocenteIdDocenteAndAnioEscolarEstadoAndAccesoNot(
                 eq(7), eq(AnioEscolarService.ESTADO_VIGENTE), any()))
                 .thenReturn(List.of(asignacion));
-        when(accesoContextoService.alcance(eq("ASIGNACIONES"), eq(99), any())).thenReturn(Alcance.TODO);
+        when(accesoContextoService.alcance(eq("ASIGNACIONES"), eq(99), anyInt())).thenReturn(Alcance.TODO);
         when(horarioClaseRepository.findByAsignacionIdAsignacionAndAccesoNot(eq(100), any()))
                 .thenReturn(List.of());
 
-        List<AsignacionResponse> respuesta = asignacionService.getByDocente(7, 99, List.of());
+        List<AsignacionResponse> respuesta = asignacionService.getByDocente(7, 99, idRolActivo);
 
         assertEquals(1, respuesta.size());
         assertEquals(100, respuesta.get(0).getIdAsignacion());
@@ -470,9 +471,9 @@ class AsignacionServiceTest {
         otro.setIdDocente(8);
         otro.setUsuario(usuario);
         when(asignacionRepository.findByAccesoNot(any())).thenReturn(List.of(asignacionDe(1, docente), asignacionDe(2, otro)));
-        when(accesoContextoService.alcance("ASIGNACIONES", 50, List.of("Docente"))).thenReturn(alcance);
+        when(accesoContextoService.alcance("ASIGNACIONES", 50, idRolActivo)).thenReturn(alcance);
         when(accesoContextoService.docenteDeUsuario(50)).thenReturn(Optional.of(docente));
-        return asignacionService.getAll(50, List.of("Docente")).stream()
+        return asignacionService.getAll(50, idRolActivo).stream()
                 .map(AsignacionResponse::getIdAsignacion)
                 .toList();
     }

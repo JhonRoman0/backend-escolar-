@@ -26,11 +26,12 @@ class HorarioControllerTest {
     @InjectMocks HorarioController controller;
 
     private final Pageable pageable = Pageable.ofSize(20);
+    private final Integer idRolActivo = 1;
 
     @BeforeEach
     void preparar() {
         when(accesoContextoService.idUsuarioAutenticado()).thenReturn(7);
-        when(accesoContextoService.rolesAutenticados()).thenReturn(List.of("Admin"));
+        when(accesoContextoService.idRolActivoAutenticado()).thenReturn(idRolActivo);
     }
 
     @Test
@@ -40,7 +41,7 @@ class HorarioControllerTest {
         ArgumentCaptor<Integer> docente = ArgumentCaptor.forClass(Integer.class);
         ArgumentCaptor<Integer> anio = ArgumentCaptor.forClass(Integer.class);
         verify(horarioService).listar(any(), any(), docente.capture(), anio.capture(),
-                any(), any(), any(), any(), any(), eq(7), eq(List.of("Admin")), eq(pageable));
+                any(), any(), any(), any(), any(), eq(7), eq(idRolActivo), eq(pageable));
         assertEquals(5, docente.getValue());
         assertEquals(2, anio.getValue());
     }
@@ -51,7 +52,7 @@ class HorarioControllerTest {
 
         ArgumentCaptor<Integer> docente = ArgumentCaptor.forClass(Integer.class);
         verify(horarioService).listar(any(), any(), docente.capture(), eq(2),
-                any(), any(), any(), any(), any(), eq(7), eq(List.of("Admin")), eq(pageable));
+                any(), any(), any(), any(), any(), eq(7), eq(idRolActivo), eq(pageable));
         assertEquals(9, docente.getValue());
     }
 }

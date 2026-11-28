@@ -53,8 +53,8 @@ public class ReconocimientoCalificacionService {
     /** Notas del alumno en el curso y año puestas en otras secciones. Solo consulta. */
     @Transactional(readOnly = true)
     public List<HistorialCalificacionesResponse> historial(Integer idMatricula, Integer idAsignacion,
-                                                           Integer usuario, List<String> roles) {
-        Asignacion actual = evaluacionService.asignacionAccesible(idAsignacion, usuario, roles);
+                                                           Integer usuario, Integer idRolActivo) {
+        Asignacion actual = evaluacionService.asignacionAccesible(idAsignacion, usuario, idRolActivo);
         Matricula m = matriculas.findById(idMatricula)
                 .orElseThrow(() -> new ResourceNotFoundException("Matrícula no encontrada"));
         validarMatricula(m, actual);
@@ -68,7 +68,7 @@ public class ReconocimientoCalificacionService {
                 .filter(n -> mismoCursoYAnio(n, actual))
                 .filter(n -> !enSeccion(n, actual.getGradoSeccion()) || esOrigen(n, movimientos))
                 .sorted(Comparator.comparing((NotaEvaluacion n) -> n.getEvaluacion().getFecha()).reversed())
-                .map(n -> aHistorial(n, actual, movimientos, usuario, roles, lectura))
+                .map(n -> aHistorial(n, actual, movimientos, usuario, idRolActivo, lectura))
                 .toList();
     }
 
@@ -79,8 +79,8 @@ public class ReconocimientoCalificacionService {
      */
     @Transactional(readOnly = true)
     public List<TrasladoResponse> traslados(Integer idAsignacion, Integer periodo, Set<Integer> competencias,
-                                            Integer idEvaluacion, Integer usuario, List<String> roles) {
-        Asignacion destino = evaluacionService.asignacionAccesible(idAsignacion, usuario, roles);
+                                            Integer idEvaluacion, Integer usuario, Integer idRolActivo) {
+        Asignacion destino = evaluacionService.asignacionAccesible(idAsignacion, usuario, idRolActivo);
         if (periodo == null || competencias == null || competencias.isEmpty()) {
             return List.of();
         }
@@ -119,31 +119,31 @@ public class ReconocimientoCalificacionService {
 
     /** Crea la evaluación y, en la misma transacción, registra a los que no la rinden. */
     @Transactional
-    public EvaluacionResponse.Resumen crear(EvaluacionRequest request, Integer usuario, List<String> roles) {
-        return conNoRinden(evaluacionService.crear(request, usuario, roles), request, usuario, roles);
+    public EvaluacionResponse.Resumen crear(EvaluacionRequest request, Integer usuario, Integer idRolActivo) {
+        return conNoRinden(evaluacionService.crear(request, usuario, idRolActivo), request, usuario, idRolActivo);
     }
 
     @Transactional
     public EvaluacionResponse.Resumen editar(Integer idEvaluacion, EvaluacionRequest request,
-                                             Integer usuario, List<String> roles) {
-        return conNoRinden(evaluacionService.editar(idEvaluacion, request, usuario, roles), request, usuario, roles);
+                                             Integer usuario, Integer idRolActivo) {
+        return conNoRinden(evaluacionService.editar(idEvaluacion, request, usuario, idRolActivo), request, usuario, idRolActivo);
     }
 
     /** Usa una nota de otra sección en una evaluación que ya existe. */
     @Transactional
     public ReconocimientoCalificacionResponse reconocer(ReconocimientoCalificacionRequest request,
-                                                        Integer usuario, List<String> roles) {
+                                                        Integer usuario, Integer idRolActivo) {
         NotaEvaluacion origen = nota(request.idNotaOrigen());
         bloqueo.matricula(origen.getMatricula().getIdMatricula());
         Evaluacion destino = evaluacion(request.idEvaluacionDestino());
-        ReconocimientoCalificacion r = usar(origen, destino, request.calificacionOrigen(), usuario, roles);
-        return respuesta(r, destino.getAsignacion(), usuario, roles,
+        ReconocimientoCalificacion r = usar(origen, destino, request.calificacionOrigen(), usuario, idRolActivo);
+        return respuesta(r, destino.getAsignacion(), usuario, idRolActivo,
                 lectura(origen.getMatricula(), destino.getAsignacion()));
     }
 
     /** El alumno pasa a rendir la evaluación: se quita la nota usada y queda la auditoría. */
     @Transactional
-    public void anular(Integer id, String motivo, Integer usuario, List<String> roles) {
+    public void anular(Integer id, String motivo, Integer usuario, Integer idRolActivo) {
         ReconocimientoCalificacion r = reconocimientos.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Reconocimiento no encontrado"));
         bloqueo.matricula(r.getNotaOrigen().getMatricula().getIdMatricula());
@@ -151,7 +151,7 @@ public class ReconocimientoCalificacionService {
         Evaluacion e = r.getNotaDestino().getEvaluacion();
         bloqueo.asignacion(e.getAsignacion().getIdAsignacion());
         bloqueo.evaluacion(e.getIdEvaluacion());
-        evaluacionService.asignacionAccesible(e.getAsignacion().getIdAsignacion(), usuario, roles);
+        evaluacionService.asignacionAccesible(e.getAsignacion().getIdAsignacion(), usuario, idRolActivo);
         Matricula m = r.getNotaDestino().getMatricula();
         validarMatricula(m, e.getAsignacion());
         if (!vigente(r)) {
@@ -174,13 +174,13 @@ public class ReconocimientoCalificacionService {
     }
 
     private EvaluacionResponse.Resumen conNoRinden(EvaluacionResponse.Resumen evaluacion, EvaluacionRequest request,
-                                                   Integer usuario, List<String> roles) {
+                                                   Integer usuario, Integer idRolActivo) {
         List<EvaluacionRequest.NoRinde> items = request.noRinden() == null ? List.of() : request.noRinden();
         if (items.isEmpty()) {
             return evaluacion;
         }
         // Al editar basta ACTUALIZAR, pero poner notas pide CREAR.
-        if (!contexto.tieneAccion("EVALUACIONES", "CREAR", usuario, roles)) {
+        if (!contexto.tieneAccion("EVALUACIONES", "CREAR", usuario, idRolActivo)) {
             throw new IllegalArgumentException("No tienes permiso para registrar notas");
         }
         if (items.stream().map(EvaluacionRequest.NoRinde::idMatricula).distinct().count() < items.size()) {
@@ -195,20 +195,20 @@ public class ReconocimientoCalificacionService {
             if (!origen.getMatricula().getIdMatricula().equals(item.idMatricula())) {
                 throw new IllegalArgumentException("La nota elegida no es de ese alumno");
             }
-            usar(origen, destino, null, usuario, roles);
+            usar(origen, destino, null, usuario, idRolActivo);
         }
-        return evaluacionService.detalle(evaluacion.idEvaluacion(), usuario, roles).evaluacion();
+        return evaluacionService.detalle(evaluacion.idEvaluacion(), usuario, idRolActivo).evaluacion();
     }
 
     /** calificacionEsperada: si llega, la original debe seguir valiendo eso. */
     private ReconocimientoCalificacion usar(NotaEvaluacion origen, Evaluacion destino, String calificacionEsperada,
-                                            Integer usuario, List<String> roles) {
+                                            Integer usuario, Integer idRolActivo) {
         bloqueo.nota(origen.getIdNotaEvaluacion());
         Stream.of(origen.getEvaluacion().getAsignacion().getIdAsignacion(), destino.getAsignacion().getIdAsignacion())
                 .distinct().sorted().forEach(bloqueo::asignacion);
         Stream.of(origen.getEvaluacion().getIdEvaluacion(), destino.getIdEvaluacion())
                 .distinct().sorted().forEach(bloqueo::evaluacion);
-        evaluacionService.asignacionAccesible(destino.getAsignacion().getIdAsignacion(), usuario, roles);
+        evaluacionService.asignacionAccesible(destino.getAsignacion().getIdAsignacion(), usuario, idRolActivo);
         validarMatricula(origen.getMatricula(), destino.getAsignacion());
         validarCurso(origen, destino.getAsignacion());
         String impedimento = impedimento(origen, destino);
@@ -352,7 +352,7 @@ public class ReconocimientoCalificacionService {
 
     private HistorialCalificacionesResponse aHistorial(NotaEvaluacion n, Asignacion actual,
                                                        List<ReconocimientoCalificacion> movimientos,
-                                                       Integer usuario, List<String> roles, LecturaAcademica lectura) {
+                                                       Integer usuario, Integer idRolActivo, LecturaAcademica lectura) {
         Evaluacion e = n.getEvaluacion();
         Curso c = e.getAsignacion().getCurso();
         return new HistorialCalificacionesResponse(n.getIdNotaEvaluacion(), nombreSeccion(seccion(e)), c.getNombre(),
@@ -360,17 +360,17 @@ public class ReconocimientoCalificacionService {
                 e.getPeriodo(), e.getFecha(), n.getCalificacion(), bloqueoOrigenVerificado(n, actual),
                 movimientos.stream()
                         .filter(r -> r.getNotaOrigen().getIdNotaEvaluacion().equals(n.getIdNotaEvaluacion()))
-                        .map(r -> respuesta(r, actual, usuario, roles, lectura))
+                        .map(r -> respuesta(r, actual, usuario, idRolActivo, lectura))
                         .toList());
     }
 
     private ReconocimientoCalificacionResponse respuesta(ReconocimientoCalificacion r, Asignacion actual,
-                                                         Integer usuario, List<String> roles, LecturaAcademica lectura) {
+                                                         Integer usuario, Integer idRolActivo, LecturaAcademica lectura) {
         boolean enActual = r.getSeccionDestino().getIdGradoSeccion().equals(actual.getGradoSeccion().getIdGradoSeccion());
         Evaluacion destino = r.getNotaDestino().getEvaluacion();
         boolean puede = vigente(r) && enActual
                 && bloqueoPeriodoFinal(destino.getAsignacion(), destino.getPeriodo(), ids(destino), lectura) == null
-                && contexto.tieneAccion("EVALUACIONES", "ACTUALIZAR", usuario, roles);
+                && contexto.tieneAccion("EVALUACIONES", "ACTUALIZAR", usuario, idRolActivo);
         return new ReconocimientoCalificacionResponse(r.getIdReconocimiento(), destino.getIdEvaluacion(),
                 destino.getNombre(), nombreSeccion(r.getSeccionDestino()), r.getCalificacion(),
                 vigente(r) ? ReconocimientoCalificacion.ACTIVO : ReconocimientoCalificacion.ANULADO,

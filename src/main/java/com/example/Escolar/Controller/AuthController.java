@@ -1,6 +1,7 @@
 package com.example.Escolar.Controller;
 
 import com.example.Escolar.Dto.CambiarContrasenaRequest;
+import com.example.Escolar.Dto.CambiarRolRequest;
 import com.example.Escolar.Dto.DispositivoResponse;
 import com.example.Escolar.Dto.DosFactorReenviarRequest;
 import com.example.Escolar.Dto.DosFactorVerificarRequest;
@@ -14,12 +15,16 @@ import com.example.Escolar.Dto.ForgotPasswordRequest;
 import com.example.Escolar.Dto.LoginRequest;
 import com.example.Escolar.Dto.LoginResponse;
 import com.example.Escolar.Dto.PermisosRolResponse;
+import com.example.Escolar.Dto.RolAsignadoSesionResponse;
 import com.example.Escolar.Dto.ResetPasswordRequest;
+import com.example.Escolar.Dto.SeleccionRolRequest;
 import com.example.Escolar.Dto.UsuarioResponse;
 import com.example.Escolar.Dto.VerificarCodigoRequest;
 import com.example.Escolar.Security.JwtService;
 import com.example.Escolar.Security.UsuarioAutenticado;
 import com.example.Escolar.Service.AuthService;
+import com.example.Escolar.Service.RolAsignadoResolver;
+import com.example.Escolar.Service.SeleccionRolDesafioService;
 import com.example.Escolar.Service.UsuarioService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -52,6 +57,8 @@ public class AuthController {
     private final UsuarioService usuarioService;
     private final JwtService jwtService;
     private final DosFactorService dosFactorService;
+    private final SeleccionRolDesafioService seleccionRolDesafioService;
+    private final RolAsignadoResolver rolAsignadoResolver;
 
     @Value("${jwt.expiration}")
     private long jwtExpirationMs;
@@ -72,8 +79,7 @@ public class AuthController {
             }
         }
         LoginResponse response = authService.iniciarSesion(usuario, idDispositivo);
-        httpResponse.addHeader(HttpHeaders.SET_COOKIE,
-                cookieSesion(response.getToken(), jwtExpirationMs / 1000, httpRequest));
+        responderIngreso(response, null, httpRequest, httpResponse);
         return ResponseEntity.ok(response);
     }
 
@@ -85,10 +91,7 @@ public class AuthController {
                 Boolean.TRUE.equals(request.getRecordar()),
                 leerCookie(httpRequest, DosFactorService.COOKIE_DISPOSITIVO), contexto(httpRequest));
         LoginResponse response = authService.iniciarSesion(verificado.usuario(), verificado.idDispositivo());
-        httpResponse.addHeader(HttpHeaders.SET_COOKIE,
-                cookieSesion(response.getToken(), jwtExpirationMs / 1000, httpRequest));
-        httpResponse.addHeader(HttpHeaders.SET_COOKIE, cookie(DosFactorService.COOKIE_DISPOSITIVO,
-                verificado.tokenDispositivo(), DosFactorService.SEGUNDOS_COOKIE_DISPOSITIVO, httpRequest));
+        responderIngreso(response, verificado.tokenDispositivo(), httpRequest, httpResponse);
         return ResponseEntity.ok(response);
     }
 
@@ -96,6 +99,17 @@ public class AuthController {
     public ResponseEntity<LoginResponse> reenviarDosFactor(@Valid @RequestBody DosFactorReenviarRequest request,
                                                            HttpServletRequest httpRequest) {
         return ResponseEntity.ok(respuestaDesafio(dosFactorService.reenviar(request.getDesafio(), contexto(httpRequest))));
+    }
+
+    @PostMapping("/seleccion-rol")
+    public ResponseEntity<LoginResponse> seleccionarRol(@Valid @RequestBody SeleccionRolRequest request,
+                                                       HttpServletRequest httpRequest,
+                                                       HttpServletResponse httpResponse) {
+        SeleccionRolDesafioService.Consumido consumido = seleccionRolDesafioService.consumir(
+                request.getDesafio(), request.getIdRol());
+        LoginResponse response = authService.emitirSesion(consumido.usuario(), consumido.idDispositivo(), consumido.rol());
+        responderIngreso(response, null, httpRequest, httpResponse);
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/dispositivos")
@@ -108,6 +122,18 @@ public class AuthController {
     public ResponseEntity<Void> olvidarDispositivo(@PathVariable Integer id) {
         dosFactorService.olvidar(idAutenticado(), id);
         return ResponseEntity.noContent().build();
+    }
+
+    private void responderIngreso(LoginResponse response, String tokenDispositivo,
+                                  HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
+        if (response.getToken() != null) {
+            httpResponse.addHeader(HttpHeaders.SET_COOKIE,
+                    cookieSesion(response.getToken(), jwtExpirationMs / 1000, httpRequest));
+        }
+        if (tokenDispositivo != null) {
+            httpResponse.addHeader(HttpHeaders.SET_COOKIE, cookie(DosFactorService.COOKIE_DISPOSITIVO,
+                    tokenDispositivo, DosFactorService.SEGUNDOS_COOKIE_DISPOSITIVO, httpRequest));
+        }
     }
 
     private LoginResponse respuestaDesafio(DosFactorService.Desafio desafio) {
@@ -203,7 +229,8 @@ public class AuthController {
         UsuarioAutenticado principal = (UsuarioAutenticado) authentication.getPrincipal();
         // El token nuevo sigue atado al mismo dispositivo.
         String token = authService.cambiarContrasena(principal.idUsuario(),
-                request.getContrasenaActual(), request.getNuevaContrasena(), principal.idDispositivo());
+                request.getContrasenaActual(), request.getNuevaContrasena(), principal.idDispositivo(),
+                principal.idRolActivo());
         long maxAge = Math.max(0L,
                 (jwtService.parse(token).getExpiration().getTime() - System.currentTimeMillis()) / 1000L);
         httpResponse.addHeader(HttpHeaders.SET_COOKIE,
@@ -217,6 +244,23 @@ public class AuthController {
     public PermisosRolResponse permisos() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         UsuarioAutenticado principal = (UsuarioAutenticado) authentication.getPrincipal();
-        return authService.permisosActuales(principal.idUsuario(), principal.roles());
+        return authService.permisosActuales(principal.idUsuario(), principal.idRolActivo());
+    }
+
+    @GetMapping("/roles")
+    public List<RolAsignadoSesionResponse> roles() {
+        return rolAsignadoResolver.resolver(idAutenticado());
+    }
+
+    @PostMapping("/cambiar-rol")
+    public ResponseEntity<LoginResponse> cambiarRol(@Valid @RequestBody CambiarRolRequest request,
+                                                     HttpServletRequest httpRequest,
+                                                     HttpServletResponse httpResponse) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        UsuarioAutenticado principal = (UsuarioAutenticado) authentication.getPrincipal();
+        LoginResponse response = authService.cambiarRol(principal.idUsuario(), request.getIdRol(),
+                principal.idRolActivo(), principal.idDispositivo(), principal.versionToken());
+        responderIngreso(response, null, httpRequest, httpResponse);
+        return ResponseEntity.ok(response);
     }
 }

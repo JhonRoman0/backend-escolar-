@@ -53,7 +53,7 @@ class MatriculaServiceTest {
     @Mock BloqueoCalificaciones bloqueo;
     @InjectMocks private MatriculaService service;
 
-    private final List<String> roles = List.of("Administrador");
+    private final Integer idRolActivo = 1;
     private final Acceso activo = new Acceso(AccesoConstants.ACTIVO, "Activo");
     private final Acceso inactivo = new Acceso(AccesoConstants.INACTIVO, "Inactivo");
     private final Acceso eliminado = new Acceso(AccesoConstants.ELIMINADO, "Eliminado");
@@ -66,12 +66,12 @@ class MatriculaServiceTest {
     @Test
     void sinEstadoConservaActivasEInactivasYExcluyeEliminadas() {
         var pagina = PageRequest.of(0, 10);
-        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.TODO);
+        when(accesoContextoService.alcance("MATRICULAS", 7, idRolActivo)).thenReturn(Alcance.TODO);
         when(accesoRepository.findById(AccesoConstants.ELIMINADO)).thenReturn(Optional.of(eliminado));
         when(matriculaRepository.findByAccesoNot(eliminado, pagina)).thenReturn(
                 new PageImpl<>(List.of(matricula(1, activo), matricula(2, inactivo)), pagina, 2));
 
-        var resultado = service.getAll(pagina, 7, roles);
+        var resultado = service.getAll(pagina, 7, idRolActivo);
 
         assertEquals(List.of(1L, 3L), resultado.map(MatriculaResponse::getAccesoId).getContent());
         verify(matriculaRepository).findByAccesoNot(eliminado, pagina);
@@ -83,7 +83,7 @@ class MatriculaServiceTest {
     void estadoSeConsultaAntesDePaginarYConservaTotales(Long idAcceso) {
         var pagina = PageRequest.of(1, 2);
         var acceso = idAcceso.equals(1L) ? activo : inactivo;
-        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.TODO);
+        when(accesoContextoService.alcance("MATRICULAS", 7, idRolActivo)).thenReturn(Alcance.TODO);
         when(accesoRepository.findById(idAcceso)).thenReturn(Optional.of(acceso));
         when(matriculaRepository.findByAcceso(acceso, pagina)).thenReturn(
                 new PageImpl<>(List.of(matricula(4, acceso), matricula(5, acceso)), pagina, 7));
@@ -108,11 +108,11 @@ class MatriculaServiceTest {
     @Test
     void combinaEstadoConFiltrosAcademicos() {
         var pagina = PageRequest.of(0, 10);
-        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.TODO);
+        when(accesoContextoService.alcance("MATRICULAS", 7, idRolActivo)).thenReturn(Alcance.TODO);
         when(matriculaRepository.findFiltradas(2L, 4, 5, 6, 8, 9, 2027, 3L, pagina))
                 .thenReturn(new PageImpl<>(List.of(matricula(1, inactivo)), pagina, 1));
 
-        var resultado = service.getAll(pagina, 7, roles, 4, 5, 6, 8, 9, 2027, 3L);
+        var resultado = service.getAll(pagina, 7, idRolActivo, 4, 5, 6, 8, 9, 2027, 3L);
 
         assertEquals(3L, resultado.getContent().get(0).getAccesoId());
         verify(matriculaRepository).findFiltradas(2L, 4, 5, 6, 8, 9, 2027, 3L, pagina);
@@ -123,7 +123,7 @@ class MatriculaServiceTest {
         var primera = matricula(1, inactivo);
         var segunda = matricula(2, inactivo);
         var tercera = matricula(3, inactivo);
-        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.DOCENTE);
+        when(accesoContextoService.alcance("MATRICULAS", 7, idRolActivo)).thenReturn(Alcance.DOCENTE);
         when(accesoContextoService.gradoSeccionIdsDeDocente(7)).thenReturn(Set.of(12));
         when(accesoContextoService.matriculasDeGradoSecciones(Set.of(12)))
                 .thenReturn(List.of(primera, segunda, tercera));
@@ -141,13 +141,13 @@ class MatriculaServiceTest {
     @Test
     void filtrosAcademicosRespetanAlcanceAntesDePaginar() {
         var permitida = matricula(2, activo);
-        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.DOCENTE);
+        when(accesoContextoService.alcance("MATRICULAS", 7, idRolActivo)).thenReturn(Alcance.DOCENTE);
         when(accesoContextoService.gradoSeccionIdsDeDocente(7)).thenReturn(Set.of(12));
         when(accesoContextoService.matriculasDeGradoSecciones(Set.of(12))).thenReturn(List.of(permitida));
         when(matriculaRepository.findFiltradasList(2L, null, null, null, null, null, 2027, 1L))
                 .thenReturn(List.of(matricula(99, activo), permitida));
 
-        var resultado = service.getAll(PageRequest.of(0, 1), 7, roles,
+        var resultado = service.getAll(PageRequest.of(0, 1), 7, idRolActivo,
                 null, null, null, null, null, 2027, 1L);
 
         assertEquals(1, resultado.getTotalElements());
@@ -162,7 +162,7 @@ class MatriculaServiceTest {
         var vinculo = new AlumnoApoderado();
         vinculo.setAlumno(alumno);
         var permitida = matricula(2, inactivo);
-        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.APODERADO);
+        when(accesoContextoService.alcance("MATRICULAS", 7, idRolActivo)).thenReturn(Alcance.APODERADO);
         when(accesoContextoService.apoderadoDeUsuario(7)).thenReturn(Optional.of(apoderado));
         when(alumnoApoderadoRepository.findByApoderado(apoderado)).thenReturn(List.of(vinculo));
         when(accesoRepository.findById(2L)).thenReturn(Optional.of(eliminado));
@@ -192,14 +192,14 @@ class MatriculaServiceTest {
     void detalleDevuelveClasificacion() {
         var m = matricula(1, activo);
         when(matriculaRepository.findByIdMatriculaAndAccesoNot(1, eliminado)).thenReturn(Optional.of(m));
-        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.TODO);
-        assertEquals(MatriculaResponse.TipoIngreso.NUEVO_INGRESO, service.getById(1, 7, roles).getTipoIngreso());
+        when(accesoContextoService.alcance("MATRICULAS", 7, idRolActivo)).thenReturn(Alcance.TODO);
+        assertEquals(MatriculaResponse.TipoIngreso.NUEVO_INGRESO, service.getById(1, 7, idRolActivo).getTipoIngreso());
         verify(matriculaRepository).primerosAniosPorAlumno(List.of(1), AccesoConstants.ELIMINADO);
     }
 
     @Test
     void paginaVaciaNoConsultaAntecedentes() {
-        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.TODO);
+        when(accesoContextoService.alcance("MATRICULAS", 7, idRolActivo)).thenReturn(Alcance.TODO);
         var pagina = PageRequest.of(0, 10);
         when(matriculaRepository.findByAccesoNot(eliminado, pagina)).thenReturn(Page.empty(pagina));
         assertTrue(listar(pagina, null).isEmpty());
@@ -208,7 +208,7 @@ class MatriculaServiceTest {
 
     @Test
     void paginaConsultaAntecedentesUnaSolaVez() {
-        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.TODO);
+        when(accesoContextoService.alcance("MATRICULAS", 7, idRolActivo)).thenReturn(Alcance.TODO);
         var pagina = PageRequest.of(0, 10);
         when(matriculaRepository.findByAccesoNot(eliminado, pagina)).thenReturn(new PageImpl<>(List.of(matricula(1, activo), matricula(2, inactivo))));
         var resultado = listar(pagina, null);
@@ -223,7 +223,7 @@ class MatriculaServiceTest {
         Matricula continuanteUno = matricula(2, activo);
         Matricula continuanteDos = matricula(3, activo);
         Matricula otroNuevo = matricula(4, activo);
-        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.TODO);
+        when(accesoContextoService.alcance("MATRICULAS", 7, idRolActivo)).thenReturn(Alcance.TODO);
         when(matriculaRepository.findFiltradasList(AccesoConstants.ELIMINADO, null, null, null, null, null, null, null))
                 .thenReturn(List.of(nuevo, continuanteUno, continuanteDos, otroNuevo));
         var resumenes = List.of(resumen(1, "2026"), resumen(2, "2025"), resumen(3, "2018"), resumen(4, "2026"));
@@ -244,7 +244,7 @@ class MatriculaServiceTest {
         var pagina = PageRequest.of(0, 10);
         Matricula permitida = matricula(2, activo);
         Matricula ajena = matricula(9, activo);
-        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.DOCENTE);
+        when(accesoContextoService.alcance("MATRICULAS", 7, idRolActivo)).thenReturn(Alcance.DOCENTE);
         when(accesoContextoService.gradoSeccionIdsDeDocente(7)).thenReturn(Set.of(12));
         when(accesoContextoService.matriculasDeGradoSecciones(Set.of(12))).thenReturn(List.of(permitida));
         when(matriculaRepository.findFiltradasList(AccesoConstants.ELIMINADO, null, null, null, null, null, null, null))
@@ -262,7 +262,7 @@ class MatriculaServiceTest {
     @Test
     void tipoIngresoOrdenaSegunElPageableAntesDePaginar() {
         var pagina = PageRequest.of(0, 2, Sort.by("idMatricula").descending());
-        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.TODO);
+        when(accesoContextoService.alcance("MATRICULAS", 7, idRolActivo)).thenReturn(Alcance.TODO);
         when(matriculaRepository.findFiltradasList(AccesoConstants.ELIMINADO, null, null, null, null, null, null, null))
                 .thenReturn(List.of(matricula(1, activo), matricula(2, activo), matricula(3, activo), matricula(4, activo)));
         var resumenes = List.of(resumen(1, "2025"), resumen(2, "2025"), resumen(3, "2025"), resumen(4, "2025"));
@@ -278,7 +278,7 @@ class MatriculaServiceTest {
     @Test
     void sinTipoIngresoConservaLaPaginacionEnBaseDeDatos() {
         var pagina = PageRequest.of(0, 10);
-        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.TODO);
+        when(accesoContextoService.alcance("MATRICULAS", 7, idRolActivo)).thenReturn(Alcance.TODO);
         when(matriculaRepository.findByAccesoNot(eliminado, pagina)).thenReturn(new PageImpl<>(List.of(), pagina, 0));
 
         listar(pagina, null);
@@ -300,7 +300,7 @@ class MatriculaServiceTest {
 
     private Page<MatriculaResponse> listar(PageRequest pagina, Long idAcceso,
                                            MatriculaResponse.TipoIngreso tipoIngreso) {
-        return service.getAll(pagina, 7, roles, null, null, null, null, null, null, idAcceso, tipoIngreso);
+        return service.getAll(pagina, 7, idRolActivo, null, null, null, null, null, null, idAcceso, tipoIngreso);
     }
 
     private Matricula matricula(int id, Acceso acceso) {

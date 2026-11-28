@@ -7,6 +7,7 @@ import com.example.Escolar.Dto.PortalApoderadoDtos.*;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Model.*;
 import com.example.Escolar.Repository.*;
+import com.example.Escolar.Service.AccesoContextoService.Alcance;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,7 +47,10 @@ public class PortalApoderadoService {
     // ============================= HIJOS =============================
 
     @Transactional(readOnly = true)
-    public List<Hijo> hijos(Integer idUsuario) {
+    public List<Hijo> hijos(Integer idUsuario, Integer idRolActivo) {
+        if (!vinculoApoderadoActivo(idUsuario, idRolActivo)) {
+            return List.of();
+        }
         Apoderado apoderado = accesoContextoService.apoderadoDeUsuario(idUsuario).orElse(null);
         if (apoderado == null) {
             return List.of();
@@ -81,8 +85,8 @@ public class PortalApoderadoService {
     // ============================= RESUMEN =============================
 
     @Transactional(readOnly = true)
-    public Resumen resumen(Integer idMatricula, Integer idUsuario) {
-        Matricula m = matriculaDeHijo(idMatricula, idUsuario);
+    public Resumen resumen(Integer idMatricula, Integer idUsuario, Integer idRolActivo) {
+        Matricula m = matriculaDeHijo(idMatricula, idUsuario, idRolActivo);
         AsistenciaMes asistencia = asistenciaMes(m, mesDeReferencia(m));
         List<UltimaNota> ultimas = notaEvaluacionRepository.findByMatriculaIdMatriculaAndAccesoNot(idMatricula, eliminado()).stream()
                 .filter(n -> esActiva(n.getEvaluacion().getAcceso()))
@@ -115,8 +119,8 @@ public class PortalApoderadoService {
     // ============================= ASISTENCIA =============================
 
     @Transactional(readOnly = true)
-    public AsistenciaMes asistencia(Integer idMatricula, YearMonth mes, Integer idUsuario) {
-        Matricula m = matriculaDeHijo(idMatricula, idUsuario);
+    public AsistenciaMes asistencia(Integer idMatricula, YearMonth mes, Integer idUsuario, Integer idRolActivo) {
+        Matricula m = matriculaDeHijo(idMatricula, idUsuario, idRolActivo);
         return asistenciaMes(m, mes != null ? mes : mesDeReferencia(m));
     }
 
@@ -143,8 +147,8 @@ public class PortalApoderadoService {
      * aparecen en su evaluación nueva. Solo evaluaciones; lo anulado no se muestra.
      */
     @Transactional(readOnly = true)
-    public List<CursoNotas> notas(Integer idMatricula, Integer idUsuario) {
-        Matricula m = matriculaDeHijo(idMatricula, idUsuario);
+    public List<CursoNotas> notas(Integer idMatricula, Integer idUsuario, Integer idRolActivo) {
+        Matricula m = matriculaDeHijo(idMatricula, idUsuario, idRolActivo);
         GradoSeccion gs = m.getGradoSeccion();
         AnioEscolar anio = gs.getAnioEscolar();
         Nivel nivel = gs.getGrado().getNivel();
@@ -193,14 +197,14 @@ public class PortalApoderadoService {
     // ============================= HORARIO =============================
 
     @Transactional(readOnly = true)
-    public List<HorarioPlanoResponse> horario(Integer idMatricula, Integer idUsuario) {
-        return horario(matriculaDeHijo(idMatricula, idUsuario));
+    public List<HorarioPlanoResponse> horario(Integer idMatricula, Integer idUsuario, Integer idRolActivo) {
+        return horario(matriculaDeHijo(idMatricula, idUsuario, idRolActivo));
     }
 
     /** Recreos fijos del grado y turno de la sección del hijo. */
     @Transactional(readOnly = true)
-    public List<RecreoHorarioResponse> recreos(Integer idMatricula, Integer idUsuario) {
-        return horarioService.recreosDeSeccion(matriculaDeHijo(idMatricula, idUsuario).getGradoSeccion().getIdGradoSeccion());
+    public List<RecreoHorarioResponse> recreos(Integer idMatricula, Integer idUsuario, Integer idRolActivo) {
+        return horarioService.recreosDeSeccion(matriculaDeHijo(idMatricula, idUsuario, idRolActivo).getGradoSeccion().getIdGradoSeccion());
     }
 
     private List<HorarioPlanoResponse> horario(Matricula m) {
@@ -211,8 +215,8 @@ public class PortalApoderadoService {
     // ============================= PAGOS =============================
 
     @Transactional(readOnly = true)
-    public Pagos pagos(Integer idMatricula, Integer idUsuario) {
-        Matricula m = matriculaDeHijo(idMatricula, idUsuario);
+    public Pagos pagos(Integer idMatricula, Integer idUsuario, Integer idRolActivo) {
+        Matricula m = matriculaDeHijo(idMatricula, idUsuario, idRolActivo);
         BigDecimal pagado = matriculaService.pagadoNeto(idMatricula);
         List<Pago> pagos = pagoMatriculaRepository.findByMatriculaIdMatriculaAndAccesoNotOrderByFecha(idMatricula, eliminado()).stream()
                 .map(p -> new Pago(p.getFecha(), p.getTipo().name(), p.getMonto(),
@@ -225,7 +229,10 @@ public class PortalApoderadoService {
     // ============================= ACCESO =============================
 
     /** La matrícula, solo si es de un hijo del apoderado; si no, como si no existiera. */
-    Matricula matriculaDeHijo(Integer idMatricula, Integer idUsuario) {
+    Matricula matriculaDeHijo(Integer idMatricula, Integer idUsuario, Integer idRolActivo) {
+        if (!vinculoApoderadoActivo(idUsuario, idRolActivo)) {
+            throw new ResourceNotFoundException("Matrícula no encontrada");
+        }
         Matricula m = matriculaRepository.findById(idMatricula)
                 .filter(x -> !AccesoConstants.ELIMINADO.equals(x.getAcceso().getIdAcceso()))
                 .orElseThrow(() -> new ResourceNotFoundException("Matrícula no encontrada"));
@@ -233,6 +240,11 @@ public class PortalApoderadoService {
             throw new ResourceNotFoundException("Matrícula no encontrada");
         }
         return m;
+    }
+
+    private boolean vinculoApoderadoActivo(Integer idUsuario, Integer idRolActivo) {
+        Alcance vinculo = accesoContextoService.vinculoEfectivo(idUsuario, idRolActivo);
+        return vinculo == Alcance.TODO || (vinculo != null && vinculo.incluyeApoderado());
     }
 
     /** Una evaluación con la nota del hijo, de su sección actual o de una anterior. */

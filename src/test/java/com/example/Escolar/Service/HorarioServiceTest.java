@@ -50,6 +50,7 @@ class HorarioServiceTest {
     private final Grado tercero = grado(30, "3ro", primaria);
     private final Grado quinto = grado(50, "5to", primaria);
     private Docente docente;
+    private final Integer idRolActivo = 1;
 
     @BeforeEach
     void preparar() {
@@ -65,6 +66,7 @@ class HorarioServiceTest {
         vigente.setIdAnio(2);
         when(anioEscolarRepository.findByEstadoAndAccesoNot(HorarioService.ESTADO_ACTIVO, eliminado)).thenReturn(Optional.of(vigente));
         when(accesoContextoService.docenteDeUsuario(7)).thenReturn(Optional.of(docente));
+        when(accesoContextoService.vinculoEfectivo(7, idRolActivo)).thenReturn(AccesoContextoService.Alcance.DOCENTE);
         when(recreoRepository.findByAnioEscolarIdAnioAndTurnoIdTurnoAndGradoIdGradoAndAccesoNot(any(), any(), any(), eq(eliminado)))
                 .thenAnswer(i -> List.of(recreo(i.getArgument(1), i.getArgument(2))));
     }
@@ -140,7 +142,7 @@ class HorarioServiceTest {
     void miHorarioTraeTodasLasClasesConSuNivelYTurno() {
         dicta(clase("Matemática", tercero, "A", manana), clase("Álgebra", quinto, "B", tarde));
 
-        MiHorarioResponse horario = service.mio(null, 7);
+        MiHorarioResponse horario = service.mio(null, 7, idRolActivo);
 
         assertEquals(2, horario.clases().size());
         assertEquals("Primaria", horario.clases().get(0).getNivel());
@@ -149,7 +151,7 @@ class HorarioServiceTest {
 
     @Test
     void miHorarioUsaElAnioElegido() {
-        service.mio(9, 7);
+        service.mio(9, 7, idRolActivo);
 
         verify(horarioClaseRepository).findPlanosPorDocenteYAnio(eliminado, 9, 5);
     }
@@ -158,7 +160,7 @@ class HorarioServiceTest {
     void conUnSoloGradoEnElTurnoMuestraSuRecreo() {
         dicta(clase("Matemática", tercero, "A", manana), clase("Ciencia", tercero, "A", manana));
 
-        var recreos = service.mio(null, 7).recreos();
+        var recreos = service.mio(null, 7, idRolActivo).recreos();
 
         assertEquals(1, recreos.size());
         assertEquals("3ro", recreos.get(0).grado());
@@ -168,14 +170,14 @@ class HorarioServiceTest {
     void elMismoGradoEnVariasSeccionesTambienMuestraElRecreo() {
         dicta(clase("Matemática", tercero, "A", manana), clase("Matemática", tercero, "B", manana));
 
-        assertEquals(1, service.mio(null, 7).recreos().size());
+        assertEquals(1, service.mio(null, 7, idRolActivo).recreos().size());
     }
 
     @Test
     void conVariosGradosEnElTurnoNoMuestraRecreo() {
         dicta(clase("Matemática", tercero, "A", manana), clase("Matemática", quinto, "A", manana));
 
-        assertTrue(service.mio(null, 7).recreos().isEmpty());
+        assertTrue(service.mio(null, 7, idRolActivo).recreos().isEmpty());
     }
 
     @Test
@@ -183,7 +185,7 @@ class HorarioServiceTest {
         dicta(clase("Matemática", tercero, "A", manana),
                 clase("Álgebra", tercero, "A", tarde), clase("Álgebra", quinto, "A", tarde));
 
-        var recreos = service.mio(null, 7).recreos();
+        var recreos = service.mio(null, 7, idRolActivo).recreos();
 
         assertEquals(1, recreos.size());
         assertEquals("Mañana", recreos.get(0).turno());
@@ -193,10 +195,21 @@ class HorarioServiceTest {
     void sinDocenteVinculadoAvisa() {
         when(accesoContextoService.docenteDeUsuario(7)).thenReturn(Optional.empty());
 
-        var ex = assertThrows(IllegalArgumentException.class, () -> service.mio(null, 7));
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.mio(null, 7, idRolActivo));
 
         assertTrue(ex.getMessage().contains("no está vinculado a un docente"));
         verify(horarioClaseRepository, never()).findPlanosPorDocenteYAnio(any(), any(), eq(5));
+    }
+
+    @Test
+    void rolApoderadoActivoNoAutorizaElHorarioDelDocente() {
+        when(accesoContextoService.vinculoEfectivo(7, idRolActivo))
+                .thenReturn(AccesoContextoService.Alcance.APODERADO);
+
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.mio(null, 7, idRolActivo));
+
+        assertTrue(ex.getMessage().contains("no está vinculado a un docente"));
+        verify(horarioClaseRepository, never()).findPlanosPorDocenteYAnio(any(), any(), any());
     }
 
     @Test
@@ -221,26 +234,26 @@ class HorarioServiceTest {
         m.getGradoSeccion().getAnioEscolar().setIdAnio(2);
         when(accesoRepository.findById(AccesoConstants.ACTIVO)).thenReturn(Optional.of(new Acceso(AccesoConstants.ACTIVO, "Activo")));
         when(matriculaRepository.findActivasPorAlumnoId(eq(4), any())).thenReturn(List.of(m));
-        when(accesoContextoService.alcance("HORARIOS", 7, List.of("Docente"))).thenReturn(AccesoContextoService.Alcance.DOCENTE);
+        when(accesoContextoService.alcance("HORARIOS", 7, idRolActivo)).thenReturn(AccesoContextoService.Alcance.DOCENTE);
 
         assertThrows(com.example.Escolar.Exception.ResourceNotFoundException.class,
-                () -> service.porAlumno(4, null, 7, List.of("Docente")));
+                () -> service.porAlumno(4, null, 7, idRolActivo));
 
-        when(accesoContextoService.alcance("HORARIOS", 7, List.of("Docente"))).thenReturn(AccesoContextoService.Alcance.NINGUNO);
+        when(accesoContextoService.alcance("HORARIOS", 7, idRolActivo)).thenReturn(AccesoContextoService.Alcance.NINGUNO);
         assertThrows(com.example.Escolar.Exception.ResourceNotFoundException.class,
-                () -> service.porAlumno(4, null, 7, List.of("Docente")));
+                () -> service.porAlumno(4, null, 7, idRolActivo));
 
-        when(accesoContextoService.tieneAccion("HORARIOS", "VER_COLEGIO", 7, List.of("Docente"))).thenReturn(true);
-        assertDoesNotThrow(() -> service.porAlumno(4, null, 7, List.of("Docente")));
+        when(accesoContextoService.tieneAccion("HORARIOS", "VER_COLEGIO", 7, idRolActivo)).thenReturn(true);
+        assertDoesNotThrow(() -> service.porAlumno(4, null, 7, idRolActivo));
     }
 
     @Test
     void listarConVerColegioPasaElFiltroDeDocente() {
-        when(accesoContextoService.tieneAccion("HORARIOS", "VER_COLEGIO", 7, List.of("Admin"))).thenReturn(true);
+        when(accesoContextoService.tieneAccion("HORARIOS", "VER_COLEGIO", 7, idRolActivo)).thenReturn(true);
         when(horarioClaseRepository.findFiltrados(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        service.listar(null, null, 5, 2, null, null, null, null, null, 7, List.of("Admin"), PageRequest.of(0, 20));
+        service.listar(null, null, 5, 2, null, null, null, null, null, 7, idRolActivo, PageRequest.of(0, 20));
 
         ArgumentCaptor<Integer> docente = ArgumentCaptor.forClass(Integer.class);
         verify(horarioClaseRepository).findFiltrados(eq(eliminado), eq(2), any(), any(), any(), any(), any(),

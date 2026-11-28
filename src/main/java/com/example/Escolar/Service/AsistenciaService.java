@@ -98,8 +98,8 @@ public class AsistenciaService {
     // ============================= REGISTRO =============================
 
     @Transactional(readOnly = true)
-    public AsistenciaResponse previsualizar(AsistenciaRequest request, Integer idUsuario, List<String> roles) {
-        exigirAccion(CREAR, idUsuario, roles);
+    public AsistenciaResponse previsualizar(AsistenciaRequest request, Integer idUsuario, Integer idRolActivo) {
+        exigirAccion(CREAR, idUsuario, idRolActivo);
         Alumno alumno = buscarAlumno(request);
         Matricula matricula = matriculaDelAnioVigente(alumno);
         LocalDate hoy = LocalDate.now();
@@ -120,8 +120,8 @@ public class AsistenciaService {
      * con motivo, nombre de quien lo trajo y foto de evidencia (obligatorios).
      */
     @Transactional
-    public AsistenciaResponse confirmar(AsistenciaRequest request, MultipartFile foto, Integer idUsuario, List<String> roles) {
-        exigirAccion(CREAR, idUsuario, roles);
+    public AsistenciaResponse confirmar(AsistenciaRequest request, MultipartFile foto, Integer idUsuario, Integer idRolActivo) {
+        exigirAccion(CREAR, idUsuario, idRolActivo);
         Alumno alumno = buscarAlumno(request);
         Matricula matricula = matriculaDelAnioVigente(alumno);
         LocalDate hoy = LocalDate.now();
@@ -175,8 +175,8 @@ public class AsistenciaService {
     }
 
     @Transactional
-    public AsistenciaResponse justificar(Integer idAsistencia, JustificarRequest request, Integer idUsuario, List<String> roles) {
-        exigirAccion(ACTUALIZAR, idUsuario, roles);
+    public AsistenciaResponse justificar(Integer idAsistencia, JustificarRequest request, Integer idUsuario, Integer idRolActivo) {
+        exigirAccion(ACTUALIZAR, idUsuario, idRolActivo);
         AsistenciaAlumno asistencia = findAsistencia(idAsistencia);
         validarAnioModificable(asistencia);
         Usuario usuario = findUsuario(idUsuario);
@@ -201,9 +201,9 @@ public class AsistenciaService {
      * Falta, pero sin aviso de falta: sus apoderados ya recibieron el de ingreso.
      */
     @Transactional
-    public void anular(Integer idAsistencia, String motivo, Integer idUsuario, List<String> roles) {
-        exigirAccion("ELIMINAR", idUsuario, roles);
-        Alcance alcance = accesoContextoService.alcance(PERMISO, AccesoContextoService.Operacion.ESCRITURA, idUsuario, roles);
+    public void anular(Integer idAsistencia, String motivo, Integer idUsuario, Integer idRolActivo) {
+        exigirAccion("ELIMINAR", idUsuario, idRolActivo);
+        Alcance alcance = accesoContextoService.alcance(PERMISO, AccesoContextoService.Operacion.ESCRITURA, idUsuario, idRolActivo);
         if (alcance != Alcance.TODO && !alcance.incluyeDocente()) {
             throw new IllegalArgumentException("La asistencia la registra el colegio.");
         }
@@ -251,10 +251,10 @@ public class AsistenciaService {
     // ============================= VISTAS =============================
 
     @Transactional(readOnly = true)
-    public Page<AsistenciaDiaResponse> asistenciasHoy(Integer idUsuario, List<String> roles, Filtro filtro, Pageable pageable) {
+    public Page<AsistenciaDiaResponse> asistenciasHoy(Integer idUsuario, Integer idRolActivo, Filtro filtro, Pageable pageable) {
         LocalDate hoy = LocalDate.now();
-        boolean consultaDeRegistro = tieneAccion(CREAR, idUsuario, roles) || tieneAccion(ACTUALIZAR, idUsuario, roles);
-        List<Matricula> matriculas = matriculasVisibles(idUsuario, roles, filtro, consultaDeRegistro);
+        boolean consultaDeRegistro = tieneAccion(CREAR, idUsuario, idRolActivo) || tieneAccion(ACTUALIZAR, idUsuario, idRolActivo);
+        List<Matricula> matriculas = matriculasVisibles(idUsuario, idRolActivo, filtro, consultaDeRegistro);
         Map<Integer, MarcaAsistencia> marcas = marcasPorMatricula(matriculas, hoy, hoy).entrySet().stream()
                 .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().get(0)));
         Map<Integer, Set<LocalDate>> dias = new HashMap<>();
@@ -279,11 +279,11 @@ public class AsistenciaService {
     }
 
     @Transactional(readOnly = true)
-    public Page<MatrizSemanalResponse> matrizSemanal(LocalDate fecha, Pageable pageable, Integer idUsuario, List<String> roles,
+    public Page<MatrizSemanalResponse> matrizSemanal(LocalDate fecha, Pageable pageable, Integer idUsuario, Integer idRolActivo,
                                                       Filtro filtro) {
         LocalDate lunes = fecha.with(DayOfWeek.MONDAY);
         LocalDate viernes = lunes.plusDays(4);
-        List<Matricula> matriculas = matriculasVisibles(idUsuario, roles, filtro);
+        List<Matricula> matriculas = matriculasVisibles(idUsuario, idRolActivo, filtro);
         Map<Integer, List<MarcaAsistencia>> marcas = marcasPorMatricula(matriculas, lunes, viernes);
         Map<Integer, Set<LocalDate>> dias = new HashMap<>();
         List<MatrizSemanalResponse> contenido = matriculas.stream().map(m -> {
@@ -311,11 +311,11 @@ public class AsistenciaService {
     }
 
     @Transactional(readOnly = true)
-    public Page<ResumenMensualResponse> resumenMensual(LocalDate fecha, Pageable pageable, Integer idUsuario, List<String> roles,
+    public Page<ResumenMensualResponse> resumenMensual(LocalDate fecha, Pageable pageable, Integer idUsuario, Integer idRolActivo,
                                                         Filtro filtro) {
         LocalDate inicio = fecha.withDayOfMonth(1);
         LocalDate fin = fecha.withDayOfMonth(fecha.lengthOfMonth());
-        List<Matricula> matriculas = matriculasVisibles(idUsuario, roles, filtro);
+        List<Matricula> matriculas = matriculasVisibles(idUsuario, idRolActivo, filtro);
         Map<Integer, List<MarcaAsistencia>> marcas = marcasPorMatricula(matriculas, inicio, fin);
         Map<Integer, Set<LocalDate>> dias = new HashMap<>();
         List<ResumenMensualResponse> contenido = matriculas.stream()
@@ -349,7 +349,7 @@ public class AsistenciaService {
 
     /** KPIs del rango (hoy, semana o mes) en el año. Los días futuros no cuentan. */
     @Transactional(readOnly = true)
-    public EstadisticasResponse estadisticas(String rango, LocalDate fecha, Integer idAnio, Integer idUsuario, List<String> roles) {
+    public EstadisticasResponse estadisticas(String rango, LocalDate fecha, Integer idAnio, Integer idUsuario, Integer idRolActivo) {
         LocalDate inicio = fecha;
         LocalDate fin = fecha;
         if ("semana".equalsIgnoreCase(rango)) {
@@ -359,7 +359,7 @@ public class AsistenciaService {
             inicio = fecha.withDayOfMonth(1);
             fin = fecha.withDayOfMonth(fecha.lengthOfMonth());
         }
-        List<Matricula> matriculas = matriculasVisibles(idUsuario, roles, Filtro.delAnio(idAnio));
+        List<Matricula> matriculas = matriculasVisibles(idUsuario, idRolActivo, Filtro.delAnio(idAnio));
         Map<Integer, List<MarcaAsistencia>> marcas = marcasPorMatricula(matriculas, inicio, fin);
         Map<Integer, Set<LocalDate>> dias = new HashMap<>();
         long esperados = 0;
@@ -391,12 +391,12 @@ public class AsistenciaService {
 
     @Transactional(readOnly = true)
     public Page<ReporteGeneralResponse> reporteGeneral(LocalDate inicio, LocalDate fin, Pageable pageable,
-                                                       Integer idUsuario, List<String> roles,
+                                                       Integer idUsuario, Integer idRolActivo,
                                                        Integer idNivel, Integer idGrado, Integer idSeccion,
                                                        Integer idTurno, Integer idGradoSeccion, Integer idAnio) {
         LocalDate desde = inicio != null ? inicio : LocalDate.now();
         LocalDate hasta = fin != null ? fin : LocalDate.now();
-        List<Matricula> matriculas = matriculasVisibles(idUsuario, roles,
+        List<Matricula> matriculas = matriculasVisibles(idUsuario, idRolActivo,
                 new Filtro(idAnio, idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, null, null));
         Map<Integer, List<MarcaAsistencia>> marcas = marcasPorMatricula(matriculas, desde, hasta);
         Map<Integer, Set<LocalDate>> dias = new HashMap<>();
@@ -414,12 +414,12 @@ public class AsistenciaService {
 
     @Transactional(readOnly = true)
     public List<ReporteAlumnoResponse> reportePorAlumno(Integer idAlumno, LocalDate inicio, LocalDate fin,
-                                                        Integer idUsuario, List<String> roles) {
+                                                        Integer idUsuario, Integer idRolActivo) {
         Alumno alumno = alumnoRepository.findByIdAlumnoAndAccesoNot(idAlumno, eliminado())
                 .orElseThrow(() -> new ResourceNotFoundException("Alumno no encontrado con id " + idAlumno));
         Matricula matricula = accesoContextoService.matriculaActual(alumno.getIdAlumno())
                 .orElseThrow(() -> new ResourceNotFoundException("El alumno no tiene matrícula"));
-        if (!visibilidadReporte(idUsuario, roles).test(matricula)) {
+        if (!visibilidadReporte(idUsuario, idRolActivo).test(matricula)) {
             throw new ResourceNotFoundException("Alumno no encontrado con id " + idAlumno);
         }
         AnioEscolar anio = matricula.getGradoSeccion().getAnioEscolar();
@@ -440,15 +440,15 @@ public class AsistenciaService {
 
     @Transactional(readOnly = true)
     public List<ReporteUsuarioResponse> reportePorUsuario(Integer idUsuarioConsulta, LocalDate inicio, LocalDate fin,
-                                                          Integer idUsuario, List<String> roles) {
+                                                          Integer idUsuario, Integer idRolActivo) {
         LocalDate desde = inicio != null ? inicio : LocalDate.of(2000, 1, 1);
         LocalDate hasta = fin != null ? fin : LocalDate.now();
-        if (alcanceLectura(idUsuario, roles) != Alcance.TODO && !Objects.equals(idUsuarioConsulta, idUsuario)) {
+        if (alcanceLectura(idUsuario, idRolActivo) != Alcance.TODO && !Objects.equals(idUsuarioConsulta, idUsuario)) {
             throw new ResourceNotFoundException("Usuario registrador no encontrado con id " + idUsuarioConsulta);
         }
         usuarioRepository.findByIdUsuarioAndAccesoNot(idUsuarioConsulta, eliminado())
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario registrador no encontrado con id " + idUsuarioConsulta));
-        var visible = visibilidadReporte(idUsuario, roles);
+        var visible = visibilidadReporte(idUsuario, idRolActivo);
         return asistenciaAlumnoRepository
                 .findByUsuarioRegistroIdUsuarioAndFechaBetweenAndAccesoNot(idUsuarioConsulta, desde, hasta, eliminado())
                 .stream().filter(a -> visible.test(a.getMatricula())).map(a -> {
@@ -543,16 +543,16 @@ public class AsistenciaService {
         }
     }
 
-    private Alcance alcanceLectura(Integer idUsuario, List<String> roles) {
-        return accesoContextoService.alcance(PERMISO, AccesoContextoService.Operacion.LECTURA, idUsuario, roles);
+    private Alcance alcanceLectura(Integer idUsuario, Integer idRolActivo) {
+        return accesoContextoService.alcance(PERMISO, AccesoContextoService.Operacion.LECTURA, idUsuario, idRolActivo);
     }
 
-    private boolean tieneAccion(String accion, Integer idUsuario, List<String> roles) {
-        return accesoContextoService.tieneAccion(PERMISO, accion, idUsuario, roles);
+    private boolean tieneAccion(String accion, Integer idUsuario, Integer idRolActivo) {
+        return accesoContextoService.tieneAccion(PERMISO, accion, idUsuario, idRolActivo);
     }
 
-    private void exigirAccion(String accion, Integer idUsuario, List<String> roles) {
-        if (!tieneAccion(accion, idUsuario, roles)) {
+    private void exigirAccion(String accion, Integer idUsuario, Integer idRolActivo) {
+        if (!tieneAccion(accion, idUsuario, idRolActivo)) {
             throw new IllegalArgumentException("Sin permiso para realizar esta operación de asistencia.");
         }
     }
@@ -563,9 +563,9 @@ public class AsistenciaService {
         }
     }
 
-    private java.util.function.Predicate<Matricula> visibilidadReporte(Integer idUsuario, List<String> roles) {
+    private java.util.function.Predicate<Matricula> visibilidadReporte(Integer idUsuario, Integer idRolActivo) {
         Alcance alcance = accesoContextoService.alcance(
-                PERMISO, AccesoContextoService.Operacion.REPORTE, idUsuario, roles);
+                PERMISO, AccesoContextoService.Operacion.REPORTE, idUsuario, idRolActivo);
         Set<Integer> secciones = alcance != null && alcance.incluyeDocente()
                 ? accesoContextoService.gradoSeccionIdsDeDocente(idUsuario) : Set.of();
         Set<Integer> hijos = alcance != null && alcance.incluyeApoderado()
@@ -606,11 +606,11 @@ public class AsistenciaService {
     }
 
     /** Matrículas activas del año (el vigente si no se elige) que el usuario puede ver, con los filtros. */
-    private List<Matricula> matriculasVisibles(Integer idUsuario, List<String> roles, Filtro filtro) {
-        return matriculasVisibles(idUsuario, roles, filtro, false);
+    private List<Matricula> matriculasVisibles(Integer idUsuario, Integer idRolActivo, Filtro filtro) {
+        return matriculasVisibles(idUsuario, idRolActivo, filtro, false);
     }
 
-    private List<Matricula> matriculasVisibles(Integer idUsuario, List<String> roles, Filtro filtro, boolean consultaDeRegistro) {
+    private List<Matricula> matriculasVisibles(Integer idUsuario, Integer idRolActivo, Filtro filtro, boolean consultaDeRegistro) {
         Optional<AnioEscolar> anio = resolverAnio(filtro.idAnio());
         if (anio.isEmpty()) {
             return List.of();
@@ -618,7 +618,7 @@ public class AsistenciaService {
         List<Matricula> delAnio = delAnioParaListar(anio.get().getIdAnio()).stream()
                 .filter(m -> AccesoConstants.ACTIVO.equals(m.getAcceso().getIdAcceso())).toList();
         Alcance alcance = consultaDeRegistro && anio.get().getEstado() == AnioEscolarService.ESTADO_VIGENTE
-                ? Alcance.TODO : alcanceLectura(idUsuario, roles);
+                ? Alcance.TODO : alcanceLectura(idUsuario, idRolActivo);
         Set<Integer> secciones = alcance.incluyeDocente()
                 ? accesoContextoService.gradoSeccionIdsDeDocente(idUsuario) : Set.of();
         Set<Integer> hijos = alcance.incluyeApoderado() ? accesoContextoService.apoderadoDeUsuario(idUsuario)

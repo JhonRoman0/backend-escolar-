@@ -36,8 +36,8 @@ public class ApoderadoService {
     private final PagoConfigService pagoConfigService;
 
     @Transactional(readOnly = true)
-    public List<ApoderadoResponse> getAll(Integer idUsuario, List<String> roles) {
-        Set<Integer> visibles = idsApoderadosVisibles(idUsuario, roles);
+    public List<ApoderadoResponse> getAll(Integer idUsuario, Integer idRolActivo) {
+        Set<Integer> visibles = idsApoderadosVisibles(idUsuario, idRolActivo);
         return apoderadoRepository.findByAccesoNot(accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow()).stream()
                 .filter(a -> visibles == null || visibles.contains(a.getIdApoderado()))
                 .map(ApoderadoResponse::fromEntity)
@@ -45,17 +45,17 @@ public class ApoderadoService {
     }
 
     @Transactional(readOnly = true)
-    public ApoderadoResponse getById(Integer id, Integer idUsuario, List<String> roles) {
+    public ApoderadoResponse getById(Integer id, Integer idUsuario, Integer idRolActivo) {
         Apoderado apoderado = apoderadoRepository.findByIdApoderadoAndAccesoNot(id, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("Apoderado no encontrado con id " + id));
-        if (!esVisible(apoderado.getIdApoderado(), idUsuario, roles)) {
+        if (!esVisible(apoderado.getIdApoderado(), idUsuario, idRolActivo)) {
             throw new ResourceNotFoundException("Apoderado no encontrado con id " + id);
         }
         return ApoderadoResponse.fromEntity(apoderado);
     }
 
     @Transactional(readOnly = true)
-    public ApoderadoResponse getByDocumento(String documento, Integer idUsuario, List<String> roles) {
+    public ApoderadoResponse getByDocumento(String documento, Integer idUsuario, Integer idRolActivo) {
         if (documento == null || documento.isBlank()) {
             throw new IllegalArgumentException("El documento de identidad es obligatorio");
         }
@@ -65,7 +65,7 @@ public class ApoderadoService {
                 .orElseGet(() -> ApoderadoResponse.fromUsuario(
                         usuarioRepository.findByDocumentoIdentidadAndAccesoNot(documento, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                                 .orElseThrow(() -> new ResourceNotFoundException("No existe un usuario con el documento " + documento))));
-        if (!esVisible(response.getIdApoderado(), idUsuario, roles)) {
+        if (!esVisible(response.getIdApoderado(), idUsuario, idRolActivo)) {
             throw new ResourceNotFoundException("No existe un usuario con el documento " + documento);
         }
         return response;
@@ -113,16 +113,16 @@ public class ApoderadoService {
         return ApoderadoResponse.fromVinculo(vinculo);
     }
 
-    private boolean esVisible(Integer idApoderado, Integer idUsuario, List<String> roles) {
+    private boolean esVisible(Integer idApoderado, Integer idUsuario, Integer idRolActivo) {
         if (idApoderado == null) {
-            return accesoContextoService.alcance(PERMISO, idUsuario, roles) == Alcance.TODO;
+            return accesoContextoService.alcance(PERMISO, idUsuario, idRolActivo) == Alcance.TODO;
         }
-        Set<Integer> visibles = idsApoderadosVisibles(idUsuario, roles);
+        Set<Integer> visibles = idsApoderadosVisibles(idUsuario, idRolActivo);
         return visibles == null || visibles.contains(idApoderado);
     }
 
-    private Set<Integer> idsApoderadosVisibles(Integer idUsuario, List<String> roles) {
-        Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, roles);
+    private Set<Integer> idsApoderadosVisibles(Integer idUsuario, Integer idRolActivo) {
+        Alcance alcance = accesoContextoService.alcance(PERMISO, idUsuario, idRolActivo);
         if (alcance == Alcance.TODO) {
             return null;
         }

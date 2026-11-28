@@ -175,6 +175,18 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
+    @ExceptionHandler(DesafioSeleccionRolInvalidoException.class)
+    public ResponseEntity<Map<String, Object>> handleDesafioSeleccionRolInvalido(
+            DesafioSeleccionRolInvalidoException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.BAD_REQUEST.value());
+        body.put("error", "Bad Request");
+        body.put("codigo", DesafioSeleccionRolInvalidoException.CODIGO);
+        body.put("message", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
     @ExceptionHandler(LimiteEnviosCodigoException.class)
     public ResponseEntity<Map<String, Object>> handleLimiteEnvios(LimiteEnviosCodigoException ex) {
         Map<String, Object> body = new HashMap<>();

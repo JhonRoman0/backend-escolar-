@@ -28,7 +28,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,12 +42,15 @@ class JwtAuthFilterCambioPendienteTest {
     private UsuarioRepository usuarioRepository;
     @Mock
     private ObjectProvider<UsuarioRepository> usuarioRepositoryProvider;
+    @Mock
+    private ConcesionesService concesionesService;
     private JwtAuthFilter filter;
 
     @BeforeEach
     void prepararSesion() {
         when(usuarioRepositoryProvider.getObject()).thenReturn(usuarioRepository);
-        filter = new JwtAuthFilter(jwtService, usuarioRepositoryProvider, new VigenciaService());
+        lenient().when(concesionesService.rolActivoValido(eq(1), anyInt())).thenReturn(true);
+        filter = new JwtAuthFilter(jwtService, usuarioRepositoryProvider, new VigenciaService(), concesionesService);
         when(usuarioRepository.findVigenciaSesion(eq(1), eq(AccesoConstants.ELIMINADO)))
                 .thenReturn(Optional.of(sesionValida(0)));
     }
@@ -87,7 +92,7 @@ class JwtAuthFilterCambioPendienteTest {
 
     private MockHttpServletResponse ejecutar(String metodo, String ruta, boolean cambioPendiente, MockFilterChain chain)
             throws Exception {
-        String token = jwtService.generarToken(1, "ADM20260001", List.of("DOCENTE"), cambioPendiente);
+        String token = jwtService.generarToken(1, "ADM20260001", 7, List.of("DOCENTE"), cambioPendiente, null, 0, null);
         MockHttpServletRequest request = new MockHttpServletRequest(metodo, ruta);
         request.setServletPath(ruta);
         request.setCookies(new Cookie("escolar_token", token));
@@ -122,6 +127,28 @@ class JwtAuthFilterCambioPendienteTest {
     }
 
     @Test
+    void conCambioPendienteBloqueaConsultaDeRoles() throws Exception {
+        MockFilterChain chain = new MockFilterChain();
+
+        MockHttpServletResponse response = ejecutar("GET", "/auth/roles", true, chain);
+
+        assertEquals(403, response.getStatus());
+        assertTrue(response.getContentAsString().contains(JwtAuthFilter.CODIGO_CAMBIO_PENDIENTE));
+        assertNull(chain.getRequest());
+    }
+
+    @Test
+    void conCambioPendienteBloqueaCambioDeRol() throws Exception {
+        MockFilterChain chain = new MockFilterChain();
+
+        MockHttpServletResponse response = ejecutar("POST", "/auth/cambiar-rol", true, chain);
+
+        assertEquals(403, response.getStatus());
+        assertTrue(response.getContentAsString().contains(JwtAuthFilter.CODIGO_CAMBIO_PENDIENTE));
+        assertNull(chain.getRequest());
+    }
+
+    @Test
     void sinCambioPendienteNoBloquea() throws Exception {
         MockFilterChain chain = new MockFilterChain();
 
@@ -134,7 +161,7 @@ class JwtAuthFilterCambioPendienteTest {
     @Test
     void tokenAntiguoSinMarcaNoBloquea() throws Exception {
         MockFilterChain chain = new MockFilterChain();
-        String token = jwtService.generarToken(1, "ADM20260001", List.of("DOCENTE"));
+        String token = jwtService.generarToken(1, "ADM20260001", 7, List.of("DOCENTE"), false, null, 0, null);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/usuarios");
         request.setServletPath("/usuarios");
         request.setCookies(new Cookie("escolar_token", token));

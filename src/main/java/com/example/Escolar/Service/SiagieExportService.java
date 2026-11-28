@@ -53,8 +53,8 @@ public class SiagieExportService {
 
     /** Cuántas notas finales faltan, para avisar antes de descargar. */
     @Transactional(readOnly = true)
-    public Pendientes pendientes(Integer idGradoSeccion, Integer periodo, Integer idUsuario, List<String> roles) {
-        Datos d = datos(idGradoSeccion, periodo, idUsuario, roles);
+    public Pendientes pendientes(Integer idGradoSeccion, Integer periodo, Integer idUsuario, Integer idRolActivo) {
+        Datos d = datos(idGradoSeccion, periodo, idUsuario, idRolActivo);
         List<Pendientes.AreaPendiente> areas = new ArrayList<>();
         int esperadas = 0;
         int faltantes = 0;
@@ -77,8 +77,8 @@ public class SiagieExportService {
     }
 
     @Transactional(readOnly = true)
-    public Archivo exportar(Integer idGradoSeccion, Integer periodo, Integer idUsuario, List<String> roles) {
-        Datos d = datos(idGradoSeccion, periodo, idUsuario, roles);
+    public Archivo exportar(Integer idGradoSeccion, Integer periodo, Integer idUsuario, Integer idRolActivo) {
+        Datos d = datos(idGradoSeccion, periodo, idUsuario, idRolActivo);
         try (XSSFWorkbook libro = new XSSFWorkbook(); ByteArrayOutputStream salida = new ByteArrayOutputStream()) {
             Estilos estilos = new Estilos(libro);
             Optional<Colegio> colegio = colegioRepository.findFirstByAccesoNot(eliminado());
@@ -96,11 +96,11 @@ public class SiagieExportService {
 
     // ── Datos ──
 
-    private Datos datos(Integer idGradoSeccion, Integer periodo, Integer idUsuario, List<String> roles) {
+    private Datos datos(Integer idGradoSeccion, Integer periodo, Integer idUsuario, Integer idRolActivo) {
         GradoSeccion gs = gradoSeccionRepository.findById(idGradoSeccion)
                 .filter(g -> !AccesoConstants.ELIMINADO.equals(g.getAcceso().getIdAcceso()))
                 .orElseThrow(() -> new ResourceNotFoundException("Sección no encontrada"));
-        if (!notaFinalService.puedeExportarSeccionCompleta(idUsuario, roles)) {
+        if (!notaFinalService.puedeExportarSeccionCompleta(idUsuario, idRolActivo)) {
             throw new ResourceNotFoundException("Sección no encontrada o fuera de tus asignaciones");
         }
         AnioEscolar anio = gs.getAnioEscolar();

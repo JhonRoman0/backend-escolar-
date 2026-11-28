@@ -37,7 +37,7 @@ public class AsistenciaController {
 
     @PostMapping("/previsualizar")
     public AsistenciaResponse previsualizar(@Valid @RequestBody AsistenciaRequest request) {
-        return asistenciaService.previsualizar(request, usuario(), roles());
+        return asistenciaService.previsualizar(request, usuario(), idRolActivo());
     }
 
     /** datos: el alumno y, si entra justificado, motivo y acompañante; foto: evidencia del ingreso justificado. */
@@ -45,18 +45,18 @@ public class AsistenciaController {
     @ResponseStatus(HttpStatus.CREATED)
     public AsistenciaResponse confirmar(@Valid @RequestPart("datos") AsistenciaRequest request,
                                         @RequestPart(value = "foto", required = false) MultipartFile foto) {
-        return asistenciaService.confirmar(request, foto, usuario(), roles());
+        return asistenciaService.confirmar(request, foto, usuario(), idRolActivo());
     }
 
     @PutMapping("/{id}/justificar")
     public AsistenciaResponse justificar(@PathVariable Integer id, @Valid @RequestBody JustificarRequest request) {
-        return asistenciaService.justificar(id, request, usuario(), roles());
+        return asistenciaService.justificar(id, request, usuario(), idRolActivo());
     }
 
     /** Anula una marca del día con su motivo. */
     @PostMapping("/{id}/anulacion")
     public ResponseEntity<Void> anular(@PathVariable Integer id, @Valid @RequestBody AnulacionAsistenciaRequest request) {
-        asistenciaService.anular(id, request.motivo(), usuario(), roles());
+        asistenciaService.anular(id, request.motivo(), usuario(), idRolActivo());
         return ResponseEntity.noContent().build();
     }
 
@@ -71,7 +71,7 @@ public class AsistenciaController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String estado,
             @PageableDefault(size = 10, sort = "idMatricula") Pageable pageable) {
-        return asistenciaService.asistenciasHoy(usuario(), roles(),
+        return asistenciaService.asistenciasHoy(usuario(), idRolActivo(),
                 new Filtro(idAnio, idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, search, estado), pageable);
     }
 
@@ -86,7 +86,7 @@ public class AsistenciaController {
             @RequestParam(required = false) Integer idAnio,
             @RequestParam(required = false) String search,
             @PageableDefault(size = 10, sort = "idMatricula") Pageable pageable) {
-        return asistenciaService.matrizSemanal(fecha, pageable, usuario(), roles(),
+        return asistenciaService.matrizSemanal(fecha, pageable, usuario(), idRolActivo(),
                 new Filtro(idAnio, idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, search, null));
     }
 
@@ -101,7 +101,7 @@ public class AsistenciaController {
             @RequestParam(required = false) Integer idAnio,
             @RequestParam(required = false) String search,
             @PageableDefault(size = 10, sort = "idMatricula") Pageable pageable) {
-        return asistenciaService.resumenMensual(fecha, pageable, usuario(), roles(),
+        return asistenciaService.resumenMensual(fecha, pageable, usuario(), idRolActivo(),
                 new Filtro(idAnio, idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, search, null));
     }
 
@@ -110,7 +110,7 @@ public class AsistenciaController {
             @RequestParam(defaultValue = "hoy") String rango,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
             @RequestParam(required = false) Integer idAnio) {
-        return asistenciaService.estadisticas(rango, fecha, idAnio, usuario(), roles());
+        return asistenciaService.estadisticas(rango, fecha, idAnio, usuario(), idRolActivo());
     }
 
     @GetMapping("/estados")
@@ -122,7 +122,7 @@ public class AsistenciaController {
         return accesoContextoService.idUsuarioAutenticado();
     }
 
-    private List<String> roles() {
-        return accesoContextoService.rolesAutenticados();
+    private Integer idRolActivo() {
+        return accesoContextoService.idRolActivoAutenticado();
     }
 }

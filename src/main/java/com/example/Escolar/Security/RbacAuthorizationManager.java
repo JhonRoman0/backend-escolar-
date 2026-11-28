@@ -33,12 +33,17 @@ public class RbacAuthorizationManager implements AuthorizationManager<RequestAut
             return new AuthorizationDecision(false);
         }
 
+        if (principal.idRolActivo() == null) {
+            return new AuthorizationDecision(false);
+        }
+
         // Super-rol ADMIN: acceso total a todas las pantallas y acciones
-        if (esAdmin(principal)) {
+        if (concesionesService.esAdminActivo(principal.idUsuario(), principal.idRolActivo())) {
             return new AuthorizationDecision(true);
         }
 
-        Map<String, Set<String>> accionesPorPermiso = concesionesService.accionesPorPermiso(principal.idUsuario());
+        Map<String, Set<String>> accionesPorPermiso =
+                concesionesService.accionesPorPermiso(principal.idUsuario(), principal.idRolActivo());
 
         // Basta con uno de los permisos de la ruta (los catálogos se leen desde varios módulos).
         for (String permisoCodigo : requisito.permisosCodigo()) {
@@ -48,9 +53,5 @@ public class RbacAuthorizationManager implements AuthorizationManager<RequestAut
             }
         }
         return new AuthorizationDecision(false);
-    }
-
-    private boolean esAdmin(UsuarioAutenticado principal) {
-        return principal.roles().stream().anyMatch(nombre -> "ADMIN".equalsIgnoreCase(nombre));
     }
 }

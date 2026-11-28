@@ -41,12 +41,12 @@ public class AlumnoService {
     private final AccesoContextoService accesoContextoService;
     private final AccesoRepository accesoRepository;
 
-    public Page<AlumnoResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles,
+    public Page<AlumnoResponse> getAll(Pageable pageable, Integer idUsuario, Integer idRolActivo,
                                          Integer idNivel, Integer idGrado, Integer idSeccion,
                                          Integer idTurno, Integer idGradoSeccion, Integer idAnio,
                                          String search) {
         List<String> tokens = TextoBusqueda.tokens(search);
-        Set<Integer> visibles = idsAlumnosVisibles(idUsuario, roles);
+        Set<Integer> visibles = idsAlumnosVisibles(idUsuario, idRolActivo);
         boolean esGestion = visibles == null;
         Predicate<Matricula> contexto = contextoAcademico(idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio);
 
@@ -104,14 +104,14 @@ public class AlumnoService {
         }
     }
 
-    public Page<AlumnoResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles) {
-        return getAll(pageable, idUsuario, roles, null, null, null, null, null, null, null);
+    public Page<AlumnoResponse> getAll(Pageable pageable, Integer idUsuario, Integer idRolActivo) {
+        return getAll(pageable, idUsuario, idRolActivo, null, null, null, null, null, null, null);
     }
 
-    public Page<AlumnoResponse> getAll(Pageable pageable, Integer idUsuario, List<String> roles,
+    public Page<AlumnoResponse> getAll(Pageable pageable, Integer idUsuario, Integer idRolActivo,
                                        Integer idNivel, Integer idGrado, Integer idSeccion,
                                        Integer idTurno, Integer idGradoSeccion, Integer idAnio) {
-        return getAll(pageable, idUsuario, roles, idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio, null);
+        return getAll(pageable, idUsuario, idRolActivo, idNivel, idGrado, idSeccion, idTurno, idGradoSeccion, idAnio, null);
     }
 
     private Predicate<Matricula> contextoAcademico(Integer idNivel, Integer idGrado, Integer idSeccion,
@@ -161,21 +161,21 @@ public class AlumnoService {
         }).toList();
     }
 
-    public AlumnoResponse getById(Integer id, Integer idUsuario, List<String> roles) {
+    public AlumnoResponse getById(Integer id, Integer idUsuario, Integer idRolActivo) {
         Alumno alumno = findAlumno(id);
-        if (!esVisible(alumno.getIdAlumno(), idUsuario, roles)) {
+        if (!esVisible(alumno.getIdAlumno(), idUsuario, idRolActivo)) {
             throw new ResourceNotFoundException("Alumno no encontrado con id " + id);
         }
         return toResponse(alumno);
     }
 
-    public AlumnoResponse getByDocumento(String documento, Integer idUsuario, List<String> roles) {
+    public AlumnoResponse getByDocumento(String documento, Integer idUsuario, Integer idRolActivo) {
         if (documento == null || documento.isBlank()) {
             throw new IllegalArgumentException("El documento de identidad es obligatorio");
         }
         Alumno alumno = alumnoRepository.findByDocumentoIdentidadAndAccesoNot(documento, accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("Alumno no encontrado con documento " + documento));
-        if (!esVisible(alumno.getIdAlumno(), idUsuario, roles)) {
+        if (!esVisible(alumno.getIdAlumno(), idUsuario, idRolActivo)) {
             throw new ResourceNotFoundException("Alumno no encontrado con documento " + documento);
         }
         return toResponse(alumno);
@@ -219,8 +219,8 @@ public class AlumnoService {
     @Transactional(readOnly = true)
     /** Padrón de un año: una fila por matrícula activa de ese año. */
     public List<AlumnoReporteResponse> reporte(Integer idAnio, Integer idNivel, Integer idGrado,
-            Integer idGradoSeccion, Integer idUsuario, List<String> roles) {
-        Set<Integer> visibles = idsAlumnosVisibles(idUsuario, roles);
+            Integer idGradoSeccion, Integer idUsuario, Integer idRolActivo) {
+        Set<Integer> visibles = idsAlumnosVisibles(idUsuario, idRolActivo);
         boolean verApoderados = puedeVerApoderados();
         return matriculaRepository.findFiltradasList(AccesoConstants.ELIMINADO, idNivel, idGrado, null, null,
                         idGradoSeccion, idAnio, AccesoConstants.ACTIVO).stream()
@@ -265,17 +265,17 @@ public class AlumnoService {
         return celular != null && !celular.isBlank() ? nombre + " " + celular : nombre;
     }
 
-    public void validarEdicion(Integer id, Integer idUsuario, List<String> roles) {
+    public void validarEdicion(Integer id, Integer idUsuario, Integer idRolActivo) {
         Alcance alcance = accesoContextoService.alcance(
-                PERMISO, AccesoContextoService.Operacion.ESCRITURA, idUsuario, roles);
+                PERMISO, AccesoContextoService.Operacion.ESCRITURA, idUsuario, idRolActivo);
         Set<Integer> visibles = idsAlumnosVisibles(idUsuario, alcance);
         if (visibles != null && !visibles.contains(id)) {
             throw new ResourceNotFoundException("Alumno no encontrado con id " + id);
         }
     }
 
-    private Set<Integer> idsAlumnosVisibles(Integer idUsuario, List<String> roles) {
-        return idsAlumnosVisibles(idUsuario, accesoContextoService.alcance(PERMISO, idUsuario, roles));
+    private Set<Integer> idsAlumnosVisibles(Integer idUsuario, Integer idRolActivo) {
+        return idsAlumnosVisibles(idUsuario, accesoContextoService.alcance(PERMISO, idUsuario, idRolActivo));
     }
 
     private Set<Integer> idsAlumnosVisibles(Integer idUsuario, Alcance alcance) {
@@ -301,8 +301,8 @@ public class AlumnoService {
         return ids;
     }
 
-    private boolean esVisible(Integer idAlumno, Integer idUsuario, List<String> roles) {
-        Set<Integer> visibles = idsAlumnosVisibles(idUsuario, roles);
+    private boolean esVisible(Integer idAlumno, Integer idUsuario, Integer idRolActivo) {
+        Set<Integer> visibles = idsAlumnosVisibles(idUsuario, idRolActivo);
         return visibles == null || visibles.contains(idAlumno);
     }
 
@@ -314,7 +314,7 @@ public class AlumnoService {
     // Son datos personales: solo llegan a quien tiene el permiso de Apoderados.
     private boolean puedeVerApoderados() {
         return accesoContextoService.tienePermiso("APODERADOS",
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 
     private AlumnoResponse toResponse(Alumno alumno) {

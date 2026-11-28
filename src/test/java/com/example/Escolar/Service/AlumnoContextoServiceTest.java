@@ -31,7 +31,7 @@ class AlumnoContextoServiceTest {
     private Alumno alumno;
     private Acceso activo;
     private final PageRequest pagina = PageRequest.of(0, 10);
-    private final List<String> roles = List.of("ADMIN");
+    private final Integer idRolActivo = 1;
 
     @BeforeEach
     void preparar() {
@@ -63,7 +63,7 @@ class AlumnoContextoServiceTest {
     }
 
     private void gestion(Integer anio, Integer turno, List<Matricula> matriculas) {
-        when(accesoContextoService.alcance("ALUMNOS", 50, roles)).thenReturn(AccesoContextoService.Alcance.TODO);
+        when(accesoContextoService.alcance("ALUMNOS", 50, idRolActivo)).thenReturn(AccesoContextoService.Alcance.TODO);
         when(alumnoRepository.findFiltrados(AccesoConstants.ACTIVO, AccesoConstants.ELIMINADO,
                 null, null, null, turno, null, anio, pagina)).thenReturn(new PageImpl<>(List.of(alumno), pagina, 1));
         when(matriculaRepository.findActivasPorAlumnoIds(List.of(1), activo)).thenReturn(matriculas);
@@ -79,21 +79,21 @@ class AlumnoContextoServiceTest {
         vinculo.setApoderado(apoderado);
         lenient().when(alumnoApoderadoRepository.findByAlumno(alumno)).thenReturn(List.of(vinculo));
         when(accesoContextoService.idUsuarioAutenticado()).thenReturn(50);
-        when(accesoContextoService.rolesAutenticados()).thenReturn(roles);
-        when(accesoContextoService.tienePermiso("APODERADOS", 50, roles)).thenReturn(tienePermiso);
+        when(accesoContextoService.idRolActivoAutenticado()).thenReturn(idRolActivo);
+        when(accesoContextoService.tienePermiso("APODERADOS", 50, idRolActivo)).thenReturn(tienePermiso);
     }
 
     @Test void sinElPermisoDeApoderadosNoRecibeSusDatos() {
         conUnApoderado(false);
         gestion(6, null, List.of());
-        var resultado = service.getAll(pagina, 50, roles, null, null, null, null, null, 6);
+        var resultado = service.getAll(pagina, 50, idRolActivo, null, null, null, null, null, 6);
         assertEquals(0, resultado.getContent().get(0).getApoderados().size());
     }
 
     @Test void conElPermisoDeApoderadosRecibeSusDatos() {
         conUnApoderado(true);
         gestion(6, null, List.of());
-        var resultado = service.getAll(pagina, 50, roles, null, null, null, null, null, 6);
+        var resultado = service.getAll(pagina, 50, idRolActivo, null, null, null, null, null, 6);
         assertEquals("Ana", resultado.getContent().get(0).getApoderados().get(0).getNombre());
     }
 
@@ -102,7 +102,7 @@ class AlumnoContextoServiceTest {
         antigua.getAlumnoApoderado().setApoPrincipal((byte) 0);
         antigua.getAlumnoApoderado().setActivo(false);
         gestion(6, null, List.of(antigua, matricula(7, (byte) 3, 1)));
-        var alumnoDelAnio = service.getAll(pagina, 50, roles, null, null, null, null, null, 6).getContent().get(0);
+        var alumnoDelAnio = service.getAll(pagina, 50, idRolActivo, null, null, null, null, null, 6).getContent().get(0);
         assertEquals(6, alumnoDelAnio.getIdAnio());
         assertEquals("Primaria", alumnoDelAnio.getNivel());
         assertEquals("3do", alumnoDelAnio.getGrado());
@@ -111,20 +111,20 @@ class AlumnoContextoServiceTest {
 
     @Test void muestraElAnioHistoricoConsultadoAunqueExistaVigente() {
         gestion(6, null, List.of(matricula(7, (byte) 1, 1), matricula(6, (byte) 2, 1)));
-        var resultado = service.getAll(pagina, 50, roles, null, null, null, null, null, 6);
+        var resultado = service.getAll(pagina, 50, idRolActivo, null, null, null, null, null, 6);
         assertEquals(6, resultado.getContent().get(0).getIdAnio());
         assertEquals(1, resultado.getTotalElements());
     }
 
     @Test void muestraElAnioFuturoConsultado() {
         gestion(8, null, List.of(matricula(7, (byte) 1, 1), matricula(8, (byte) 3, 1)));
-        assertEquals(8, service.getAll(pagina, 50, roles, null, null, null, null, null, 8)
+        assertEquals(8, service.getAll(pagina, 50, idRolActivo, null, null, null, null, null, 8)
                 .getContent().get(0).getIdAnio());
     }
 
     @Test void elEnriquecimientoRespetaTambienElTurno() {
         gestion(6, 2, List.of(matricula(6, (byte) 2, 1), matricula(6, (byte) 2, 2)));
-        assertEquals(2, service.getAll(pagina, 50, roles, null, null, null, 2, null, 6)
+        assertEquals(2, service.getAll(pagina, 50, idRolActivo, null, null, null, 2, null, 6)
                 .getContent().get(0).getIdTurno());
     }
 
@@ -135,29 +135,29 @@ class AlumnoContextoServiceTest {
         Matricula secundaria = matricula(6, (byte) 2, 1);
         secundaria.getAlumnoApoderado().setApoPrincipal((byte) 0);
         gestion(6, null, List.of(eliminada, secundaria, matricula(6, (byte) 2, 2)));
-        assertEquals(2, service.getAll(pagina, 50, roles, null, null, null, null, null, 6)
+        assertEquals(2, service.getAll(pagina, 50, idRolActivo, null, null, null, null, null, 6)
                 .getContent().get(0).getIdTurno());
     }
 
     @Test void sinAnioConservaLaPreferenciaPorElVigente() {
         gestion(null, 1, List.of(matricula(6, (byte) 1, 1), matricula(8, (byte) 3, 1)));
-        assertEquals(6, service.getAll(pagina, 50, roles, null, null, null, 1, null, null)
+        assertEquals(6, service.getAll(pagina, 50, idRolActivo, null, null, null, 1, null, null)
                 .getContent().get(0).getIdAnio());
     }
 
     @Test void listadoSinFiltrosConservaMatriculaActualYAlumnosSinMatricula() {
-        when(accesoContextoService.alcance("ALUMNOS", 50, roles)).thenReturn(AccesoContextoService.Alcance.TODO);
+        when(accesoContextoService.alcance("ALUMNOS", 50, idRolActivo)).thenReturn(AccesoContextoService.Alcance.TODO);
         Acceso eliminado = new Acceso(); eliminado.setIdAcceso(AccesoConstants.ELIMINADO);
         when(accesoRepository.findById(AccesoConstants.ELIMINADO)).thenReturn(Optional.of(eliminado));
         when(alumnoRepository.findByAccesoNot(eliminado, pagina)).thenReturn(new PageImpl<>(List.of(alumno)));
         when(matriculaRepository.findActivasPorAlumnoIds(List.of(1), activo))
                 .thenReturn(List.of(matricula(6, (byte) 1, 1), matricula(8, (byte) 3, 1))).thenReturn(List.of());
-        assertEquals(6, service.getAll(pagina, 50, roles).getContent().get(0).getIdAnio());
-        assertEquals("Sin matrícula", service.getAll(pagina, 50, roles).getContent().get(0).getNivel());
+        assertEquals(6, service.getAll(pagina, 50, idRolActivo).getContent().get(0).getIdAnio());
+        assertEquals("Sin matrícula", service.getAll(pagina, 50, idRolActivo).getContent().get(0).getNivel());
     }
 
     @Test void apoderadoVeSoloSusAlumnosConElContextoConsultado() {
-        when(accesoContextoService.alcance("ALUMNOS", 50, roles)).thenReturn(AccesoContextoService.Alcance.APODERADO);
+        when(accesoContextoService.alcance("ALUMNOS", 50, idRolActivo)).thenReturn(AccesoContextoService.Alcance.APODERADO);
         Apoderado apoderado = new Apoderado();
         when(accesoContextoService.apoderadoDeUsuario(50)).thenReturn(Optional.of(apoderado));
         AlumnoApoderado vinculo = new AlumnoApoderado(); vinculo.setAlumno(alumno);
@@ -167,14 +167,14 @@ class AlumnoContextoServiceTest {
                 null, null, null, null, null, 6)).thenReturn(List.of(alumno, ajeno));
         when(matriculaRepository.findActivasPorAlumnoIds(List.of(1), activo))
                 .thenReturn(List.of(matricula(7, (byte) 1, 1), matricula(6, (byte) 2, 1)));
-        var resultado = service.getAll(pagina, 50, roles, null, null, null, null, null, 6);
+        var resultado = service.getAll(pagina, 50, idRolActivo, null, null, null, null, null, 6);
         assertEquals(1, resultado.getTotalElements());
         assertEquals(6, resultado.getContent().get(0).getIdAnio());
         verify(matriculaRepository).findActivasPorAlumnoIds(List.of(1), activo);
     }
 
     @Test void docenteConservaSuAlcanceAlConsultarOtroAnio() {
-        when(accesoContextoService.alcance("ALUMNOS", 50, roles)).thenReturn(AccesoContextoService.Alcance.DOCENTE);
+        when(accesoContextoService.alcance("ALUMNOS", 50, idRolActivo)).thenReturn(AccesoContextoService.Alcance.DOCENTE);
         when(accesoContextoService.gradoSeccionIdsDeDocente(50)).thenReturn(java.util.Set.of(701));
         when(accesoContextoService.matriculasDeGradoSecciones(java.util.Set.of(701)))
                 .thenReturn(List.of(matricula(7, (byte) 1, 1)));
@@ -183,13 +183,13 @@ class AlumnoContextoServiceTest {
                 null, null, null, null, null, 6)).thenReturn(List.of(alumno, ajeno));
         when(matriculaRepository.findActivasPorAlumnoIds(List.of(1), activo))
                 .thenReturn(List.of(matricula(7, (byte) 1, 1), matricula(6, (byte) 2, 1)));
-        var resultado = service.getAll(pagina, 50, roles, null, null, null, null, null, 6);
+        var resultado = service.getAll(pagina, 50, idRolActivo, null, null, null, null, null, 6);
         assertEquals(1, resultado.getTotalElements());
         assertEquals(6, resultado.getContent().get(0).getIdAnio());
     }
 
     @Test void todosLosFiltrosSeAplicanALaMismaMatricula() {
-        when(accesoContextoService.alcance("ALUMNOS", 50, roles)).thenReturn(AccesoContextoService.Alcance.TODO);
+        when(accesoContextoService.alcance("ALUMNOS", 50, idRolActivo)).thenReturn(AccesoContextoService.Alcance.TODO);
         when(alumnoRepository.findFiltrados(AccesoConstants.ACTIVO, AccesoConstants.ELIMINADO,
                 2, 3, 62, 2, 602, 6, pagina)).thenReturn(new PageImpl<>(List.of(alumno)));
         Matricula nivelDistinto = matricula(6, (byte) 2, 2);
@@ -202,7 +202,7 @@ class AlumnoContextoServiceTest {
         relacionDistinta.getGradoSeccion().setIdGradoSeccion(999);
         when(matriculaRepository.findActivasPorAlumnoIds(List.of(1), activo)).thenReturn(List.of(
                 nivelDistinto, gradoDistinto, seccionDistinta, relacionDistinta, matricula(6, (byte) 2, 2)));
-        var respuesta = service.getAll(pagina, 50, roles, 2, 3, 62, 2, 602, 6).getContent().get(0);
+        var respuesta = service.getAll(pagina, 50, idRolActivo, 2, 3, 62, 2, 602, 6).getContent().get(0);
         assertEquals(602, respuesta.getIdGradoSeccion());
         assertEquals(62, respuesta.getIdSeccion());
         assertEquals(2, respuesta.getIdNivel());

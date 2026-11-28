@@ -70,6 +70,12 @@ class DosFactorServiceTest {
         activo.setIdAcceso(AccesoConstants.ACTIVO);
         usuario.setAcceso(activo);
         when(usuarioRepository.save(any(Usuario.class))).thenAnswer(i -> i.getArgument(0));
+        when(usuarioRepository.guardarDesafio(any(), anyString(), any())).thenReturn(1);
+        when(usuarioRepository.guardarCodigo(any(), anyString(), anyString(), any(), any(), any(), any())).thenReturn(1);
+        when(usuarioRepository.limpiarDesafioPorHash(any(), anyString())).thenReturn(1);
+        when(usuarioRepository.registrarIntentos(any(), anyString(), anyInt(), any())).thenReturn(1);
+        when(usuarioRepository.consumirDesafio(any(), anyString(), any(), any(), anyInt())).thenReturn(1);
+        when(usuarioRepository.consumirDesafioDosFactor(any(), anyString(), any(), any(), anyInt())).thenReturn(1);
         // Como la base: al guardar, el dispositivo recibe su id.
         when(dispositivoRepository.save(any(DispositivoUsuario.class))).thenAnswer(i -> {
             DispositivoUsuario d = i.getArgument(0);
@@ -89,6 +95,10 @@ class DosFactorServiceTest {
                 i.getArgument(0).equals(usuario.getDosFactorDesafio()) ? Optional.of(usuario) : Optional.empty());
     }
 
+    private void buscarPorDesafio(String token) {
+        when(usuarioRepository.findByDosFactorDesafio(HashSeguro.sha256(token))).thenReturn(Optional.of(usuario));
+    }
+
     @Test
     void iniciarEnviaUnCodigoYSoloGuardaHashes() {
         DosFactorService.Desafio d = servicio.iniciar(usuario, contexto);
@@ -103,6 +113,72 @@ class DosFactorServiceTest {
     }
 
     @Test
+    void iniciarGeneraDesafioConProposito2FA() {
+        DosFactorService.Desafio d = servicio.iniciar(usuario, contexto);
+
+        assertTrue(d.desafio().startsWith(DosFactorService.PropositoDesafio.DOS_FACTOR.prefijo()));
+        assertEquals(HashSeguro.sha256(d.desafio()), usuario.getDosFactorDesafio());
+    }
+
+    @Test
+    void reenviarRechazaDesafioDeSeleccionDeRol() {
+        String token = servicio.emitirDesafio(usuario, DosFactorService.PropositoDesafio.SELECCION_ROL, 3);
+        usuario.setDosFactorCodigo(HashSeguro.sha256("123456"));
+        String codigoAntes = usuario.getDosFactorCodigo();
+        buscarPorDesafio();
+
+        assertThrows(DosFactorVencidoException.class, () -> servicio.reenviar(token, contexto));
+        assertEquals(codigoAntes, usuario.getDosFactorCodigo());
+        verify(emailService, never()).enviarCodigoDosFactor(anyString(), any(), anyString(), anyInt(), any(), any());
+    }
+
+    @Test
+    void desafioDeSeleccionConservaElDispositivoDelContexto() {
+        String token = servicio.emitirDesafio(usuario, DosFactorService.PropositoDesafio.SELECCION_ROL, 3, 40);
+
+        assertTrue(token.startsWith("SELROL:0:40:"));
+        assertEquals(40, servicio.idDispositivo(token, DosFactorService.PropositoDesafio.SELECCION_ROL));
+        assertEquals(HashSeguro.sha256(token), usuario.getDosFactorDesafio());
+    }
+
+    @Test
+    void desafioDeSeleccionSinDispositivoDevuelveNull() {
+        String token = servicio.emitirDesafio(usuario, DosFactorService.PropositoDesafio.SELECCION_ROL, 3);
+
+        assertTrue(token.startsWith("SELROL:0:0:"));
+        assertNull(servicio.idDispositivo(token, DosFactorService.PropositoDesafio.SELECCION_ROL));
+    }
+
+    @Test
+    void verificarRechazaDesafioDeSeleccionDeRol() {
+        String token = servicio.emitirDesafio(usuario, DosFactorService.PropositoDesafio.SELECCION_ROL, 3);
+        usuario.setDosFactorCodigo(HashSeguro.sha256("123456"));
+        usuario.setDosFactorCodigoExpiracion(LocalDateTime.now().plusMinutes(DosFactorService.MINUTOS_CODIGO));
+        String hash = usuario.getDosFactorDesafio();
+        buscarPorDesafio();
+
+        assertThrows(DosFactorVencidoException.class,
+                () -> servicio.verificar(token, "123456", false, null, contexto));
+        assertEquals(hash, usuario.getDosFactorDesafio());
+    }
+
+    @Test
+    void desafioSinPrefijoSeAceptaComo2FA() {
+        String token = HashSeguro.tokenAleatorio();
+        String codigo = "654321";
+        usuario.setDosFactorDesafio(HashSeguro.sha256(token));
+        usuario.setDosFactorDesafioExpiracion(LocalDateTime.now().plusMinutes(DosFactorService.MINUTOS_DESAFIO));
+        usuario.setDosFactorCodigo(HashSeguro.sha256(codigo));
+        usuario.setDosFactorCodigoExpiracion(LocalDateTime.now().plusMinutes(DosFactorService.MINUTOS_CODIGO));
+        buscarPorDesafio();
+
+        DosFactorService.Verificado v = servicio.verificar(token, codigo, false, null, contexto);
+
+        assertSame(usuario, v.usuario());
+        assertNull(usuario.getDosFactorDesafio());
+    }
+
+    @Test
     void siElCorreoFallaElUsuarioSeEntera() {
         when(emailService.enviarCodigoDosFactor(anyString(), any(), anyString(), anyInt(), any(), any())).thenReturn(false);
         assertThrows(EnvioCodigoFallidoException.class, () -> servicio.iniciar(usuario, contexto));
@@ -112,14 +188,26 @@ class DosFactorServiceTest {
     void codigoCorrectoCompletaYLimpiaElDesafio() {
         buscarPorDesafio();
         DosFactorService.Desafio d = servicio.iniciar(usuario, contexto);
+        String hash = usuario.getDosFactorDesafio();
 
         DosFactorService.Verificado v = servicio.verificar(d.desafio(), codigoEnviado.get(), false, null, contexto);
 
+        verify(usuarioRepository).consumirDesafioDosFactor(eq(7), eq(hash), any(), eq(AccesoConstants.ACTIVO), eq(0));
         assertSame(usuario, v.usuario());
         assertNotNull(v.tokenDispositivo());
         assertNull(usuario.getDosFactorDesafio());
         assertNull(usuario.getDosFactorCodigo());
         // El desafío no se puede reutilizar.
+        assertThrows(DosFactorVencidoException.class,
+                () -> servicio.verificar(d.desafio(), codigoEnviado.get(), false, null, contexto));
+    }
+
+    @Test
+    void verificacionConcurrenteFallaCuandoElConsumoNoAfectaFilas() {
+        buscarPorDesafio();
+        DosFactorService.Desafio d = servicio.iniciar(usuario, contexto);
+        when(usuarioRepository.consumirDesafioDosFactor(any(), anyString(), any(), any(), anyInt())).thenReturn(0);
+
         assertThrows(DosFactorVencidoException.class,
                 () -> servicio.verificar(d.desafio(), codigoEnviado.get(), false, null, contexto));
     }
@@ -160,6 +248,8 @@ class DosFactorServiceTest {
         DosFactorService.Desafio d = servicio.iniciar(usuario, contexto);
         usuario.setDosFactorDesafioExpiracion(LocalDateTime.now().minusSeconds(1));
         assertThrows(DosFactorVencidoException.class, () -> servicio.reenviar(d.desafio(), contexto));
+        assertThrows(DosFactorVencidoException.class,
+                () -> servicio.verificar(d.desafio(), codigoEnviado.get(), false, null, contexto));
     }
 
     @Test
@@ -174,6 +264,39 @@ class DosFactorServiceTest {
         assertEquals(HashSeguro.sha256(codigoEnviado.get()), usuario.getDosFactorCodigo());
         // Mismo código por azar es posible pero improbable; lo importante es el hash nuevo guardado.
         assertNotNull(anterior);
+    }
+
+    @Test
+    void reenviarNoGuardaCodigoSobreDesafioMasRecienteUnitario() {
+        String anterior = servicio.iniciar(usuario, contexto).desafio();
+        String hashAnterior = usuario.getDosFactorDesafio();
+        String hashNuevo = HashSeguro.sha256("SELROL:0:nuevo");
+        usuario.setDosFactorDesafio(hashNuevo);
+        usuario.setDosFactorEnviado(LocalDateTime.now().minusSeconds(46));
+        buscarPorDesafio(anterior);
+        when(usuarioRepository.guardarCodigo(any(), eq(hashAnterior), anyString(), any(), any(), any(), any()))
+                .thenReturn(0);
+
+        assertThrows(DosFactorVencidoException.class, () -> servicio.reenviar(anterior, contexto));
+
+        assertEquals(hashNuevo, usuario.getDosFactorDesafio());
+        verify(usuarioRepository, never()).save(any(Usuario.class));
+    }
+
+    @Test
+    void desafioVencidoNoLimpiaDesafioMasRecienteUnitario() {
+        String anterior = servicio.iniciar(usuario, contexto).desafio();
+        String hashAnterior = usuario.getDosFactorDesafio();
+        String hashNuevo = HashSeguro.sha256("SELROL:0:nuevo");
+        usuario.setDosFactorDesafio(hashNuevo);
+        usuario.setDosFactorDesafioExpiracion(LocalDateTime.now().minusSeconds(1));
+        usuario.setDosFactorEnviado(LocalDateTime.now().minusSeconds(46));
+        buscarPorDesafio(anterior);
+        when(usuarioRepository.limpiarDesafioPorHash(any(), eq(hashAnterior))).thenReturn(0);
+
+        assertThrows(DosFactorVencidoException.class, () -> servicio.reenviar(anterior, contexto));
+
+        assertEquals(hashNuevo, usuario.getDosFactorDesafio());
     }
 
     @Test

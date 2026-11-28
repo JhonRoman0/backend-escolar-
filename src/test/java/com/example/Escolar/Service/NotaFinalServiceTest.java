@@ -49,7 +49,7 @@ class NotaFinalServiceTest {
 
     private final Acceso activo = new Acceso(AccesoConstants.ACTIVO, "Activo");
     private final Acceso eliminado = new Acceso(AccesoConstants.ELIMINADO, "Eliminado");
-    private final List<String> roles = List.of("Docente");
+    private final Integer idRolActivo = 1;
     private final LocalDate hoy = LocalDate.now();
     private AnioEscolar anio;
     private GradoSeccion gs;
@@ -68,8 +68,8 @@ class NotaFinalServiceTest {
     void preparar() {
         when(accesoRepository.findById(AccesoConstants.ACTIVO)).thenReturn(Optional.of(activo));
         when(accesoRepository.findById(AccesoConstants.ELIMINADO)).thenReturn(Optional.of(eliminado));
-        when(accesoContextoService.alcance(any(), any(), any())).thenReturn(AccesoContextoService.Alcance.DOCENTE);
-        when(accesoContextoService.alcance(any(), any(), any(), any())).thenReturn(AccesoContextoService.Alcance.DOCENTE);
+        when(accesoContextoService.alcance(any(), any(), eq(idRolActivo))).thenReturn(AccesoContextoService.Alcance.DOCENTE);
+        when(accesoContextoService.alcance(any(), any(), any(), eq(idRolActivo))).thenReturn(AccesoContextoService.Alcance.DOCENTE);
         when(usuarioRepository.findById(7)).thenReturn(Optional.of(usuario("LUIS")));
         anio = new AnioEscolar();
         anio.setIdAnio(2);
@@ -198,7 +198,7 @@ class NotaFinalServiceTest {
 
     @Test
     void elDocenteDeUnSubcursoSoloVeSusCompetencias() {
-        List<NotaFinalResponse.Curso> cursos = service.cursos(2, 7, roles);
+        List<NotaFinalResponse.Curso> cursos = service.cursos(2, 7, idRolActivo);
 
         assertEquals(1, cursos.size());
         assertEquals("MATEMÁTICA", cursos.get(0).area());
@@ -236,7 +236,7 @@ class NotaFinalServiceTest {
     @Test
     void registraUnaNotaNueva() {
         conEvaluaciones("A");
-        service.registrar(pedido(1, "a", null), 7, roles);
+        service.registrar(pedido(1, "a", null), 7, idRolActivo);
 
         ArgumentCaptor<Nota> captor = ArgumentCaptor.forClass(Nota.class);
         verify(notaRepository).save(captor.capture());
@@ -246,7 +246,7 @@ class NotaFinalServiceTest {
 
     @Test
     void noCalificaUnaCompetenciaDeOtroSubcurso() {
-        var ex = assertThrows(IllegalArgumentException.class, () -> service.registrar(pedido(3, "A", null), 7, roles));
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.registrar(pedido(3, "A", null), 7, idRolActivo));
 
         assertTrue(ex.getMessage().contains("No puedes calificar"), ex.getMessage());
     }
@@ -255,7 +255,7 @@ class NotaFinalServiceTest {
     void laPrimeraNotaRegistradaEsLaQueVale() {
         existente(1, "A");
 
-        var ex = assertThrows(IllegalArgumentException.class, () -> service.registrar(pedido(1, "AD", null), 7, roles));
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.registrar(pedido(1, "AD", null), 7, idRolActivo));
 
         assertTrue(ex.getMessage().contains("ya la registró ROSA"), ex.getMessage());
         verify(notaRepository, never()).save(any());
@@ -265,10 +265,10 @@ class NotaFinalServiceTest {
     void corregirGuardaLaAnteriorConSuMotivo() {
         Nota anterior = existente(1, "A");
 
-        var ex = assertThrows(IllegalArgumentException.class, () -> service.corregir(pedido(1, "AD", null), 7, roles));
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.corregir(pedido(1, "AD", null), 7, idRolActivo));
         assertTrue(ex.getMessage().contains("motivo"), ex.getMessage());
 
-        service.corregir(correccion(1, "AD", "Error al digitar"), 7, roles);
+        service.corregir(correccion(1, "AD", "Error al digitar"), 7, idRolActivo);
 
         assertEquals("A", anterior.getCalificacion());
         assertEquals(eliminado, anterior.getAcceso());
@@ -281,7 +281,7 @@ class NotaFinalServiceTest {
 
     @Test
     void sinEvaluacionesNoHayNotaFinal() {
-        var ex = assertThrows(IllegalArgumentException.class, () -> service.registrar(pedido(1, "A", null), 7, roles));
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.registrar(pedido(1, "A", null), 7, idRolActivo));
 
         assertTrue(ex.getMessage().contains("no tiene notas de evaluaciones"), ex.getMessage());
         verify(notaRepository, never()).save(any());
@@ -292,7 +292,7 @@ class NotaFinalServiceTest {
         config.setEscala(EscalaCalificacion.VIGESIMAL);
         conEvaluaciones("14", "17");
 
-        service.registrar(pedido(1, "05", null), 7, roles);
+        service.registrar(pedido(1, "05", null), 7, idRolActivo);
 
         ArgumentCaptor<Nota> captor = ArgumentCaptor.forClass(Nota.class);
         verify(notaRepository).save(captor.capture());
@@ -306,7 +306,7 @@ class NotaFinalServiceTest {
         existente(1, "11").setConclusionDescriptiva("Conclusión anterior del alumno en la competencia");
 
         service.corregir(new NotaFinalRequest(30, 100, 1, List.of(new NotaFinalRequest.Item(1, 1, "20",
-                "Nueva conclusión descriptiva del alumno en la competencia")), "Ajuste"), 7, roles);
+                "Nueva conclusión descriptiva del alumno en la competencia")), "Ajuste"), 7, idRolActivo);
 
         ArgumentCaptor<Nota> captor = ArgumentCaptor.forClass(Nota.class);
         verify(notaRepository, times(2)).save(captor.capture());
@@ -321,7 +321,7 @@ class NotaFinalServiceTest {
     void reabrirAnulaConMotivo() {
         Nota nota = existente(1, "A");
 
-        service.reabrir(reapertura(), 7, roles);
+        service.reabrir(reapertura(), 7, idRolActivo);
 
         assertEquals(eliminado, nota.getAcceso());
         assertEquals("Nota mal calculada", nota.getMotivoAnulacion());
@@ -336,8 +336,8 @@ class NotaFinalServiceTest {
         when(notaAnualRepository.findByMatriculaIdMatriculaInAndCompetenciaIdCompetenciaInAndAccesoNot(any(), any(), eq(eliminado)))
                 .thenReturn(List.of(anual));
 
-        assertThrows(IllegalArgumentException.class, () -> service.reabrir(reapertura(), 7, roles));
-        assertThrows(IllegalArgumentException.class, () -> service.corregir(correccion(1, "AD", "x"), 7, roles));
+        assertThrows(IllegalArgumentException.class, () -> service.reabrir(reapertura(), 7, idRolActivo));
+        assertThrows(IllegalArgumentException.class, () -> service.corregir(correccion(1, "AD", "x"), 7, idRolActivo));
         assertEquals(activo, nota.getAcceso() == null ? activo : nota.getAcceso());
         verify(notaRepository, never()).save(any());
     }
@@ -345,10 +345,10 @@ class NotaFinalServiceTest {
     @Test
     void conBoCExigeConclusion() {
         conEvaluaciones("B");
-        var ex = assertThrows(IllegalArgumentException.class, () -> service.registrar(pedido(1, "B", null), 7, roles));
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.registrar(pedido(1, "B", null), 7, idRolActivo));
         assertTrue(ex.getMessage().contains("B o C"), ex.getMessage());
 
-        assertThrows(IllegalArgumentException.class, () -> service.registrar(pedido(1, "C", "corta"), 7, roles));
+        assertThrows(IllegalArgumentException.class, () -> service.registrar(pedido(1, "C", "corta"), 7, idRolActivo));
     }
 
     @Test
@@ -356,7 +356,7 @@ class NotaFinalServiceTest {
         config.setEscala(EscalaCalificacion.VIGESIMAL);
         conEvaluaciones("12");
 
-        assertThrows(IllegalArgumentException.class, () -> service.registrar(pedido(1, "20", " "), 7, roles));
+        assertThrows(IllegalArgumentException.class, () -> service.registrar(pedido(1, "20", " "), 7, idRolActivo));
         verify(notaRepository, never()).save(any());
     }
 
@@ -365,12 +365,12 @@ class NotaFinalServiceTest {
         abrirPeriodo(false);
         conEvaluaciones("A");
 
-        assertFalse(service.detalle(30, 100, 1, 7, roles).puedeRegistrar());
-        var ex = assertThrows(IllegalArgumentException.class, () -> service.registrar(pedido(1, "A", null), 7, roles));
+        assertFalse(service.detalle(30, 100, 1, 7, idRolActivo).puedeRegistrar());
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.registrar(pedido(1, "A", null), 7, idRolActivo));
         assertTrue(ex.getMessage().contains("ya cerró"), ex.getMessage());
         verify(notaRepository, never()).save(any());
 
-        service.corregir(pedido(1, "A", null), 7, roles);
+        service.corregir(pedido(1, "A", null), 7, idRolActivo);
         verify(notaRepository).save(any());
     }
 
@@ -378,7 +378,7 @@ class NotaFinalServiceTest {
     void soloEnUnAnioVigente() {
         anio.setEstado(AnioEscolarService.ESTADO_CERRADO);
 
-        var ex = assertThrows(IllegalArgumentException.class, () -> service.registrar(pedido(1, "A", null), 7, roles));
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.registrar(pedido(1, "A", null), 7, idRolActivo));
 
         assertTrue(ex.getMessage().contains("año vigente"));
     }
@@ -399,7 +399,7 @@ class NotaFinalServiceTest {
                 .thenReturn(List.of(deGeometria));
         when(notaEvaluacionRepository.findByEvaluacionIdEvaluacionInAndAccesoNot(any(), eq(eliminado))).thenReturn(List.of(nota));
 
-        NotaFinalResponse.Detalle detalle = service.detalle(30, 100, 1, 7, roles);
+        NotaFinalResponse.Detalle detalle = service.detalle(30, 100, 1, 7, idRolActivo);
 
         var guia = detalle.alumnos().get(0).notas().get(0).guia();
         assertEquals("Geometría", guia.get(0).curso());
@@ -409,10 +409,10 @@ class NotaFinalServiceTest {
 
     @Test
     void sinElPermisoDeRegistrarLaPantallaEsDeSoloLectura() {
-        assertFalse(service.detalle(30, 100, 1, 7, roles).puedeRegistrar());
+        assertFalse(service.detalle(30, 100, 1, 7, idRolActivo).puedeRegistrar());
 
-        when(accesoContextoService.tieneAccion("NOTAS", "CREAR", 7, roles)).thenReturn(true);
-        NotaFinalResponse.Detalle conPermiso = service.detalle(30, 100, 1, 7, roles);
+        when(accesoContextoService.tieneAccion("NOTAS", "CREAR", 7, idRolActivo)).thenReturn(true);
+        NotaFinalResponse.Detalle conPermiso = service.detalle(30, 100, 1, 7, idRolActivo);
 
         assertTrue(conPermiso.puedeRegistrar());
         assertFalse(conPermiso.puedeCorregir());
@@ -422,9 +422,9 @@ class NotaFinalServiceTest {
     void conElPeriodoPorComenzarNadieRegistraAunqueTengaPermiso() {
         periodo.setFechaInicio(hoy.plusDays(1));
         periodo.setFechaFin(hoy.plusDays(30));
-        when(accesoContextoService.tieneAccion(any(), any(), any(), any())).thenReturn(true);
+        when(accesoContextoService.tieneAccion(any(), any(), any(), eq(idRolActivo))).thenReturn(true);
 
-        NotaFinalResponse.Detalle detalle = service.detalle(30, 100, 1, 7, roles);
+        NotaFinalResponse.Detalle detalle = service.detalle(30, 100, 1, 7, idRolActivo);
 
         assertFalse(detalle.periodoEditable());
         assertFalse(detalle.puedeRegistrar());
@@ -472,7 +472,7 @@ class NotaFinalServiceTest {
         llegoEl(hoy.minusDays(3));
         existente(1, "A").setFechaRegistro(hoy.minusDays(10));
 
-        var celda = service.detalle(30, 100, 1, 7, roles).alumnos().get(0).notas().get(0);
+        var celda = service.detalle(30, 100, 1, 7, idRolActivo).alumnos().get(0).notas().get(0);
 
         assertEquals("2do B · Mañana", celda.seccionOrigen());
         assertEquals("ROSA DIAZ", celda.registradoPor());
@@ -483,7 +483,7 @@ class NotaFinalServiceTest {
         llegoEl(hoy.minusDays(3));
         existente(1, "A").setFechaRegistro(hoy);
 
-        assertNull(service.detalle(30, 100, 1, 7, roles).alumnos().get(0).notas().get(0).seccionOrigen());
+        assertNull(service.detalle(30, 100, 1, 7, idRolActivo).alumnos().get(0).notas().get(0).seccionOrigen());
     }
 
     private NotaEvaluacion notaDeOtraSeccion() {
@@ -512,14 +512,14 @@ class NotaFinalServiceTest {
         config.setEscala(EscalaCalificacion.VIGESIMAL);
         notaDeOtraSeccion().setCalificacion("18");
 
-        var celda = service.detalle(30, 100, 1, 7, roles).alumnos().get(0).notas().get(0);
+        var celda = service.detalle(30, 100, 1, 7, idRolActivo).alumnos().get(0).notas().get(0);
 
         assertEquals(1, celda.referencias().size());
         assertEquals("2do B · Mañana", celda.referencias().get(0).seccion());
         assertEquals("18", celda.referencias().get(0).calificacion());
         assertNull(celda.promedio());
         // C2 no la cubre esa nota.
-        assertTrue(service.detalle(30, 100, 1, 7, roles).alumnos().get(0).notas().get(1).referencias().isEmpty());
+        assertTrue(service.detalle(30, 100, 1, 7, idRolActivo).alumnos().get(0).notas().get(1).referencias().isEmpty());
     }
 
     @Test
@@ -538,7 +538,7 @@ class NotaFinalServiceTest {
         when(uso.getEvaluacion()).thenReturn(90);
         when(reconocimientoRepository.movimientosDe(any())).thenReturn(List.of(uso));
 
-        assertTrue(service.detalle(30, 100, 1, 7, roles).alumnos().get(0).notas().get(0).referencias().isEmpty());
+        assertTrue(service.detalle(30, 100, 1, 7, idRolActivo).alumnos().get(0).notas().get(0).referencias().isEmpty());
     }
 
     @Test
@@ -546,12 +546,12 @@ class NotaFinalServiceTest {
         abrirPeriodo(false);
         llegoEl(hoy);
 
-        assertTrue(service.detalle(30, 100, 1, 7, roles).alumnos().get(0).notas().get(0).soloDireccion());
-        var ex = assertThrows(IllegalArgumentException.class, () -> service.registrar(pedido(1, "A", null), 7, roles));
+        assertTrue(service.detalle(30, 100, 1, 7, idRolActivo).alumnos().get(0).notas().get(0).soloDireccion());
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.registrar(pedido(1, "A", null), 7, idRolActivo));
         assertTrue(ex.getMessage().contains("ya cerró"), ex.getMessage());
         verify(notaRepository, never()).save(any());
 
-        service.corregir(pedido(1, "A", null), 7, roles);
+        service.corregir(pedido(1, "A", null), 7, idRolActivo);
         verify(notaRepository).save(any());
     }
 
@@ -561,8 +561,8 @@ class NotaFinalServiceTest {
         llegoEl(hoy.minusDays(10));
 
         conEvaluaciones("A");
-        assertFalse(service.detalle(30, 100, 1, 7, roles).alumnos().get(0).notas().get(0).soloDireccion());
-        service.corregir(pedido(1, "A", null), 7, roles);
+        assertFalse(service.detalle(30, 100, 1, 7, idRolActivo).alumnos().get(0).notas().get(0).soloDireccion());
+        service.corregir(pedido(1, "A", null), 7, idRolActivo);
         verify(notaRepository).save(any());
     }
 

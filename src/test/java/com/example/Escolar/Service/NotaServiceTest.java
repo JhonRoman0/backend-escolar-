@@ -41,7 +41,7 @@ import static org.mockito.Mockito.when;
 class NotaServiceTest {
 
     private static final Integer USUARIO = 50;
-    private static final List<String> ROLES = List.of("Docente");
+    private static final Integer ID_ROL_ACTIVO = 1;
 
     @Mock
     private NotaRepository notaRepository;
@@ -67,7 +67,7 @@ class NotaServiceTest {
         when(matriculaRepository.findByIdMatriculaAndAccesoNot(eq(2), any())).thenReturn(Optional.of(matricula(2, 6)));
 
         // El docente solo enseña en la sección 5.
-        when(accesoContextoService.alcance("NOTAS", USUARIO, ROLES)).thenReturn(Alcance.DOCENTE);
+        when(accesoContextoService.alcance("NOTAS", USUARIO, ID_ROL_ACTIVO)).thenReturn(Alcance.DOCENTE);
         var asignacion = new com.example.Escolar.Model.Asignacion();
         asignacion.setGradoSeccion(matricula(1, 5).getGradoSeccion());
         Curso curso = new Curso();
@@ -87,12 +87,12 @@ class NotaServiceTest {
 
     @Test
     void elDocenteVeLasNotasDeSusSecciones() {
-        assertDoesNotThrow(() -> notaService.getPorMatricula(1, USUARIO, ROLES));
+        assertDoesNotThrow(() -> notaService.getPorMatricula(1, USUARIO, ID_ROL_ACTIVO));
     }
 
     @Test
     void elDocenteNoVeLasNotasDeOtraSeccion() {
-        assertThrows(ResourceNotFoundException.class, () -> notaService.getPorMatricula(2, USUARIO, ROLES));
+        assertThrows(ResourceNotFoundException.class, () -> notaService.getPorMatricula(2, USUARIO, ID_ROL_ACTIVO));
     }
 
     @Test
@@ -101,7 +101,7 @@ class NotaServiceTest {
                 .thenReturn(List.of(nota(1, 5), nota(2, 6)));
 
         var resultado = notaService.reporte(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31),
-                null, null, USUARIO, ROLES);
+                null, null, USUARIO, ID_ROL_ACTIVO);
 
         assertEquals(1, resultado.size());
         assertEquals("Ana Pérez", resultado.get(0).getAlumno());
@@ -109,15 +109,15 @@ class NotaServiceTest {
 
     @Test
     void sinVinculoDocenteConAlcanceNingunoNoVeNotasNiReportes() {
-        when(accesoContextoService.alcance("NOTAS", USUARIO, ROLES)).thenReturn(Alcance.NINGUNO);
+        when(accesoContextoService.alcance("NOTAS", USUARIO, ID_ROL_ACTIVO)).thenReturn(Alcance.NINGUNO);
         when(notaRepository.findByFechaRegistroBetweenAndAccesoNot(any(), any(), any()))
                 .thenReturn(List.of(nota(1, 5), nota(2, 6)));
 
         var resultado = notaService.reporte(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31),
-                null, null, USUARIO, ROLES);
+                null, null, USUARIO, ID_ROL_ACTIVO);
 
         assertEquals(0, resultado.size());
-        assertThrows(ResourceNotFoundException.class, () -> notaService.getPorMatricula(1, USUARIO, ROLES));
+        assertThrows(ResourceNotFoundException.class, () -> notaService.getPorMatricula(1, USUARIO, ID_ROL_ACTIVO));
     }
 
     private Nota nota(int idMatricula, int idGradoSeccion) {

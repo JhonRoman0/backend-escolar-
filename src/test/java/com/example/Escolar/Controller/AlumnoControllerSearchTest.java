@@ -31,7 +31,7 @@ class AlumnoControllerSearchTest {
     @InjectMocks private AlumnoController controller;
     private MockMvc mvc;
 
-    private final List<String> roles = List.of("ADMIN");
+    private final Integer idRolActivo = 1;
 
     @BeforeEach
     void prepararMvc() {
@@ -52,8 +52,8 @@ class AlumnoControllerSearchTest {
     void propagaSearchYFiltrosYSerializaElTotal() throws Exception {
         List<AlumnoResponse> alumnos = List.of(alumno(7, "Ana"), alumno(8, "Ana María"));
         when(accesoContextoService.idUsuarioAutenticado()).thenReturn(50);
-        when(accesoContextoService.rolesAutenticados()).thenReturn(roles);
-        when(alumnoService.getAll(any(Pageable.class), eq(50), eq(roles),
+        when(accesoContextoService.idRolActivoAutenticado()).thenReturn(idRolActivo);
+        when(alumnoService.getAll(any(Pageable.class), eq(50), eq(idRolActivo),
                 isNull(), isNull(), isNull(), isNull(), isNull(), eq(6), eq("ana")))
                 .thenReturn(new PageImpl<>(alumnos, PageRequest.of(0, 10), 2));
 
@@ -66,7 +66,7 @@ class AlumnoControllerSearchTest {
                 .andExpect(jsonPath("$.totalElements").value(2))
                 .andExpect(jsonPath("$.content[0].idAlumno").value(7));
 
-        verify(alumnoService).getAll(any(Pageable.class), eq(50), eq(roles),
+        verify(alumnoService).getAll(any(Pageable.class), eq(50), eq(idRolActivo),
                 isNull(), isNull(), isNull(), isNull(), isNull(), eq(6), eq("ana"));
     }
 }

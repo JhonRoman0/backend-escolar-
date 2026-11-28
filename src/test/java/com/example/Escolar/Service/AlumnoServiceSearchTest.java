@@ -36,7 +36,7 @@ class AlumnoServiceSearchTest {
     @InjectMocks private AlumnoService service;
 
     private final PageRequest pagina = PageRequest.of(0, 10);
-    private final List<String> roles = List.of("ADMIN");
+    private final Integer idRolActivo = 1;
     private Acceso activo;
 
     @BeforeEach
@@ -45,7 +45,7 @@ class AlumnoServiceSearchTest {
         activo.setIdAcceso(AccesoConstants.ACTIVO);
         lenient().when(accesoRepository.findById(AccesoConstants.ACTIVO)).thenReturn(Optional.of(activo));
         lenient().when(matriculaRepository.findActivasPorAlumnoIds(anyList(), any())).thenReturn(List.of());
-        lenient().when(accesoContextoService.tienePermiso(eq("APODERADOS"), any(), any())).thenReturn(false);
+        lenient().when(accesoContextoService.tienePermiso(eq("APODERADOS"), any(), anyInt())).thenReturn(false);
     }
 
     private Alumno alumno(int id, String nombre, String apellido, String codigo, String documento) {
@@ -67,13 +67,13 @@ class AlumnoServiceSearchTest {
 
     @Test
     void gestionNormalizaMultiplesTerminosYConservaElTotalDelRepositorio() {
-        when(accesoContextoService.alcance("ALUMNOS", 50, roles)).thenReturn(AccesoContextoService.Alcance.TODO);
+        when(accesoContextoService.alcance("ALUMNOS", 50, idRolActivo)).thenReturn(AccesoContextoService.Alcance.TODO);
         when(alumnoRepository.buscar(
                 eq(List.of("ana", "perez")), eq(AccesoConstants.ACTIVO), eq(AccesoConstants.ELIMINADO),
                 isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), eq(pagina)))
                 .thenReturn(new PageImpl<>(alumnos(7), pagina, 7));
 
-        Page<?> resultado = service.getAll(pagina, 50, roles, null, null, null, null, null, null, "  ANA   Pérez  ");
+        Page<?> resultado = service.getAll(pagina, 50, idRolActivo, null, null, null, null, null, null, "  ANA   Pérez  ");
 
         assertEquals(7, resultado.getTotalElements());
         assertEquals(7, resultado.getContent().size());
@@ -84,11 +84,11 @@ class AlumnoServiceSearchTest {
 
     @Test
     void apoderadoSinVinculosNoConsultaNIExpansionaLaBusqueda() {
-        when(accesoContextoService.alcance("ALUMNOS", 50, roles)).thenReturn(AccesoContextoService.Alcance.APODERADO);
+        when(accesoContextoService.alcance("ALUMNOS", 50, idRolActivo)).thenReturn(AccesoContextoService.Alcance.APODERADO);
         when(accesoContextoService.apoderadoDeUsuario(50)).thenReturn(Optional.of(new Apoderado()));
         when(alumnoApoderadoRepository.findByApoderado(any(Apoderado.class))).thenReturn(List.of());
 
-        Page<?> resultado = service.getAll(pagina, 50, roles, null, null, null, null, null, null, "ana");
+        Page<?> resultado = service.getAll(pagina, 50, idRolActivo, null, null, null, null, null, null, "ana");
 
         assertEquals(0, resultado.getTotalElements());
         assertTrue(resultado.getContent().isEmpty());
@@ -97,13 +97,13 @@ class AlumnoServiceSearchTest {
 
     @Test
     void combinaBusquedaConLosFiltrosAcademicos() {
-        when(accesoContextoService.alcance("ALUMNOS", 50, roles)).thenReturn(AccesoContextoService.Alcance.TODO);
+        when(accesoContextoService.alcance("ALUMNOS", 50, idRolActivo)).thenReturn(AccesoContextoService.Alcance.TODO);
         when(alumnoRepository.buscar(
                 eq(List.of("juan")), eq(AccesoConstants.ACTIVO), eq(AccesoConstants.ELIMINADO),
                 eq(2), eq(3), eq(62), eq(2), eq(602), eq(6), isNull(), eq(pagina)))
                 .thenReturn(new PageImpl<>(alumnos(4), pagina, 4));
 
-        Page<?> resultado = service.getAll(pagina, 50, roles, 2, 3, 62, 2, 602, 6, "JUAN");
+        Page<?> resultado = service.getAll(pagina, 50, idRolActivo, 2, 3, 62, 2, 602, 6, "JUAN");
 
         assertEquals(4, resultado.getTotalElements());
         assertEquals(4, resultado.getContent().size());

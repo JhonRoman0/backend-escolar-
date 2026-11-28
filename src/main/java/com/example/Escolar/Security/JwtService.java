@@ -12,7 +12,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class JwtService {
@@ -20,6 +22,7 @@ public class JwtService {
     public static final String CLAIM_CAMBIO_PENDIENTE = "cambioContrasenaPendiente";
     public static final String CLAIM_VERSION_TOKEN = "versionToken";
     public static final String CLAIM_DISPOSITIVO = "dispositivo";
+    public static final String CLAIM_ID_ROL_ACTIVO = "idRolActivo";
 
     private final SecretKey secretKey;
     private final long expiration;
@@ -31,25 +34,39 @@ public class JwtService {
     }
 
     public String generarToken(Integer idUsuario, String codigo, List<String> roles) {
-        return generarToken(idUsuario, codigo, roles, false);
+        return generarToken(idUsuario, codigo, null, roles, false, null, 0, null);
     }
 
     public String generarToken(Integer idUsuario, String codigo, List<String> roles, boolean cambioContrasenaPendiente) {
-        return generarToken(idUsuario, codigo, roles, cambioContrasenaPendiente, null, 0);
+        return generarToken(idUsuario, codigo, null, roles, cambioContrasenaPendiente, null, 0, null);
     }
 
     public String generarToken(Integer idUsuario, String codigo, List<String> roles,
                                boolean cambioContrasenaPendiente, LocalDate fechaFinVigencia, Integer versionToken) {
-        return generarToken(idUsuario, codigo, roles, cambioContrasenaPendiente, fechaFinVigencia, versionToken, null);
+        return generarToken(idUsuario, codigo, null, roles, cambioContrasenaPendiente, fechaFinVigencia, versionToken, null);
     }
 
     /** Con idDispositivo, la sesión deja de valer si ese dispositivo se quita de la cuenta. */
     public String generarToken(Integer idUsuario, String codigo, List<String> roles,
                                boolean cambioContrasenaPendiente, LocalDate fechaFinVigencia, Integer versionToken,
                                Integer idDispositivo) {
+        return generarToken(idUsuario, codigo, null, roles, cambioContrasenaPendiente, fechaFinVigencia,
+                versionToken, idDispositivo);
+    }
+
+    public String generarToken(Integer idUsuario, String codigo, Integer idRolActivo, List<String> roles,
+                               boolean cambioContrasenaPendiente, LocalDate fechaFinVigencia, Integer versionToken,
+                               Integer idDispositivo) {
+        Map<String, Object> claims = new HashMap<>();
+        if (idRolActivo != null) {
+            claims.put(CLAIM_ID_ROL_ACTIVO, idRolActivo);
+        }
+        if (idDispositivo != null) {
+            claims.put(CLAIM_DISPOSITIVO, idDispositivo);
+        }
         Date ahora = new Date();
         return Jwts.builder()
-                .claims(idDispositivo == null ? java.util.Map.of() : java.util.Map.of(CLAIM_DISPOSITIVO, idDispositivo))
+                .claims(claims)
                 .subject(String.valueOf(idUsuario))
                 .claim("codigo", codigo)
                 .claim("roles", roles)
@@ -68,6 +85,11 @@ public class JwtService {
     /** Dispositivo de la sesión; null en sesiones sin dispositivo (sin doble factor o anteriores). */
     public Integer getDispositivo(Claims claims) {
         Object valor = claims.get(CLAIM_DISPOSITIVO);
+        return valor instanceof Number numero ? numero.intValue() : null;
+    }
+
+    public Integer getIdRolActivo(Claims claims) {
+        Object valor = claims.get(CLAIM_ID_ROL_ACTIVO);
         return valor instanceof Number numero ? numero.intValue() : null;
     }
 

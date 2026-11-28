@@ -37,7 +37,7 @@ class ReportesAlcanceTest {
 
     private final Acceso activo = new Acceso(AccesoConstants.ACTIVO, "Activo");
     private final Acceso eliminado = new Acceso(AccesoConstants.ELIMINADO, "Eliminado");
-    private final List<String> roles = List.of("Apoderado");
+    private final Integer idRolActivo = 1;
 
     private AlumnoService alumnos() {
         return new AlumnoService(alumnoRepository, alumnoApoderadoRepository, matriculaRepository,
@@ -98,10 +98,10 @@ class ReportesAlcanceTest {
 
     @Test
     void padronMuestraLaSeccionDelAnioElegido() {
-        when(accesoContextoService.alcance("ALUMNOS", 7, roles)).thenReturn(Alcance.TODO);
+        when(accesoContextoService.alcance("ALUMNOS", 7, idRolActivo)).thenReturn(Alcance.TODO);
         padronConMatriculas(matricula(2, 1, "PEREZ", "2027", "2do", 2));
 
-        AlumnoReporteResponse fila = alumnos().reporte(2, null, null, null, 7, roles).get(0);
+        AlumnoReporteResponse fila = alumnos().reporte(2, null, null, null, 7, idRolActivo).get(0);
 
         assertEquals("2do A", fila.getGradoSeccion());
         assertEquals("2027", fila.getAnio());
@@ -112,40 +112,40 @@ class ReportesAlcanceTest {
     void padronDelApoderadoSoloTraeASusHijos() {
         Apoderado apoderado = new Apoderado();
         Matricula suya = matricula(1, 1, "PEREZ", "2027", "2do", 2);
-        when(accesoContextoService.alcance("ALUMNOS", 7, roles)).thenReturn(Alcance.APODERADO);
+        when(accesoContextoService.alcance("ALUMNOS", 7, idRolActivo)).thenReturn(Alcance.APODERADO);
         when(accesoContextoService.apoderadoDeUsuario(7)).thenReturn(Optional.of(apoderado));
         when(alumnoApoderadoRepository.findByApoderado(apoderado)).thenReturn(List.of(suya.getAlumnoApoderado()));
         padronConMatriculas(suya, matricula(2, 9, "AJENO", "2027", "2do", 2));
 
-        List<AlumnoReporteResponse> filas = alumnos().reporte(2, null, null, null, 7, roles);
+        List<AlumnoReporteResponse> filas = alumnos().reporte(2, null, null, null, 7, idRolActivo);
 
         assertEquals(List.of(1), filas.stream().map(AlumnoReporteResponse::getIdAlumno).toList());
     }
 
     @Test
     void padronOcultaApoderadosSinElPermiso() {
-        when(accesoContextoService.alcance("ALUMNOS", 7, roles)).thenReturn(Alcance.TODO);
+        when(accesoContextoService.alcance("ALUMNOS", 7, idRolActivo)).thenReturn(Alcance.TODO);
         when(accesoContextoService.idUsuarioAutenticado()).thenReturn(7);
-        when(accesoContextoService.rolesAutenticados()).thenReturn(roles);
-        when(accesoContextoService.tienePermiso("APODERADOS", 7, roles)).thenReturn(false);
+        when(accesoContextoService.idRolActivoAutenticado()).thenReturn(idRolActivo);
+        when(accesoContextoService.tienePermiso("APODERADOS", 7, idRolActivo)).thenReturn(false);
         padronConMatriculas(matricula(1, 1, "PEREZ", "2027", "2do", 2));
 
-        assertNull(alumnos().reporte(2, null, null, null, 7, roles).get(0).getApoderados());
+        assertNull(alumnos().reporte(2, null, null, null, 7, idRolActivo).get(0).getApoderados());
     }
 
     @Test
     void padronListaAlPrincipalPrimeroConParentescoYCelular() {
         Matricula m = matricula(1, 1, "PEREZ", "2027", "2do", 2);
-        when(accesoContextoService.alcance("ALUMNOS", 7, roles)).thenReturn(Alcance.TODO);
+        when(accesoContextoService.alcance("ALUMNOS", 7, idRolActivo)).thenReturn(Alcance.TODO);
         when(accesoContextoService.idUsuarioAutenticado()).thenReturn(7);
-        when(accesoContextoService.rolesAutenticados()).thenReturn(roles);
-        when(accesoContextoService.tienePermiso("APODERADOS", 7, roles)).thenReturn(true);
+        when(accesoContextoService.idRolActivoAutenticado()).thenReturn(idRolActivo);
+        when(accesoContextoService.tienePermiso("APODERADOS", 7, idRolActivo)).thenReturn(true);
         when(alumnoApoderadoRepository.findByAlumno(m.getAlumnoApoderado().getAlumno())).thenReturn(List.of(
                 vinculo("LUIS", (byte) 0, "Padre", null), vinculo("ROSA", (byte) 1, "Madre", "987654321")));
         padronConMatriculas(m);
 
         assertEquals(List.of("ROSA DIAZ LOPEZ (Madre) 987654321", "LUIS DIAZ LOPEZ (Padre)"),
-                alumnos().reporte(2, null, null, null, 7, roles).get(0).getApoderados());
+                alumnos().reporte(2, null, null, null, 7, idRolActivo).get(0).getApoderados());
     }
 
     private AlumnoApoderado vinculo(String nombre, byte principal, String parentescoNombre, String celular) {
@@ -169,7 +169,7 @@ class ReportesAlcanceTest {
     void matriculaCalculaSaldoMetodoYOrdenaPorGrado() {
         Matricula quinto = matricula(1, 1, "ZAPATA", "2027", "5to", 5);
         Matricula primero = matricula(2, 2, "ALVA", "2027", "1ro", 1);
-        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.TODO);
+        when(accesoContextoService.alcance("MATRICULAS", 7, idRolActivo)).thenReturn(Alcance.TODO);
         when(matriculaRepository.findFiltradasList(AccesoConstants.ELIMINADO, null, null, null, null, null, 2, null))
                 .thenReturn(List.of(quinto, primero));
         MetodoPago yape = new MetodoPago();
@@ -182,7 +182,7 @@ class ReportesAlcanceTest {
         when(pagoMatriculaRepository.findByMatriculaIdMatriculaAndAccesoNotOrderByFecha(any(), eq(eliminado)))
                 .thenReturn(List.of(pago));
 
-        List<MatriculaReporteResponse> filas = matriculas().reporte(null, null, 2, null, null, null, null, 7, roles);
+        List<MatriculaReporteResponse> filas = matriculas().reporte(null, null, 2, null, null, null, null, 7, idRolActivo);
 
         assertEquals(List.of("1ro A", "5to A"), filas.stream().map(MatriculaReporteResponse::getGradoSeccion).toList());
         assertEquals(0, new BigDecimal("200.00").compareTo(filas.get(0).getSaldo()));
@@ -196,7 +196,7 @@ class ReportesAlcanceTest {
         fuera.setFechaRegistro(LocalDate.of(2026, 1, 1));
         Matricula ajena = matricula(3, 9, "AJENO", "2027", "2do", 2);
         Apoderado apoderado = new Apoderado();
-        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.APODERADO);
+        when(accesoContextoService.alcance("MATRICULAS", 7, idRolActivo)).thenReturn(Alcance.APODERADO);
         when(accesoContextoService.apoderadoDeUsuario(7)).thenReturn(Optional.of(apoderado));
         when(alumnoApoderadoRepository.findByApoderado(apoderado)).thenReturn(List.of(dentro.getAlumnoApoderado()));
         when(matriculaRepository.findByAlumnoApoderadoAlumnoIdAlumnoAndAccesoNot(1, eliminado))
@@ -207,7 +207,7 @@ class ReportesAlcanceTest {
                 .thenReturn(List.of());
 
         List<MatriculaReporteResponse> filas = matriculas().reporte(LocalDate.of(2026, 10, 1),
-                LocalDate.of(2026, 11, 30), 2, null, null, null, null, 7, roles);
+                LocalDate.of(2026, 11, 30), 2, null, null, null, null, 7, idRolActivo);
 
         assertEquals(List.of(1), filas.stream().map(MatriculaReporteResponse::getIdMatricula).toList());
     }
@@ -216,7 +216,7 @@ class ReportesAlcanceTest {
     void matriculaFiltraPorTipoIngresoYLoExponeEnElReporte() {
         Matricula continuante = matricula(1, 1, "PEREZ", "2027", "2do", 2);
         Matricula nuevo = matricula(2, 2, "ALVA", "2027", "2do", 2);
-        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.TODO);
+        when(accesoContextoService.alcance("MATRICULAS", 7, idRolActivo)).thenReturn(Alcance.TODO);
         when(matriculaRepository.findFiltradasList(AccesoConstants.ELIMINADO, null, null, null, null, null, 2, null))
                 .thenReturn(List.of(continuante, nuevo));
         MatriculaRepository.PrimerAnioAlumno primeroContinuante = org.mockito.Mockito.mock(MatriculaRepository.PrimerAnioAlumno.class);
@@ -231,7 +231,7 @@ class ReportesAlcanceTest {
                 .thenReturn(List.of());
 
         List<MatriculaReporteResponse> filas = matriculas().reporte(null, null, 2, null, null, null, null,
-                MatriculaResponse.TipoIngreso.CONTINUANTE, 7, roles);
+                MatriculaResponse.TipoIngreso.CONTINUANTE, 7, idRolActivo);
 
         assertEquals(List.of(1), filas.stream().map(MatriculaReporteResponse::getIdMatricula).toList());
         assertEquals(MatriculaResponse.TipoIngreso.CONTINUANTE, filas.get(0).getTipoIngreso());

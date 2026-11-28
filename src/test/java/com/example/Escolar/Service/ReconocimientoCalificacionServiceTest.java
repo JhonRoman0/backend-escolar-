@@ -31,7 +31,7 @@ class ReconocimientoCalificacionServiceTest {
     @Mock BloqueoCalificaciones bloqueo;
     @InjectMocks ReconocimientoCalificacionService service;
     final Acceso activo = new Acceso(1L, "Activo"), eliminado = new Acceso(2L, "Eliminado");
-    final List<String> roles = List.of("Docente");
+    final Integer idRolActivo = 1;
     Evaluacion origen, destino;
     NotaEvaluacion nota;
     Matricula matricula;
@@ -57,7 +57,7 @@ class ReconocimientoCalificacionServiceTest {
         when(accesos.findById(1L)).thenReturn(Optional.of(activo)); when(accesos.findById(2L)).thenReturn(Optional.of(eliminado));
         when(notas.findById(50)).thenReturn(Optional.of(nota)); when(evaluaciones.findById(2)).thenReturn(Optional.of(destino));
         when(matriculas.findById(10)).thenReturn(Optional.of(matricula));
-        when(evaluacionService.asignacionAccesible(2,7,roles)).thenReturn(ab);
+        when(evaluacionService.asignacionAccesible(2,7,idRolActivo)).thenReturn(ab);
         config = new ConfiguracionAcademicaResponse(); config.setEscala(EscalaCalificacion.VIGESIMAL);
         when(configuracion.obtener(1,1)).thenReturn(config);
         PeriodoEvaluacion periodo = new PeriodoEvaluacion(); periodo.setNumero((byte)1); periodo.setFechaInicio(LocalDate.now().minusDays(1)); periodo.setFechaFin(LocalDate.now().plusDays(1));
@@ -67,7 +67,7 @@ class ReconocimientoCalificacionServiceTest {
     }
     private ReconocimientoCalificacionRequest request() { return new ReconocimientoCalificacionRequest(50,2,"15"); }
     @Test void reconoceConNombresDiferentesYConservaOriginal() {
-        var r = service.reconocer(request(),7,roles);
+        var r = service.reconocer(request(),7,idRolActivo);
         assertTrue(r.enSeccionActual());
         assertEquals("15",r.calificacion()); assertEquals("15",nota.getCalificacion()); assertSame(origen,nota.getEvaluacion());
         verify(notas,never()).save(nota); verify(finales,never()).save(any());
@@ -77,51 +77,51 @@ class ReconocimientoCalificacionServiceTest {
     }
     @Test void nombreIgualNoEquivaleACompetenciasIguales() {
         destino.setNombre(origen.getNombre()); destino.setCompetencias(Set.of());
-        assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,roles)); verify(notas,never()).saveAndFlush(any());
+        assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,idRolActivo)); verify(notas,never()).saveAndFlush(any());
     }
-    @Test void rechazaPeriodoDistinto() { destino.setPeriodo((byte)2); assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,roles)); }
-    @Test void rechazaCursoDistinto() { Curso c = new Curso(); c.setIdCurso(99); destino.getAsignacion().setCurso(c); assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,roles)); }
-    @Test void rechazaCalificacionInvalidaEnEscala() { config.setEscala(EscalaCalificacion.LITERAL); assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,roles)); verify(notas,never()).saveAndFlush(any()); }
+    @Test void rechazaPeriodoDistinto() { destino.setPeriodo((byte)2); assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,idRolActivo)); }
+    @Test void rechazaCursoDistinto() { Curso c = new Curso(); c.setIdCurso(99); destino.getAsignacion().setCurso(c); assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,idRolActivo)); }
+    @Test void rechazaCalificacionInvalidaEnEscala() { config.setEscala(EscalaCalificacion.LITERAL); assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,idRolActivo)); verify(notas,never()).saveAndFlush(any()); }
     @Test void rechazaDuplicadoEnSeccion() {
         when(reconocimientos.existsByNotaOrigenIdNotaEvaluacionAndSeccionDestinoIdGradoSeccionAndVigencia(50,2,(byte)1)).thenReturn(true);
-        assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,roles)); verify(notas,never()).saveAndFlush(any());
+        assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,idRolActivo)); verify(notas,never()).saveAndFlush(any());
     }
     @Test void noSobrescribeDestino() {
         NotaEvaluacion existente = new NotaEvaluacion(); existente.setMatricula(matricula);
         when(notas.findByEvaluacionIdEvaluacionAndAccesoNot(2,eliminado)).thenReturn(List.of(existente));
-        assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,roles)); verify(notas,never()).saveAndFlush(any());
+        assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,idRolActivo)); verify(notas,never()).saveAndFlush(any());
     }
     @Test void finalBloqueaReconocimiento() {
         Nota fin = new Nota(); fin.setBimestre((byte)1); fin.setCompetencia(origen.getCompetencias().iterator().next());
         when(finales.findByMatriculaIdMatriculaAndAccesoNot(10,eliminado)).thenReturn(List.of(fin));
-        assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,roles)); verify(notas,never()).saveAndFlush(any());
+        assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,idRolActivo)); verify(notas,never()).saveAndFlush(any());
     }
     @Test void periodoCerradoSoloConsulta() {
         when(configuracion.periodos(any(),any())).thenReturn(List.of());
-        assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,roles));
+        assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,idRolActivo));
         when(notas.findByMatriculaIdMatriculaAndAccesoNot(10,eliminado)).thenReturn(List.of(nota));
-        assertEquals(1,service.historial(10,2,7,roles).size());
+        assertEquals(1,service.historial(10,2,7,idRolActivo).size());
     }
     @Test void historialSinEvaluacionesEnDestino() {
         when(notas.findByMatriculaIdMatriculaAndAccesoNot(10,eliminado)).thenReturn(List.of(nota));
-        assertEquals("15",service.historial(10,2,7,roles).get(0).calificacion());
+        assertEquals("15",service.historial(10,2,7,idRolActivo).get(0).calificacion());
         verifyNoInteractions(evaluaciones);
     }
     @Test void origenEliminadoEsConsultableSinReconocer() {
         origen.setAcceso(eliminado); when(notas.findByMatriculaIdMatriculaAndAccesoNot(10,eliminado)).thenReturn(List.of(nota));
-        assertNotNull(service.historial(10,2,7,roles).get(0).bloqueo());
-        assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,roles));
+        assertNotNull(service.historial(10,2,7,idRolActivo).get(0).bloqueo());
+        assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,idRolActivo));
     }
     @Test void retornoNoDuplicaOriginal() {
         destino.getAsignacion().setGradoSeccion(origen.getAsignacion().getGradoSeccion()); matricula.setGradoSeccion(origen.getAsignacion().getGradoSeccion());
-        assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,roles));
+        assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,idRolActivo));
     }
     @Test void reconocimientoNoPuedeSerNuevoOrigen() {
         when(reconocimientos.existsByNotaDestinoIdNotaEvaluacionAndVigencia(50,(byte)1)).thenReturn(true);
-        assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,roles));
+        assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,idRolActivo));
     }
     @Test void rechazaValorDeOrigenDesactualizado() {
-        assertThrows(IllegalArgumentException.class, () -> service.reconocer(new ReconocimientoCalificacionRequest(50,2,"14"),7,roles));
+        assertThrows(IllegalArgumentException.class, () -> service.reconocer(new ReconocimientoCalificacionRequest(50,2,"14"),7,idRolActivo));
         verify(notas,never()).saveAndFlush(any());
     }
     private ReconocimientoCalificacion reconocido() {
@@ -139,10 +139,10 @@ class ReconocimientoCalificacionServiceTest {
         matricula.setGradoSeccion(tercera); destino.getAsignacion().setGradoSeccion(tercera);
         when(reconocimientos.findByNotaOrigenMatriculaIdMatricula(10)).thenReturn(List.of(r));
         when(notas.findByMatriculaIdMatriculaAndAccesoNot(10,eliminado)).thenReturn(List.of(nota));
-        assertFalse(service.historial(10,2,7,roles).get(0).reconocimientos().get(0).enSeccionActual());
+        assertFalse(service.historial(10,2,7,idRolActivo).get(0).reconocimientos().get(0).enSeccionActual());
     }
     @Test void anulaConAuditoriaSinTocarOriginal() {
-        ReconocimientoCalificacion r = reconocido(); service.anular(1,"Destino incorrecto",7,roles);
+        ReconocimientoCalificacion r = reconocido(); service.anular(1,"Destino incorrecto",7,idRolActivo);
         assertNull(r.getVigencia()); assertNotNull(r.getFechaAnulacion()); assertEquals("Destino incorrecto", r.getMotivoAnulacion());
         assertEquals(eliminado,r.getNotaDestino().getAcceso()); assertEquals(activo,nota.getAcceso()); assertEquals("15",nota.getCalificacion());
         verify(finales,never()).save(any());
@@ -150,19 +150,19 @@ class ReconocimientoCalificacionServiceTest {
     @Test void finalBloqueaAnulacion() {
         ReconocimientoCalificacion r = reconocido(); Nota fin = new Nota(); fin.setBimestre((byte)1); fin.setCompetencia(origen.getCompetencias().iterator().next());
         when(finales.findByMatriculaIdMatriculaAndAccesoNot(10,eliminado)).thenReturn(List.of(fin));
-        assertThrows(IllegalArgumentException.class, () -> service.anular(1,"Corrección",7,roles)); assertNotNull(r.getVigencia());
+        assertThrows(IllegalArgumentException.class, () -> service.anular(1,"Corrección",7,idRolActivo)); assertNotNull(r.getVigencia());
         verify(notas,never()).save(any());
     }
     @Test void permiteMismoOriginalEnTerceraSeccion() {
         GradoSeccion tercera = new GradoSeccion(); tercera.setIdGradoSeccion(3); tercera.setGrado(matricula.getGradoSeccion().getGrado());
         tercera.setTurno(matricula.getGradoSeccion().getTurno()); tercera.setAnioEscolar(matricula.getGradoSeccion().getAnioEscolar());
         destino.getAsignacion().setGradoSeccion(tercera); matricula.setGradoSeccion(tercera);
-        assertEquals("ACTIVO", service.reconocer(request(),7,roles).estado());
+        assertEquals("ACTIVO", service.reconocer(request(),7,idRolActivo).estado());
         verify(reconocimientos).existsByNotaOrigenIdNotaEvaluacionAndSeccionDestinoIdGradoSeccionAndVigencia(50,3,(byte)1);
     }
     @Test void falloPersistenciaPropagaErrorSinGuardarFinales() {
         doThrow(new org.springframework.dao.DataIntegrityViolationException("duplicado")).when(reconocimientos).saveAndFlush(any());
-        assertThrows(org.springframework.dao.DataIntegrityViolationException.class, () -> service.reconocer(request(),7,roles));
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class, () -> service.reconocer(request(),7,idRolActivo));
         verify(finales,never()).save(any());
         // El rollback real requiere la prueba de integracion con MySQL; un mock no lo demuestra.
     }
@@ -176,7 +176,7 @@ class ReconocimientoCalificacionServiceTest {
         factory.addAdvice(new org.springframework.transaction.interceptor.TransactionInterceptor(manager,
             new org.springframework.transaction.annotation.AnnotationTransactionAttributeSource()));
         var proxy = (ReconocimientoCalificacionService) factory.getProxy();
-        assertThrows(org.springframework.dao.DataIntegrityViolationException.class, () -> proxy.reconocer(request(),7,roles));
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class, () -> proxy.reconocer(request(),7,idRolActivo));
         verify(manager).rollback(status); verify(manager,never()).commit(any());
     }
 
@@ -191,12 +191,12 @@ class ReconocimientoCalificacionServiceTest {
         Competencia c1 = origen.getCompetencias().iterator().next();
         origen.setCompetencias(Set.of(c1, competencia(2)));
         destino.setCompetencias(Set.of(c1));
-        assertEquals("ACTIVO", service.reconocer(request(),7,roles).estado());
+        assertEquals("ACTIVO", service.reconocer(request(),7,idRolActivo).estado());
     }
 
     @Test void notaQueNoCubreTodasLasCompetenciasSeRechaza() {
         destino.setCompetencias(Set.of(origen.getCompetencias().iterator().next(), competencia(2)));
-        var ex = assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,roles));
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.reconocer(request(),7,idRolActivo));
         assertTrue(ex.getMessage().contains("no cubre"));
         verify(notas,never()).saveAndFlush(any());
     }
@@ -213,7 +213,7 @@ class ReconocimientoCalificacionServiceTest {
 
     @Test void avisaAlumnoConNotaCompatible() {
         alumnoEnSeccion();
-        var traslados = service.traslados(2,1,Set.of(1),null,7,roles);
+        var traslados = service.traslados(2,1,Set.of(1),null,7,idRolActivo);
         assertEquals(1, traslados.size());
         assertEquals(50, traslados.get(0).opciones().get(0).idNotaOrigen());
         assertEquals("15", traslados.get(0).opciones().get(0).calificacion());
@@ -222,19 +222,19 @@ class ReconocimientoCalificacionServiceTest {
     @Test void noAvisaSiLaNotaYaSeUsoEnLaSeccion() {
         alumnoEnSeccion();
         when(reconocimientos.existsByNotaOrigenIdNotaEvaluacionAndSeccionDestinoIdGradoSeccionAndVigencia(50,2,(byte)1)).thenReturn(true);
-        assertTrue(service.traslados(2,1,Set.of(1),null,7,roles).isEmpty());
+        assertTrue(service.traslados(2,1,Set.of(1),null,7,idRolActivo).isEmpty());
     }
 
     @Test void noAvisaConCompetenciasQueLaNotaNoCubre() {
         alumnoEnSeccion();
-        assertTrue(service.traslados(2,1,Set.of(1,2),null,7,roles).isEmpty());
+        assertTrue(service.traslados(2,1,Set.of(1,2),null,7,idRolActivo).isEmpty());
     }
 
     @Test void noAvisaAlQueYaTieneNotaEnLaEvaluacion() {
         alumnoEnSeccion();
         NotaEvaluacion propia = new NotaEvaluacion(); propia.setMatricula(matricula);
         when(notas.findByEvaluacionIdEvaluacionAndAccesoNot(2,eliminado)).thenReturn(List.of(propia));
-        assertTrue(service.traslados(2,1,Set.of(1),2,7,roles).isEmpty());
+        assertTrue(service.traslados(2,1,Set.of(1),2,7,idRolActivo).isEmpty());
     }
 
     // ── Crear con los que no rinden ──
@@ -250,33 +250,33 @@ class ReconocimientoCalificacionServiceTest {
 
     @Test void crearRegistraAlQueNoRinde() {
         var req = conNoRinde(10);
-        when(evaluacionService.crear(req,7,roles)).thenReturn(resumen());
-        when(evaluacionService.detalle(2,7,roles)).thenReturn(new EvaluacionResponse.Detalle(resumen(),EscalaCalificacion.VIGESIMAL,List.of(),2));
-        when(contexto.tieneAccion("EVALUACIONES","CREAR",7,roles)).thenReturn(true);
-        service.crear(req,7,roles);
+        when(evaluacionService.crear(req,7,idRolActivo)).thenReturn(resumen());
+        when(evaluacionService.detalle(2,7,idRolActivo)).thenReturn(new EvaluacionResponse.Detalle(resumen(),EscalaCalificacion.VIGESIMAL,List.of(),2));
+        when(contexto.tieneAccion("EVALUACIONES","CREAR",7,idRolActivo)).thenReturn(true);
+        service.crear(req,7,idRolActivo);
         verify(evaluaciones).flush();
         verify(reconocimientos).saveAndFlush(any());
     }
 
     @Test void crearRechazaNotaDeOtroAlumno() {
         var req = conNoRinde(99);
-        when(evaluacionService.crear(req,7,roles)).thenReturn(resumen());
-        when(contexto.tieneAccion("EVALUACIONES","CREAR",7,roles)).thenReturn(true);
-        assertThrows(IllegalArgumentException.class, () -> service.crear(req,7,roles));
+        when(evaluacionService.crear(req,7,idRolActivo)).thenReturn(resumen());
+        when(contexto.tieneAccion("EVALUACIONES","CREAR",7,idRolActivo)).thenReturn(true);
+        assertThrows(IllegalArgumentException.class, () -> service.crear(req,7,idRolActivo));
         verify(reconocimientos,never()).saveAndFlush(any());
     }
 
     @Test void editarSinPermisoDeNotasNoRegistraNoRinden() {
         var req = conNoRinde(10);
-        when(evaluacionService.editar(2,req,7,roles)).thenReturn(resumen());
-        assertThrows(IllegalArgumentException.class, () -> service.editar(2,req,7,roles));
+        when(evaluacionService.editar(2,req,7,idRolActivo)).thenReturn(resumen());
+        assertThrows(IllegalArgumentException.class, () -> service.editar(2,req,7,idRolActivo));
         verify(reconocimientos,never()).saveAndFlush(any());
     }
 
     @Test void crearSinNoRindenNoTocaReconocimientos() {
         var req = new EvaluacionRequest(2,1,"Práctica B",LocalDate.now(),Set.of(1));
-        when(evaluacionService.crear(req,7,roles)).thenReturn(resumen());
-        assertEquals(2, service.crear(req,7,roles).idEvaluacion());
+        when(evaluacionService.crear(req,7,idRolActivo)).thenReturn(resumen());
+        assertEquals(2, service.crear(req,7,idRolActivo).idEvaluacion());
         verifyNoInteractions(reconocimientos);
     }
 }

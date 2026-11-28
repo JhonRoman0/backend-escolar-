@@ -3,18 +3,18 @@ package com.example.Escolar.Service;
 import com.example.Escolar.Dto.LoginRequest;
 import com.example.Escolar.Dto.LoginResponse;
 import com.example.Escolar.Dto.PermisosRolResponse;
+import com.example.Escolar.Dto.RolAsignadoSesionResponse;
+import com.example.Escolar.Dto.RolAsignadoSesionResponse.EstadoRol;
+import com.example.Escolar.Exception.AccesoDenegadoException;
 import com.example.Escolar.Exception.CodigoRecuperacionAgotadoException;
 import com.example.Escolar.Exception.CuentaBloqueadaException;
 import com.example.Escolar.Exception.CuentaInactivaException;
 import com.example.Escolar.Exception.EsperaReenvioCodigoException;
 import com.example.Escolar.Exception.ResourceNotFoundException;
 import com.example.Escolar.Exception.VigenciaNoValidaException;
-import com.example.Escolar.Model.Rol;
 import com.example.Escolar.Model.Usuario;
-import com.example.Escolar.Model.UsuarioRol;
 import com.example.Escolar.Repository.AccesoRepository;
 import com.example.Escolar.Repository.UsuarioRepository;
-import com.example.Escolar.Repository.UsuarioRolRepository;
 import com.example.Escolar.Security.JwtService;
 import com.example.Escolar.Service.AccesoContextoService.Alcance;
 import com.example.Escolar.Util.HashSeguro;
@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -42,7 +43,6 @@ public class AuthService {
             "Tu cuenta está bloqueada por intentos fallidos. Recupera tu contraseña o comunícate con el administrador.";
 
     private final UsuarioRepository usuarioRepository;
-    private final UsuarioRolRepository usuarioRolRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final UsuarioService usuarioService;
@@ -51,6 +51,8 @@ public class AuthService {
     private final EmailService emailService;
     private final AccesoContextoService accesoContextoService;
     private final VigenciaService vigenciaService;
+    private final SeleccionRolDesafioService seleccionRolDesafioService;
+    private final RolAsignadoResolver rolAsignadoResolver;
 
     /** Contraseña y sesión en un paso (sin doble factor). */
     public LoginResponse login(LoginRequest request) {
@@ -81,34 +83,90 @@ public class AuthService {
         return usuario;
     }
 
-    /** Ingreso completo (contraseña y, si aplica, código): reinicia intentos y emite la sesión. */
     public LoginResponse iniciarSesion(Usuario usuario) {
         return iniciarSesion(usuario, null);
     }
 
     public LoginResponse iniciarSesion(Usuario usuario, Integer idDispositivo) {
         validarVigencia(usuario);
-        usuario.setIntentosFallidos(0);
-        usuario.setFechaBloqueo(null);
-        usuarioRepository.save(usuario);
-        List<String> roles = getRoles(usuario);
-        String token = generarToken(usuario, Boolean.TRUE.equals(usuario.getDebeCambiarContrasena()), idDispositivo);
+        SeleccionRolDesafioService.Evaluacion evaluacion = seleccionRolDesafioService.evaluar(usuario.getIdUsuario());
+        if (evaluacion.resultado() == SeleccionRolDesafioService.Resultado.SIN_ROLES_DISPONIBLES) {
+            throw new AccesoDenegadoException("La cuenta no tiene un rol activo disponible para iniciar sesión.");
+        }
+        if (evaluacion.resultado() == SeleccionRolDesafioService.Resultado.SELECCION_REQUERIDA) {
+            LoginResponse response = new LoginResponse();
+            response.setUsuario(usuarioService.getById(usuario.getIdUsuario()));
+            response.setRequiereSeleccionRol(true);
+            response.setDesafioSeleccionRol(seleccionRolDesafioService.emitir(usuario, idDispositivo));
+            response.setRoles(evaluacion.roles());
+            return response;
+        }
+        return emitirSesion(usuario, idDispositivo, evaluacion.rolesSeleccionables().get(0));
+    }
+
+    @Transactional
+    public LoginResponse cambiarRol(Integer idUsuario, Integer idRolSolicitado, Integer idRolActual,
+                                    Integer idDispositivo, Integer versionToken) {
+        if (Objects.equals(idRolSolicitado, idRolActual)) {
+            throw new IllegalArgumentException("El rol ya está activo en la sesión.");
+        }
+
+        Usuario usuario = usuarioRepository.findByIdUsuarioAndAccesoNot(idUsuario,
+                        accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
+                .orElseThrow(() -> new AccesoDenegadoException("La cuenta ya no está disponible."));
+        validarAccesoActivo(usuario);
+        validarVigencia(usuario);
+
+        RolAsignadoSesionResponse rolSolicitado = rolAsignadoResolver.resolver(idUsuario).stream()
+                .filter(rol -> Objects.equals(idRolSolicitado, rol.idRol()))
+                .filter(rol -> rol.estado() == EstadoRol.ACTIVO)
+                .findFirst()
+                .orElseThrow(() -> new AccesoDenegadoException(
+                        "El rol solicitado no está disponible para esta cuenta."));
+
+        int versionEsperada = versionToken == null ? 0 : versionToken;
+        int actualizados = usuarioRepository.incrementarVersionTokenSiCoincide(
+                idUsuario, versionEsperada, AccesoConstants.ELIMINADO);
+        if (actualizados != 1) {
+            throw new VigenciaNoValidaException(VigenciaNoValidaException.CODIGO_TOKEN_OBSOLETO,
+                    "Su sesión quedó obsoleta. Vuelva a iniciar sesión.");
+        }
+
+        Usuario actualizado = usuarioRepository.findByIdUsuarioAndAccesoNot(idUsuario,
+                        accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
+                .orElseThrow(() -> new AccesoDenegadoException("La cuenta ya no está disponible."));
+        return emitirSesion(actualizado, idDispositivo, rolSolicitado);
+    }
+
+    public LoginResponse emitirSesion(Usuario usuario, Integer idDispositivo, RolAsignadoSesionResponse rol) {
+        Usuario actual = usuarioRepository.findByIdUsuarioAndAccesoNot(usuario.getIdUsuario(),
+                        accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
+                .orElseThrow(() -> new AccesoDenegadoException("La cuenta ya no está disponible."));
+        validarContextoEmision(usuario, actual);
+        RolAsignadoSesionResponse rolActivo = rolActivo(actual.getIdUsuario(), rol == null ? null : rol.idRol());
+        if (idDispositivo != null
+                && !usuarioRepository.tieneDispositivo(actual.getIdUsuario(), idDispositivo)) {
+            throw new AccesoDenegadoException("El dispositivo de la sesión ya no está disponible.");
+        }
+
+        actual.setIntentosFallidos(0);
+        actual.setFechaBloqueo(null);
+        usuarioRepository.save(actual);
+        List<String> roles = List.of(rolActivo.nombre());
+        String token = generarToken(actual, rolActivo.idRol(), roles,
+                Boolean.TRUE.equals(actual.getDebeCambiarContrasena()), idDispositivo);
 
         LoginResponse response = new LoginResponse();
         response.setToken(token);
-        response.setUsuario(usuarioService.getById(usuario.getIdUsuario()));
-        response.setPermisos(permisosActuales(usuario.getIdUsuario(), roles));
-        response.setEsAdmin(roles.stream().anyMatch(nombre -> "ADMIN".equalsIgnoreCase(nombre)));
+        response.setUsuario(usuarioService.getById(actual.getIdUsuario()));
+        response.setPermisos(permisosActuales(actual.getIdUsuario(), rolActivo.idRol()));
+        response.setEsAdmin("ADMIN".equalsIgnoreCase(rolActivo.nombre()));
         return response;
     }
 
-    public PermisosRolResponse permisosActuales(Integer idUsuario) {
-        return permisosActuales(idUsuario, null);
-    }
-
-    public PermisosRolResponse permisosActuales(Integer idUsuario, List<String> roles) {
-        PermisosRolResponse permisos = rolPermisoService.obtenerPermisosDelUsuario(idUsuario);
-        Alcance vinculo = accesoContextoService.vinculoEfectivo(idUsuario, roles);
+    public PermisosRolResponse permisosActuales(Integer idUsuario, Integer idRolActivo) {
+        PermisosRolResponse permisos = rolPermisoService.obtenerPermisosDelUsuario(idUsuario, idRolActivo);
+        Alcance vinculo = accesoContextoService.vinculoEfectivo(idUsuario, idRolActivo);
         permisos.setVinculo(vinculo == Alcance.TODO || vinculo == Alcance.NINGUNO ? null : vinculo.name());
         return permisos;
     }
@@ -171,12 +229,17 @@ public class AuthService {
      * sesión actual quede habilitada sin volver a iniciar sesión.
      */
     public String cambiarContrasena(Integer idUsuario, String contrasenaActual, String nuevaContrasena) {
-        return cambiarContrasena(idUsuario, contrasenaActual, nuevaContrasena, null);
+        return cambiarContrasena(idUsuario, contrasenaActual, nuevaContrasena, null, null);
+    }
+
+    public String cambiarContrasena(Integer idUsuario, String contrasenaActual, String nuevaContrasena,
+                                    Integer idDispositivo) {
+        return cambiarContrasena(idUsuario, contrasenaActual, nuevaContrasena, idDispositivo, null);
     }
 
     @Transactional
     public String cambiarContrasena(Integer idUsuario, String contrasenaActual, String nuevaContrasena,
-                                    Integer idDispositivo) {
+                                    Integer idDispositivo, Integer idRolActivo) {
         Usuario usuario = usuarioRepository.findByIdUsuarioAndAccesoNot(idUsuario,
                         accesoRepository.findById(AccesoConstants.ELIMINADO).orElseThrow())
                 .orElseThrow(() -> new ResourceNotFoundException("No se encontro la cuenta del usuario autenticado"));
@@ -188,13 +251,17 @@ public class AuthService {
         if (passwordEncoder.matches(nuevaContrasena, usuario.getContraseña())) {
             throw new IllegalArgumentException("La nueva contrasena debe ser diferente a la actual");
         }
+        RolAsignadoSesionResponse rolActivo = rolActivo(idUsuario, idRolActivo);
+        if (idDispositivo != null && !usuarioRepository.tieneDispositivo(idUsuario, idDispositivo)) {
+            throw new AccesoDenegadoException("El dispositivo de la sesión ya no está disponible.");
+        }
 
         usuario.setContraseña(passwordEncoder.encode(nuevaContrasena));
         usuario.setIntentosFallidos(0);
         usuario.setFechaBloqueo(null);
         usuario.setDebeCambiarContrasena(false);
         usuarioRepository.save(usuario);
-        return generarToken(usuario, false, idDispositivo);
+        return generarToken(usuario, rolActivo.idRol(), List.of(rolActivo.nombre()), false, idDispositivo);
     }
 
     private void validarVigencia(Usuario usuario) {
@@ -211,13 +278,42 @@ public class AuthService {
         }
     }
 
-    private String generarToken(Usuario usuario, boolean cambioContrasenaPendiente, Integer idDispositivo) {
-        Integer versionToken = usuario.getVersionToken() == null ? 0 : usuario.getVersionToken();
-        if (idDispositivo == null) {
-            return jwtService.generarToken(usuario.getIdUsuario(), usuario.getCodigo(), getRoles(usuario),
-                    cambioContrasenaPendiente, usuario.getFechaFinVigencia(), versionToken);
+    private void validarContextoEmision(Usuario contexto, Usuario actual) {
+        validarAccesoActivo(contexto);
+        validarVigencia(contexto);
+        validarAccesoActivo(actual);
+        validarVigencia(actual);
+        Integer versionContexto = contexto.getVersionToken() == null ? 0 : contexto.getVersionToken();
+        Integer versionActual = actual.getVersionToken() == null ? 0 : actual.getVersionToken();
+        if (!Objects.equals(versionContexto, versionActual)) {
+            throw new VigenciaNoValidaException(VigenciaNoValidaException.CODIGO_TOKEN_OBSOLETO,
+                    "Su sesión quedó obsoleta. Vuelva a iniciar sesión.");
         }
-        return jwtService.generarToken(usuario.getIdUsuario(), usuario.getCodigo(), getRoles(usuario),
+    }
+
+    private void validarAccesoActivo(Usuario usuario) {
+        if (usuario == null || usuario.getAcceso() == null
+                || !AccesoConstants.ACTIVO.equals(usuario.getAcceso().getIdAcceso())) {
+            throw new VigenciaNoValidaException(VigenciaNoValidaException.CODIGO_CUENTA_INACTIVA,
+                    VigenciaNoValidaException.MENSAJE_CUENTA_INACTIVA);
+        }
+    }
+
+    private RolAsignadoSesionResponse rolActivo(Integer idUsuario, Integer idRolActivo) {
+        List<RolAsignadoSesionResponse> activos = rolAsignadoResolver.resolver(idUsuario).stream()
+                .filter(rol -> rol.estado() == EstadoRol.ACTIVO)
+                .filter(rol -> idRolActivo == null || Objects.equals(idRolActivo, rol.idRol()))
+                .toList();
+        if (activos.size() != 1) {
+            throw new AccesoDenegadoException("El rol activo de la sesión ya no está disponible.");
+        }
+        return activos.get(0);
+    }
+
+    private String generarToken(Usuario usuario, Integer idRolActivo, List<String> roles,
+                                boolean cambioContrasenaPendiente, Integer idDispositivo) {
+        Integer versionToken = usuario.getVersionToken() == null ? 0 : usuario.getVersionToken();
+        return jwtService.generarToken(usuario.getIdUsuario(), usuario.getCodigo(), idRolActivo, roles,
                 cambioContrasenaPendiente, usuario.getFechaFinVigencia(), versionToken, idDispositivo);
     }
 
@@ -293,11 +389,4 @@ public class AuthService {
         return HashSeguro.sha256(token);
     }
 
-    private List<String> getRoles(Usuario usuario) {
-        return usuarioRolRepository.findByUsuarioIdUsuario(usuario.getIdUsuario()).stream()
-                .map(UsuarioRol::getRol)
-                .filter(rol -> AccesoConstants.ACTIVO.equals(rol.getAcceso().getIdAcceso()))
-                .map(Rol::getNombre)
-                .toList();
-    }
 }

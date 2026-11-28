@@ -28,7 +28,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,12 +48,15 @@ class JwtAuthFilterVigenciaTest {
     private UsuarioRepository usuarioRepository;
     @Mock
     private ObjectProvider<UsuarioRepository> usuarioRepositoryProvider;
+    @Mock
+    private ConcesionesService concesionesService;
     private JwtAuthFilter filter;
 
     @BeforeEach
     void prepararFiltro() {
         when(usuarioRepositoryProvider.getObject()).thenReturn(usuarioRepository);
-        filter = new JwtAuthFilter(jwtService, usuarioRepositoryProvider, new VigenciaService());
+        lenient().when(concesionesService.rolActivoValido(eq(1), anyInt())).thenReturn(true);
+        filter = new JwtAuthFilter(jwtService, usuarioRepositoryProvider, new VigenciaService(), concesionesService);
     }
 
     @AfterEach
@@ -134,12 +145,60 @@ class JwtAuthFilterVigenciaTest {
     }
 
     @Test
+    void vigenciaVencidaBloqueaConsultaDeRoles() throws Exception {
+        LocalDate inicio = FechaColegio.hoy().minusDays(30);
+        LocalDate fin = FechaColegio.hoy().minusDays(1);
+        conSesion(sesion(inicio, fin, 0));
+        String token = jwtService.generarToken(1, "ADM20240001", List.of("ADMIN"));
+        MockFilterChain chain = new MockFilterChain();
+
+        MockHttpServletResponse response = ejecutar("/auth/roles", token, chain);
+
+        assertEquals(403, response.getStatus());
+        assertTrue(response.getContentAsString().contains("VIGENCIA_VENCIDA"));
+        assertNull(chain.getRequest());
+    }
+
+    @Test
+    void vigenciaVencidaBloqueaCambioDeRol() throws Exception {
+        LocalDate inicio = FechaColegio.hoy().minusDays(30);
+        LocalDate fin = FechaColegio.hoy().minusDays(1);
+        conSesion(sesion(inicio, fin, 0));
+        String token = jwtService.generarToken(1, "ADM20240001", List.of("ADMIN"));
+        MockFilterChain chain = new MockFilterChain();
+
+        MockHttpServletResponse response = ejecutar("/auth/cambiar-rol", token, chain);
+
+        assertEquals(403, response.getStatus());
+        assertTrue(response.getContentAsString().contains("VIGENCIA_VENCIDA"));
+        assertNull(chain.getRequest());
+    }
+
+    @Test
+    void principalAutenticadoExponeVersionTokenDelJwt() throws Exception {
+        conSesion(sesion(FechaColegio.hoy().minusDays(1), null, 4));
+        when(usuarioRepository.tieneDispositivo(1, 40)).thenReturn(true);
+        String token = jwtService.generarToken(1, "ADM20240001", 7, List.of("ADMIN"), false, null, 4, 40);
+        MockFilterChain chain = new MockFilterChain();
+
+        MockHttpServletResponse response = ejecutar("/auth/me", token, chain);
+
+        assertEquals(200, response.getStatus());
+        assertNotNull(chain.getRequest());
+        UsuarioAutenticado principal = (UsuarioAutenticado) SecurityContextHolder.getContext()
+                .getAuthentication().getPrincipal();
+        assertEquals(4, principal.versionToken());
+        assertEquals(7, principal.idRolActivo());
+        assertEquals(40, principal.idDispositivo());
+    }
+
+    @Test
     void sesionDeUnDispositivoQuitadoQuedaSinAutenticar() throws Exception {
         conSesion(sesion(FechaColegio.hoy().minusDays(1), null, 0));
         when(usuarioRepository.tieneDispositivo(1, 40)).thenReturn(false);
         when(usuarioRepository.tieneDispositivo(1, 41)).thenReturn(true);
-        String quitado = jwtService.generarToken(1, "ADM20240001", List.of("ADMIN"), false, null, 0, 40);
-        String otro = jwtService.generarToken(1, "ADM20240001", List.of("ADMIN"), false, null, 0, 41);
+        String quitado = jwtService.generarToken(1, "ADM20240001", 7, List.of("ADMIN"), false, null, 0, 40);
+        String otro = jwtService.generarToken(1, "ADM20240001", 7, List.of("ADMIN"), false, null, 0, 41);
 
         // Sin autenticación: Spring responde 401 y el navegador vuelve al login.
         ejecutar("/auth/me", quitado, new MockFilterChain());
@@ -152,12 +211,13 @@ class JwtAuthFilterVigenciaTest {
         var principal = (com.example.Escolar.Security.UsuarioAutenticado)
                 org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         assertEquals(41, principal.idDispositivo());
+        assertEquals(7, principal.idRolActivo());
     }
 
     @Test
     void sesionSinDispositivoNoConsultaDispositivos() throws Exception {
         conSesion(sesion(FechaColegio.hoy().minusDays(1), null, 0));
-        String token = jwtService.generarToken(1, "ADM20240001", List.of("ADMIN"));
+        String token = jwtService.generarToken(1, "ADM20240001", 7, List.of("ADMIN"), false, null, 0, null);
         MockFilterChain chain = new MockFilterChain();
 
         ejecutar("/usuarios", token, chain);
@@ -200,13 +260,13 @@ class JwtAuthFilterVigenciaTest {
         conSesion(sesion(FechaColegio.hoy().minusDays(30), FechaColegio.hoy().minusDays(1), 0));
         String token = jwtService.generarToken(1, "ADM20240001", List.of("ADMIN"));
         MockFilterChain chain = new MockFilterChain();
-        org.mockito.Mockito.clearInvocations(usuarioRepositoryProvider, usuarioRepository);
+        clearInvocations(usuarioRepositoryProvider, usuarioRepository, concesionesService);
 
         MockHttpServletResponse response = ejecutar("/auth/logout", token, chain);
 
         assertEquals(200, response.getStatus());
         assertNotNull(chain.getRequest());
-        org.mockito.Mockito.verifyNoInteractions(usuarioRepositoryProvider, usuarioRepository);
+        verifyNoInteractions(usuarioRepositoryProvider, usuarioRepository, concesionesService);
     }
 
     @Test
@@ -259,19 +319,19 @@ class JwtAuthFilterVigenciaTest {
         conSesion(sesionInactiva);
         String token = jwtService.generarToken(1, "ADM20240001", List.of("ADMIN"), false, null, 0, 40);
         MockFilterChain chain = new MockFilterChain();
-        org.mockito.Mockito.clearInvocations(usuarioRepositoryProvider, usuarioRepository);
+        clearInvocations(usuarioRepositoryProvider, usuarioRepository, concesionesService);
 
         MockHttpServletResponse response = ejecutar("/auth/logout", token, chain);
 
         assertEquals(200, response.getStatus());
         assertNotNull(chain.getRequest());
-        org.mockito.Mockito.verifyNoInteractions(usuarioRepositoryProvider, usuarioRepository);
+        verifyNoInteractions(usuarioRepositoryProvider, usuarioRepository, concesionesService);
     }
 
     @Test
     void vigenciaValidaDejaPasarLaPeticion() throws Exception {
         conSesion(sesion(FechaColegio.hoy().minusDays(1), FechaColegio.hoy(), 0));
-        String token = jwtService.generarToken(1, "ADM20240001", List.of("ADMIN"));
+        String token = jwtService.generarToken(1, "ADM20240001", 7, List.of("ADMIN"), false, null, 0, null);
         MockFilterChain chain = new MockFilterChain();
 
         MockHttpServletResponse response = ejecutar("/usuarios", token, chain);
@@ -287,13 +347,13 @@ class JwtAuthFilterVigenciaTest {
         request.addHeader("X-Requested-With", "XMLHttpRequest");
         MockFilterChain chain = new MockFilterChain();
         MockHttpServletResponse response = new MockHttpServletResponse();
-        org.mockito.Mockito.clearInvocations(usuarioRepositoryProvider, usuarioRepository);
+        clearInvocations(usuarioRepositoryProvider, usuarioRepository, concesionesService);
 
         filter.doFilter(request, response, chain);
 
         assertNotNull(chain.getRequest());
         assertNull(SecurityContextHolder.getContext().getAuthentication());
-        org.mockito.Mockito.verifyNoInteractions(usuarioRepositoryProvider, usuarioRepository);
+        verifyNoInteractions(usuarioRepositoryProvider, usuarioRepository, concesionesService);
     }
 
     @Test
@@ -301,13 +361,13 @@ class JwtAuthFilterVigenciaTest {
         String token = jwtService.generarToken(1, "ADM20240001", List.of("ADMIN"), false,
                 FechaColegio.hoy().minusDays(1), 0);
         MockFilterChain chain = new MockFilterChain();
-        org.mockito.Mockito.clearInvocations(usuarioRepositoryProvider, usuarioRepository);
+        clearInvocations(usuarioRepositoryProvider, usuarioRepository, concesionesService);
 
         ejecutar(SecurityConfig.RUTA_IDENTIDAD_COLEGIO, token, chain);
 
         assertNotNull(chain.getRequest());
         assertNull(SecurityContextHolder.getContext().getAuthentication());
-        org.mockito.Mockito.verifyNoInteractions(usuarioRepositoryProvider, usuarioRepository);
+        verifyNoInteractions(usuarioRepositoryProvider, usuarioRepository, concesionesService);
     }
 
     @Test
@@ -321,5 +381,53 @@ class JwtAuthFilterVigenciaTest {
         assertEquals(403, response.getStatus());
         assertTrue(response.getContentAsString().contains("VIGENCIA_TOKEN_OBSOLETO"));
         assertNull(chain.getRequest());
+    }
+
+    @Test
+    void tokenSinIdRolActivoBloqueaRutaCon403() throws Exception {
+        conSesion(sesion(FechaColegio.hoy().minusDays(1), null, 0));
+        String token = jwtService.generarToken(1, "ADM20240001", List.of("ADMIN"));
+        MockFilterChain chain = new MockFilterChain();
+
+        MockHttpServletResponse response = ejecutar("/usuarios", token, chain);
+
+        assertEquals(403, response.getStatus());
+        assertTrue(response.getContentAsString().contains("VIGENCIA_ROL_NO_DISPONIBLE"));
+        assertNull(chain.getRequest());
+        verify(concesionesService, never()).rolActivoValido(any(), any());
+    }
+
+    @Test
+    void rolActivoNoDisponibleBloqueaRutaConUnaSolaDelegacionAlServicio() throws Exception {
+        conSesion(sesion(FechaColegio.hoy().minusDays(1), null, 0));
+        when(concesionesService.rolActivoValido(eq(1), eq(7))).thenReturn(false);
+        String token = jwtService.generarToken(1, "ADM20240001", 7, List.of("ADMIN"), false, null, 0, null);
+        MockFilterChain chain = new MockFilterChain();
+
+        MockHttpServletResponse response = ejecutar("/usuarios", token, chain);
+
+        assertEquals(403, response.getStatus());
+        assertTrue(response.getContentAsString().contains("VIGENCIA_ROL_NO_DISPONIBLE"));
+        assertNull(chain.getRequest());
+        verify(concesionesService, times(1)).rolActivoValido(1, 7);
+        verify(usuarioRepository, times(1)).findVigenciaSesion(eq(1), eq(AccesoConstants.ELIMINADO));
+    }
+
+    @Test
+    void rolActivoNoDisponibleConservaMeYLogoutSinConsultarConcesiones() throws Exception {
+        conSesion(sesion(FechaColegio.hoy().minusDays(1), null, 0));
+        when(concesionesService.rolActivoValido(eq(1), eq(7))).thenReturn(false);
+        String token = jwtService.generarToken(1, "ADM20240001", 7, List.of("ADMIN"), false, null, 0, null);
+        clearInvocations(concesionesService);
+
+        for (String ruta : List.of("/auth/me", "/auth/logout")) {
+            MockFilterChain chain = new MockFilterChain();
+
+            MockHttpServletResponse response = ejecutar(ruta, token, chain);
+
+            assertEquals(200, response.getStatus(), ruta);
+            assertNotNull(chain.getRequest(), ruta);
+        }
+        verifyNoInteractions(concesionesService);
     }
 }

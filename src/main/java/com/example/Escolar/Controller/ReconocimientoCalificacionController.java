@@ -24,7 +24,7 @@ public class ReconocimientoCalificacionController {
 
     @GetMapping("/historial-calificaciones")
     public List<HistorialCalificacionesResponse> historial(@RequestParam Integer idMatricula, @RequestParam Integer idAsignacion) {
-        return service.historial(idMatricula, idAsignacion, contexto.idUsuarioAutenticado(), contexto.rolesAutenticados());
+        return service.historial(idMatricula, idAsignacion, contexto.idUsuarioAutenticado(), contexto.idRolActivoAutenticado());
     }
 
     /** Alumnos que traen notas utilizables en una evaluación con esas competencias. */
@@ -33,16 +33,16 @@ public class ReconocimientoCalificacionController {
                                             @RequestParam Set<Integer> competencias,
                                             @RequestParam(required = false) Integer idEvaluacion) {
         return service.traslados(idAsignacion, periodo, competencias, idEvaluacion,
-                contexto.idUsuarioAutenticado(), contexto.rolesAutenticados());
+                contexto.idUsuarioAutenticado(), contexto.idRolActivoAutenticado());
     }
 
     @PostMapping("/reconocimientos")
     public ReconocimientoCalificacionResponse reconocer(@Valid @RequestBody ReconocimientoCalificacionRequest request) {
-        return service.reconocer(request, contexto.idUsuarioAutenticado(), contexto.rolesAutenticados());
+        return service.reconocer(request, contexto.idUsuarioAutenticado(), contexto.idRolActivoAutenticado());
     }
 
     @PostMapping("/reconocimientos/{id}/anulacion")
     public void anular(@PathVariable Integer id, @Valid @RequestBody AnulacionReconocimientoRequest request) {
-        service.anular(id, request.motivo(), contexto.idUsuarioAutenticado(), contexto.rolesAutenticados());
+        service.anular(id, request.motivo(), contexto.idUsuarioAutenticado(), contexto.idRolActivoAutenticado());
     }
 }

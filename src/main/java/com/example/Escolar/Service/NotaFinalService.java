@@ -59,23 +59,23 @@ public class NotaFinalService {
     // ── Consultas ──
 
     @Transactional(readOnly = true)
-    public List<NotaFinalResponse.Curso> cursos(Integer idAnio, Integer idUsuario, List<String> roles) {
-        return cursos(idAnio, idUsuario, roles, PERMISO);
+    public List<NotaFinalResponse.Curso> cursos(Integer idAnio, Integer idUsuario, Integer idRolActivo) {
+        return cursos(idAnio, idUsuario, idRolActivo, PERMISO);
     }
 
-    List<NotaFinalResponse.Curso> cursos(Integer idAnio, Integer idUsuario, List<String> roles, String permiso) {
+    List<NotaFinalResponse.Curso> cursos(Integer idAnio, Integer idUsuario, Integer idRolActivo, String permiso) {
         // La configuración es la misma para todo el nivel: se calcula una vez por nivel.
         Map<String, ConfiguracionAcademicaResponse> configs = new HashMap<>();
-        return alcances(idAnio, idUsuario, roles, permiso, AccesoContextoService.Operacion.LECTURA).stream().map(a -> aCurso(a, configs)).toList();
+        return alcances(idAnio, idUsuario, idRolActivo, permiso, AccesoContextoService.Operacion.LECTURA).stream().map(a -> aCurso(a, configs)).toList();
     }
 
     @Transactional(readOnly = true)
     public NotaFinalResponse.Detalle detalle(Integer idGradoSeccion, Integer idArea, Integer periodo,
-                                             Integer idUsuario, List<String> roles) {
-        Alcance alcance = alcance(idGradoSeccion, idArea, idUsuario, roles);
+                                             Integer idUsuario, Integer idRolActivo) {
+        Alcance alcance = alcance(idGradoSeccion, idArea, idUsuario, idRolActivo);
         ConfiguracionAcademicaResponse config = configuracion(alcance.gradoSeccion());
         PeriodoEvaluacion numero = periodo(alcance.gradoSeccion(), periodo);
-        List<Matricula> alumnos = alumnosDe(alcance, idUsuario, roles, PERMISO, AccesoContextoService.Operacion.LECTURA);
+        List<Matricula> alumnos = alumnosDe(alcance, idUsuario, idRolActivo, PERMISO, AccesoContextoService.Operacion.LECTURA);
         Set<Integer> competencias = ids(alcance.competencias());
 
         Map<String, Nota> finales = finales(alumnos, competencias, periodo);
@@ -129,13 +129,13 @@ public class NotaFinalService {
         String estado = numero.estadoEn(LocalDate.now());
         boolean vigente = alcance.gradoSeccion().getAnioEscolar().getEstado() == AnioEscolarService.ESTADO_VIGENTE;
         boolean periodoEditable = vigente && !PeriodoEvaluacion.POR_COMENZAR.equals(estado)
-                && puedeEditar(alcance, idUsuario, roles, PERMISO);
+                && puedeEditar(alcance, idUsuario, idRolActivo, PERMISO);
         return new NotaFinalResponse.Detalle(aCurso(alcance), config.getEscala(),
                 new NotaFinalResponse.Periodo(numero.getNumero(), config.getTipoPeriodo().nombre(numero.getNumero()), estado),
                 periodoEditable,
                 periodoEditable && !PeriodoEvaluacion.CERRADO.equals(estado)
-                        && accesoContextoService.tieneAccion(PERMISO, "CREAR", idUsuario, roles),
-                periodoEditable && accesoContextoService.tieneAccion(PERMISO, "ACTUALIZAR", idUsuario, roles),
+                        && accesoContextoService.tieneAccion(PERMISO, "CREAR", idUsuario, idRolActivo),
+                periodoEditable && accesoContextoService.tieneAccion(PERMISO, "ACTUALIZAR", idUsuario, idRolActivo),
                 alcance.competencias().stream()
                         .map(c -> new NotaFinalResponse.CompetenciaFinal(c.getIdCompetencia(), c.getCodigo(), c.getNombre(),
                                 subcursosSinEvaluaciones(alcance, c, evaluaciones)))
@@ -147,20 +147,20 @@ public class NotaFinalService {
 
     /** Solo notas nuevas: una ya registrada se cambia con corregir. */
     @Transactional
-    public NotaFinalResponse.Detalle registrar(NotaFinalRequest request, Integer idUsuario, List<String> roles) {
-        return guardar(request, false, idUsuario, roles);
+    public NotaFinalResponse.Detalle registrar(NotaFinalRequest request, Integer idUsuario, Integer idRolActivo) {
+        return guardar(request, false, idUsuario, idRolActivo);
     }
 
     /** Cambia o borra notas ya registradas (y también crea): pide el permiso de corregir. */
     @Transactional
-    public NotaFinalResponse.Detalle corregir(NotaFinalRequest request, Integer idUsuario, List<String> roles) {
-        return guardar(request, true, idUsuario, roles);
+    public NotaFinalResponse.Detalle corregir(NotaFinalRequest request, Integer idUsuario, Integer idRolActivo) {
+        return guardar(request, true, idUsuario, idRolActivo);
     }
 
     private NotaFinalResponse.Detalle guardar(NotaFinalRequest request, boolean correccion,
-                                             Integer idUsuario, List<String> roles) {
+                                             Integer idUsuario, Integer idRolActivo) {
         request.notas().stream().map(NotaFinalRequest.Item::idMatricula).distinct().sorted().forEach(bloqueo::matricula);
-        Alcance alcance = alcance(request.idGradoSeccion(), request.idArea(), idUsuario, roles,
+        Alcance alcance = alcance(request.idGradoSeccion(), request.idArea(), idUsuario, idRolActivo,
                 PERMISO, AccesoContextoService.Operacion.ESCRITURA);
         GradoSeccion gs = alcance.gradoSeccion();
         if (gs.getAnioEscolar().getEstado() != AnioEscolarService.ESTADO_VIGENTE) {
@@ -179,7 +179,7 @@ public class NotaFinalService {
         EscalaCalificacion escala = configuracion(gs).getEscala();
         Map<Integer, Competencia> competencias = alcance.competencias().stream()
                 .collect(Collectors.toMap(Competencia::getIdCompetencia, Function.identity()));
-        Map<Integer, Matricula> alumnos = alumnosDe(alcance, idUsuario, roles, PERMISO, AccesoContextoService.Operacion.ESCRITURA).stream()
+        Map<Integer, Matricula> alumnos = alumnosDe(alcance, idUsuario, idRolActivo, PERMISO, AccesoContextoService.Operacion.ESCRITURA).stream()
                 .collect(Collectors.toMap(Matricula::getIdMatricula, Function.identity()));
         Map<String, Nota> existentes = finales(new ArrayList<>(alumnos.values()), competencias.keySet(), request.periodo());
         Map<Integer, List<HistorialMatricula>> historiales = PeriodoEvaluacion.CERRADO.equals(estado)
@@ -248,7 +248,7 @@ public class NotaFinalService {
             nota.setAcceso(accesoRepository.findById(AccesoConstants.ACTIVO).orElseThrow());
             notaRepository.save(nota);
         }
-        return detalle(request.idGradoSeccion(), request.idArea(), request.periodo(), idUsuario, roles);
+        return detalle(request.idGradoSeccion(), request.idArea(), request.periodo(), idUsuario, idRolActivo);
     }
 
     /**
@@ -257,19 +257,19 @@ public class NotaFinalService {
      * ya está la nota del año.
      */
     @Transactional
-    public NotaFinalResponse.Detalle reabrir(ReaperturaNotaRequest request, Integer idUsuario, List<String> roles) {
+    public NotaFinalResponse.Detalle reabrir(ReaperturaNotaRequest request, Integer idUsuario, Integer idRolActivo) {
         if (request.periodo() == null) {
             throw new IllegalArgumentException("Elige el periodo");
         }
         bloqueo.matricula(request.idMatricula());
-        Alcance alcance = alcance(request.idGradoSeccion(), request.idArea(), idUsuario, roles,
+        Alcance alcance = alcance(request.idGradoSeccion(), request.idArea(), idUsuario, idRolActivo,
                 PERMISO, AccesoContextoService.Operacion.ESCRITURA);
         GradoSeccion gs = alcance.gradoSeccion();
         if (gs.getAnioEscolar().getEstado() != AnioEscolarService.ESTADO_VIGENTE) {
             throw new IllegalArgumentException("Solo se reabren notas en un año vigente");
         }
         PeriodoEvaluacion periodo = periodo(gs, request.periodo());
-        Matricula matricula = alumnosDe(alcance, idUsuario, roles, PERMISO, AccesoContextoService.Operacion.ESCRITURA).stream()
+        Matricula matricula = alumnosDe(alcance, idUsuario, idRolActivo, PERMISO, AccesoContextoService.Operacion.ESCRITURA).stream()
                 .filter(m -> m.getIdMatricula().equals(request.idMatricula()))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("El alumno ya no está matriculado en esta sección"));
@@ -288,7 +288,7 @@ public class NotaFinalService {
         }
         anular(actual, request.motivo().trim(), usuarioRepository.findById(idUsuario)
                 .orElseThrow(() -> new IllegalArgumentException("No se pudo identificar al usuario")));
-        return detalle(request.idGradoSeccion(), request.idArea(), request.periodo(), idUsuario, roles);
+        return detalle(request.idGradoSeccion(), request.idArea(), request.periodo(), idUsuario, idRolActivo);
     }
 
     /** Vigesimal: el promedio de las evaluaciones (o la ya registrada, que solo se reabre). Literal: la elegida. */
@@ -350,27 +350,16 @@ public class NotaFinalService {
      * Docente: las áreas de sus asignaciones; si dicta un subcurso, solo las
      * competencias ligadas a él. Los demás: todas las áreas de cada sección.
      */
-    private List<Alcance> alcances(Integer idAnio, Integer idUsuario, List<String> roles) {
-        return alcances(idAnio, idUsuario, roles, PERMISO, AccesoContextoService.Operacion.LECTURA);
+    private List<Alcance> alcances(Integer idAnio, Integer idUsuario, Integer idRolActivo) {
+        return alcances(idAnio, idUsuario, idRolActivo, PERMISO, AccesoContextoService.Operacion.LECTURA);
     }
 
-    private List<Alcance> alcances(Integer idAnio, Integer idUsuario, List<String> roles,
+    private List<Alcance> alcances(Integer idAnio, Integer idUsuario, Integer idRolActivo,
                                   String permiso, AccesoContextoService.Operacion operacion) {
-        List<Alcance> lista = switch (accesoContextoService.alcance(permiso, operacion, idUsuario, roles)) {
+        List<Alcance> lista = switch (accesoContextoService.alcance(permiso, operacion, idUsuario, idRolActivo)) {
             case TODO -> alcancesGlobales(idAnio);
             case DOCENTE -> alcancesDeDocente(idAnio, idUsuario);
             case APODERADO -> alcancesDeApoderado(idAnio, idUsuario);
-            case DOCENTE_Y_APODERADO -> {
-                List<Alcance> propios = new ArrayList<>(alcancesDeDocente(idAnio, idUsuario));
-                for (Alcance hijo : alcancesDeApoderado(idAnio, idUsuario)) {
-                    if (propios.stream().noneMatch(a -> a.gradoSeccion().getIdGradoSeccion()
-                            .equals(hijo.gradoSeccion().getIdGradoSeccion())
-                            && a.area().getIdCurso().equals(hijo.area().getIdCurso()))) {
-                        propios.add(hijo);
-                    }
-                }
-                yield propios;
-            }
             case NINGUNO -> List.of();
         };
         return lista.stream()
@@ -459,20 +448,20 @@ public class NotaFinalService {
 
 
     /** Las exportaciones de la seccion completa incluyen todas sus areas y alumnos. */
-    public boolean puedeExportarSeccionCompleta(Integer idUsuario, List<String> roles) {
-        return accesoContextoService.alcance(PERMISO, AccesoContextoService.Operacion.EXPORTACION, idUsuario, roles)
+    public boolean puedeExportarSeccionCompleta(Integer idUsuario, Integer idRolActivo) {
+        return accesoContextoService.alcance(PERMISO, AccesoContextoService.Operacion.EXPORTACION, idUsuario, idRolActivo)
                 == AccesoContextoService.Alcance.TODO;
     }
 
-    Alcance alcance(Integer idGradoSeccion, Integer idArea, Integer idUsuario, List<String> roles) {
-        return alcance(idGradoSeccion, idArea, idUsuario, roles, PERMISO, AccesoContextoService.Operacion.LECTURA);
+    Alcance alcance(Integer idGradoSeccion, Integer idArea, Integer idUsuario, Integer idRolActivo) {
+        return alcance(idGradoSeccion, idArea, idUsuario, idRolActivo, PERMISO, AccesoContextoService.Operacion.LECTURA);
     }
 
-    Alcance alcance(Integer idGradoSeccion, Integer idArea, Integer idUsuario, List<String> roles,
+    Alcance alcance(Integer idGradoSeccion, Integer idArea, Integer idUsuario, Integer idRolActivo,
                     String permiso, AccesoContextoService.Operacion operacion) {
         GradoSeccion gs = gradoSeccionRepository.findById(idGradoSeccion)
                 .orElseThrow(() -> new ResourceNotFoundException("Sección no encontrada"));
-        return alcances(gs.getAnioEscolar().getIdAnio(), idUsuario, roles, permiso, operacion).stream()
+        return alcances(gs.getAnioEscolar().getIdAnio(), idUsuario, idRolActivo, permiso, operacion).stream()
                 .filter(a -> a.gradoSeccion().getIdGradoSeccion().equals(idGradoSeccion)
                         && a.area().getIdCurso().equals(idArea))
                 .findFirst()
@@ -659,9 +648,9 @@ public class NotaFinalService {
                 .orElseThrow(() -> new IllegalArgumentException("El periodo no existe: configúralo en Configuración académica"));
     }
 
-    boolean puedeEditar(Alcance curso, Integer idUsuario, List<String> roles, String permiso) {
+    boolean puedeEditar(Alcance curso, Integer idUsuario, Integer idRolActivo, String permiso) {
         return seccionCompleta(curso, idUsuario, accesoContextoService.alcance(
-                permiso, AccesoContextoService.Operacion.ESCRITURA, idUsuario, roles));
+                permiso, AccesoContextoService.Operacion.ESCRITURA, idUsuario, idRolActivo));
     }
 
     private boolean seccionCompleta(Alcance curso, Integer idUsuario, AccesoContextoService.Alcance alcance) {
@@ -673,10 +662,10 @@ public class NotaFinalService {
                                         && area(a.getCurso()).getIdCurso().equals(curso.area().getIdCurso()));
     }
 
-    List<Matricula> alumnosDe(Alcance curso, Integer idUsuario, List<String> roles,
+    List<Matricula> alumnosDe(Alcance curso, Integer idUsuario, Integer idRolActivo,
                               String permiso, AccesoContextoService.Operacion operacion) {
         GradoSeccion gs = curso.gradoSeccion();
-        AccesoContextoService.Alcance alcance = accesoContextoService.alcance(permiso, operacion, idUsuario, roles);
+        AccesoContextoService.Alcance alcance = accesoContextoService.alcance(permiso, operacion, idUsuario, idRolActivo);
         boolean seccionCompleta = seccionCompleta(curso, idUsuario, alcance);
         Set<Integer> hijos = !seccionCompleta && alcance != null && alcance.incluyeApoderado()
                 ? accesoContextoService.apoderadoDeUsuario(idUsuario)

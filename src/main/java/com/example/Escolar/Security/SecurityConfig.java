@@ -41,6 +41,8 @@ public class SecurityConfig {
             "/auth/me",
             "/auth/change-password",
             "/auth/permisos",
+            "/auth/roles",
+            "/auth/cambiar-rol",
             // Navegadores del propio usuario (Mi perfil).
             "/auth/dispositivos",
             "/auth/dispositivos/**",
@@ -73,6 +75,7 @@ public class SecurityConfig {
                         .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(HttpMethod.GET, RUTA_IDENTIDAD_COLEGIO).permitAll()
+                        .requestMatchers(HttpMethod.POST, "/auth/seleccion-rol").permitAll()
                         .requestMatchers(RUTAS_PUBLICAS.toArray(new String[0])).permitAll()
                         .requestMatchers(RUTAS_SOLO_AUTENTICADAS.toArray(new String[0])).authenticated()
                         .anyRequest().access(rbacAuthorizationManager))

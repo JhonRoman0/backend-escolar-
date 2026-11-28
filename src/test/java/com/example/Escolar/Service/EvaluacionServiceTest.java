@@ -41,7 +41,7 @@ class EvaluacionServiceTest {
         NotaEvaluacion reconocida = new NotaEvaluacion(); reconocida.setMatricula(actual); reconocida.setEvaluacion(e); reconocida.setCalificacion("A");
         NotaEvaluacion antigua = new NotaEvaluacion(); antigua.setMatricula(inactiva); antigua.setEvaluacion(e); antigua.setCalificacion("B");
         when(notaRepository.findByEvaluacionIdEvaluacionInAndAccesoNot(any(),eq(eliminado))).thenReturn(List.of(reconocida,antigua));
-        var resumen = service.listar(10,1,7,roles).get(0);
+        var resumen = service.listar(10,1,7,idRolActivo).get(0);
         assertEquals(1,resumen.notasRegistradas()); assertEquals(1,resumen.totalAlumnos());
         // La consulta utilizada excluye las notas eliminadas, incluidas las anuladas.
         verify(notaRepository).findByEvaluacionIdEvaluacionInAndAccesoNot(any(),eq(eliminado));
@@ -56,8 +56,8 @@ class EvaluacionServiceTest {
         NotaEvaluacion n = new NotaEvaluacion(); n.setEvaluacion(e); n.setMatricula(matricula(1)); n.setCalificacion("A");
         NotaEvaluacion historica = new NotaEvaluacion(); historica.setEvaluacion(e); historica.setMatricula(matricula(99)); historica.setCalificacion("B");
         when(notaRepository.findByEvaluacionIdEvaluacionInAndAccesoNot(any(),eq(eliminado))).thenReturn(List.of(n,historica));
-        var listado = service.listar(10,1,7,roles).get(0);
-        var registro = service.registro(10,1,7,roles).evaluaciones().get(0);
+        var listado = service.listar(10,1,7,idRolActivo).get(0);
+        var registro = service.registro(10,1,7,idRolActivo).evaluaciones().get(0);
         assertEquals(actuales == 0 ? 0 : 1,listado.notasRegistradas());
         assertEquals(actuales,listado.totalAlumnos());
         assertEquals(listado.notasRegistradas(),registro.notasRegistradas());
@@ -70,7 +70,7 @@ class EvaluacionServiceTest {
         evaluacionGuardada();
         when(matriculaRepository.findByGradoSeccionIdGradoSeccionAndAccesoNot(30, eliminado))
             .thenReturn(java.util.stream.IntStream.rangeClosed(1, cantidad).mapToObj(this::matricula).toList());
-        service.detalle(50, 7, roles);
+        service.detalle(50, 7, idRolActivo);
         verify(reconocimientos, times(1)).movimientosDe(any());
         verify(notaRepository, times(1)).alumnosConHistorial(any(), any(), any(), any(), any());
         verify(notaRepository, times(1)).findByEvaluacionIdEvaluacion(50);
@@ -94,7 +94,7 @@ class EvaluacionServiceTest {
 
     private final Acceso activo = new Acceso(AccesoConstants.ACTIVO, "Activo");
     private final Acceso eliminado = new Acceso(AccesoConstants.ELIMINADO, "Eliminado");
-    private final List<String> roles = List.of("Docente");
+    private final Integer idRolActivo = 1;
     private final LocalDate hoy = LocalDate.now();
     private AnioEscolar anio;
     private Asignacion asignacion;
@@ -138,7 +138,7 @@ class EvaluacionServiceTest {
         asignacion.setDocente(docente);
         asignacion.setAcceso(activo);
 
-        when(accesoContextoService.alcance("NOTAS", 7, roles)).thenReturn(AccesoContextoService.Alcance.DOCENTE);
+        when(accesoContextoService.alcance("NOTAS", 7, idRolActivo)).thenReturn(AccesoContextoService.Alcance.DOCENTE);
         when(accesoContextoService.docenteDeUsuario(7)).thenReturn(Optional.of(docente));
         when(asignacionRepository.findByDocenteIdDocenteAndAccesoNot(5, eliminado)).thenReturn(List.of(asignacion));
         when(evaluacionRepository.save(any(Evaluacion.class))).thenAnswer(i -> i.getArgument(0));
@@ -174,7 +174,7 @@ class EvaluacionServiceTest {
         LocalDate martes = proximo(java.time.DayOfWeek.TUESDAY);
 
         var ex = assertThrows(IllegalArgumentException.class,
-                () -> service.crear(new EvaluacionRequest(10, 1, "Examen", martes, Set.of(1)), 7, roles));
+                () -> service.crear(new EvaluacionRequest(10, 1, "Examen", martes, Set.of(1)), 7, idRolActivo));
 
         assertTrue(ex.getMessage().contains("se dicta lunes y miércoles"), ex.getMessage());
     }
@@ -186,8 +186,8 @@ class EvaluacionServiceTest {
         LocalDate jueves = proximo(java.time.DayOfWeek.THURSDAY);
 
         assertThrows(IllegalArgumentException.class,
-                () -> service.crear(new EvaluacionRequest(10, 1, "Examen", sabado, Set.of(1)), 7, roles));
-        service.crear(new EvaluacionRequest(10, 1, "Examen", jueves, Set.of(1)), 7, roles);
+                () -> service.crear(new EvaluacionRequest(10, 1, "Examen", sabado, Set.of(1)), 7, idRolActivo));
+        service.crear(new EvaluacionRequest(10, 1, "Examen", jueves, Set.of(1)), 7, idRolActivo);
         verify(evaluacionRepository).saveAndFlush(any());
     }
 
@@ -199,7 +199,7 @@ class EvaluacionServiceTest {
         feriado.setAnioEscolar(anio);
         when(feriadoRepository.findByAccesoNot(eliminado)).thenReturn(List.of(feriado));
 
-        var ex = assertThrows(IllegalArgumentException.class, () -> service.crear(request(1), 7, roles));
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.crear(request(1), 7, idRolActivo));
 
         assertTrue(ex.getMessage().contains("feriado"), ex.getMessage());
     }
@@ -235,7 +235,7 @@ class EvaluacionServiceTest {
 
     @Test
     void creaConLasCompetenciasDelSubcurso() {
-        service.crear(request(1, 3), 7, roles);
+        service.crear(request(1, 3), 7, idRolActivo);
 
         ArgumentCaptor<Evaluacion> captor = ArgumentCaptor.forClass(Evaluacion.class);
         verify(evaluacionRepository).saveAndFlush(captor.capture());
@@ -245,7 +245,7 @@ class EvaluacionServiceTest {
 
     @Test
     void noAceptaUnaCompetenciaQueElSubcursoNoEvalua() {
-        var ex = assertThrows(IllegalArgumentException.class, () -> service.crear(request(2), 7, roles));
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.crear(request(2), 7, idRolActivo));
 
         assertTrue(ex.getMessage().contains("Geometría"), ex.getMessage());
         verify(evaluacionRepository, never()).save(any());
@@ -254,14 +254,14 @@ class EvaluacionServiceTest {
     @Test
     void unDocenteNoTrabajaConCursosAjenos() {
         assertThrows(ResourceNotFoundException.class,
-                () -> service.crear(new EvaluacionRequest(99, 1, "Examen", hoy, Set.of(1)), 7, roles));
+                () -> service.crear(new EvaluacionRequest(99, 1, "Examen", hoy, Set.of(1)), 7, idRolActivo));
     }
 
     @Test
     void soloEnUnAnioVigente() {
         anio.setEstado(AnioEscolarService.ESTADO_POR_COMENZAR);
 
-        var ex = assertThrows(IllegalArgumentException.class, () -> service.crear(request(1), 7, roles));
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.crear(request(1), 7, idRolActivo));
 
         assertTrue(ex.getMessage().contains("año vigente"));
     }
@@ -270,7 +270,7 @@ class EvaluacionServiceTest {
     void unPeriodoCerradoEsDeSoloLectura() {
         periodo(hoy.minusDays(40), hoy.minusDays(1));
 
-        var ex = assertThrows(IllegalArgumentException.class, () -> service.crear(request(1), 7, roles));
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.crear(request(1), 7, idRolActivo));
 
         assertTrue(ex.getMessage().contains("ya cerró"), ex.getMessage());
     }
@@ -278,7 +278,7 @@ class EvaluacionServiceTest {
     @Test
     void laFechaDebeEstarDentroDelPeriodo() {
         var ex = assertThrows(IllegalArgumentException.class,
-                () -> service.crear(new EvaluacionRequest(10, 1, "Examen", hoy.plusDays(30), Set.of(1)), 7, roles));
+                () -> service.crear(new EvaluacionRequest(10, 1, "Examen", hoy.plusDays(30), Set.of(1)), 7, idRolActivo));
 
         assertTrue(ex.getMessage().contains("dentro del periodo"));
     }
@@ -288,7 +288,7 @@ class EvaluacionServiceTest {
         when(evaluacionRepository.findByAsignacionCursoIdCursoAndAsignacionGradoSeccionIdGradoSeccionAndFechaAndAccesoNot(
                 any(), eq(30), eq(hoy), eq(eliminado))).thenReturn(List.of(evaluacion(51), evaluacion(52)));
 
-        var ex = assertThrows(IllegalArgumentException.class, () -> service.crear(request(1), 7, roles));
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.crear(request(1), 7, idRolActivo));
 
         assertTrue(ex.getMessage().contains("Máximo 2 evaluaciones por día"), ex.getMessage());
         verify(evaluacionRepository, never()).saveAndFlush(any());
@@ -300,7 +300,7 @@ class EvaluacionServiceTest {
         when(evaluacionRepository.findByAsignacionCursoIdCursoAndAsignacionGradoSeccionIdGradoSeccionAndFechaAndAccesoNot(
                 any(), eq(30), eq(hoy), eq(eliminado))).thenReturn(List.of());
 
-        service.crear(request(1), 7, roles);
+        service.crear(request(1), 7, idRolActivo);
 
         verify(evaluacionRepository).findByAsignacionCursoIdCursoAndAsignacionGradoSeccionIdGradoSeccionAndFechaAndAccesoNot(
                 eq(20), eq(30), eq(hoy), eq(eliminado));
@@ -349,7 +349,7 @@ class EvaluacionServiceTest {
     void registraNotasEnLaEscalaDelNivel() {
         evaluacionGuardada();
 
-        service.registrarNotas(50, new NotasEvaluacionRequest(List.of(new NotasEvaluacionRequest.Item(1, "ad"))), 7, roles);
+        service.registrarNotas(50, new NotasEvaluacionRequest(List.of(new NotasEvaluacionRequest.Item(1, "ad"))), 7, idRolActivo);
 
         ArgumentCaptor<NotaEvaluacion> captor = ArgumentCaptor.forClass(NotaEvaluacion.class);
         verify(notaRepository).save(captor.capture());
@@ -361,7 +361,7 @@ class EvaluacionServiceTest {
         evaluacionGuardada();
 
         assertThrows(IllegalArgumentException.class, () -> service.registrarNotas(50,
-                new NotasEvaluacionRequest(List.of(new NotasEvaluacionRequest.Item(1, "15"))), 7, roles));
+                new NotasEvaluacionRequest(List.of(new NotasEvaluacionRequest.Item(1, "15"))), 7, idRolActivo));
         verify(notaRepository, never()).save(any());
     }
 
@@ -375,7 +375,7 @@ class EvaluacionServiceTest {
         existente.setAcceso(activo);
         when(notaRepository.findByEvaluacionIdEvaluacion(50)).thenReturn(List.of(existente));
 
-        service.registrarNotas(50, new NotasEvaluacionRequest(List.of(new NotasEvaluacionRequest.Item(1, " "))), 7, roles);
+        service.registrarNotas(50, new NotasEvaluacionRequest(List.of(new NotasEvaluacionRequest.Item(1, " "))), 7, idRolActivo);
 
         // Borrado lógico: la fila queda marcada, no desaparece.
         verify(notaRepository, never()).delete(any());
@@ -387,7 +387,7 @@ class EvaluacionServiceTest {
         evaluacionGuardada();
 
         var ex = assertThrows(IllegalArgumentException.class, () -> service.registrarNotas(50,
-                new NotasEvaluacionRequest(List.of(new NotasEvaluacionRequest.Item(99, "A"))), 7, roles));
+                new NotasEvaluacionRequest(List.of(new NotasEvaluacionRequest.Item(99, "A"))), 7, idRolActivo));
 
         assertTrue(ex.getMessage().contains("ya no está matriculado"));
     }
@@ -414,7 +414,7 @@ class EvaluacionServiceTest {
         when(notaRepository.countByEvaluacionIdEvaluacionAndAccesoNot(50, eliminado)).thenReturn(1L);
 
         var ex = assertThrows(IllegalArgumentException.class,
-                () -> service.editar(50, new EvaluacionRequest(null, null, "Examen final", hoy, Set.of(1)), 7, roles));
+                () -> service.editar(50, new EvaluacionRequest(null, null, "Examen final", hoy, Set.of(1)), 7, idRolActivo));
         assertTrue(ex.getMessage().contains("no se puede editar"), ex.getMessage());
         assertEquals("Examen 1", e.getNombre());
         verify(evaluacionRepository, never()).save(any());
@@ -425,7 +425,7 @@ class EvaluacionServiceTest {
         Evaluacion e = evaluacionGuardada();
         e.setCompetencias(Set.of(c1));
 
-        service.editar(50, new EvaluacionRequest(null, null, "Examen final", hoy, Set.of(1)), 7, roles);
+        service.editar(50, new EvaluacionRequest(null, null, "Examen final", hoy, Set.of(1)), 7, idRolActivo);
 
         assertEquals("Examen final", e.getNombre());
     }
@@ -437,7 +437,7 @@ class EvaluacionServiceTest {
         when(evaluacionRepository.findByAsignacionCursoIdCursoAndAsignacionGradoSeccionIdGradoSeccionAndFechaAndAccesoNot(
                 any(), eq(30), eq(hoy), eq(eliminado))).thenReturn(List.of(actual, evaluacion(51)));
 
-        service.editar(50, new EvaluacionRequest(null, null, "Examen final", hoy, Set.of(1)), 7, roles);
+        service.editar(50, new EvaluacionRequest(null, null, "Examen final", hoy, Set.of(1)), 7, idRolActivo);
 
         verify(evaluacionRepository).save(any());
     }
@@ -450,7 +450,7 @@ class EvaluacionServiceTest {
                 any(), eq(30), eq(otraFecha), eq(eliminado))).thenReturn(List.of(evaluacion(51), evaluacion(52)));
 
         var ex = assertThrows(IllegalArgumentException.class,
-                () -> service.editar(50, new EvaluacionRequest(null, null, "Examen final", otraFecha, Set.of(1)), 7, roles));
+                () -> service.editar(50, new EvaluacionRequest(null, null, "Examen final", otraFecha, Set.of(1)), 7, idRolActivo));
 
         assertTrue(ex.getMessage().contains("Máximo 2 evaluaciones por día"), ex.getMessage());
         verify(evaluacionRepository, never()).save(any());
@@ -470,7 +470,7 @@ class EvaluacionServiceTest {
         n.setCalificacion("A");
         when(notaRepository.findByEvaluacionIdEvaluacionAndAccesoNot(50, eliminado)).thenReturn(List.of(n));
 
-        var ficha = service.resumen(50, 7, roles);
+        var ficha = service.resumen(50, 7, idRolActivo);
 
         assertEquals("ROSA DIAZ", ficha.creadoPor());
         assertEquals(hoy.atTime(9, 30), ficha.fechaCreacion());
@@ -485,7 +485,7 @@ class EvaluacionServiceTest {
         Evaluacion e = evaluacionGuardada();
         when(notaRepository.countByEvaluacionIdEvaluacionAndAccesoNot(50, eliminado)).thenReturn(1L);
 
-        assertThrows(IllegalArgumentException.class, () -> service.eliminar(50, 7, roles));
+        assertThrows(IllegalArgumentException.class, () -> service.eliminar(50, 7, idRolActivo));
 
         assertEquals(AccesoConstants.ACTIVO, e.getAcceso().getIdAcceso());
     }
@@ -494,7 +494,7 @@ class EvaluacionServiceTest {
     void sinNotasSeEliminaCambiandoSoloSuEstado() {
         Evaluacion e = evaluacionGuardada();
 
-        service.eliminar(50, 7, roles);
+        service.eliminar(50, 7, idRolActivo);
 
         assertEquals(AccesoConstants.ELIMINADO, e.getAcceso().getIdAcceso());
         verify(evaluacionRepository, never()).delete(any());
@@ -515,7 +515,7 @@ class EvaluacionServiceTest {
                 .thenReturn(List.of(e));
         when(notaRepository.findByEvaluacionIdEvaluacionInAndAccesoNot(any(), eq(eliminado))).thenReturn(List.of(n));
 
-        var registro = service.registro(10, 1, 7, roles);
+        var registro = service.registro(10, 1, 7, idRolActivo);
 
         assertEquals("13", registro.notaMinima());
         var fila = registro.alumnos().stream().filter(f -> f.idMatricula() == 1).findFirst().orElseThrow();
@@ -540,7 +540,7 @@ class EvaluacionServiceTest {
         when(notaRepository.findByEvaluacionIdEvaluacion(50)).thenReturn(List.of(n));
         when(reconocimientos.existsByNotaDestinoIdNotaEvaluacionAndVigencia(90, ReconocimientoCalificacion.VIGENTE)).thenReturn(true);
         assertThrows(IllegalArgumentException.class, () -> service.registrarNotas(50,
-            new NotasEvaluacionRequest(List.of(new NotasEvaluacionRequest.Item(1,"B"))),7,roles));
+            new NotasEvaluacionRequest(List.of(new NotasEvaluacionRequest.Item(1,"B"))),7,idRolActivo));
         verify(notaRepository,never()).save(any());
     }
 
@@ -552,7 +552,7 @@ class EvaluacionServiceTest {
         when(notaRepository.findByEvaluacionIdEvaluacion(50)).thenReturn(List.of(n));
         // El reconocimiento quedó anulado: ya no hay uno activo sobre esa fila.
         when(reconocimientos.existsByNotaDestinoIdNotaEvaluacionAndVigencia(90, ReconocimientoCalificacion.VIGENTE)).thenReturn(false);
-        service.registrarNotas(50, new NotasEvaluacionRequest(List.of(new NotasEvaluacionRequest.Item(1, "B"))), 7, roles);
+        service.registrarNotas(50, new NotasEvaluacionRequest(List.of(new NotasEvaluacionRequest.Item(1, "B"))), 7, idRolActivo);
         assertEquals("B", n.getCalificacion());
         assertEquals(activo, n.getAcceso());
     }
@@ -569,9 +569,9 @@ class EvaluacionServiceTest {
         when(evaluacionRepository.findByAsignacionIdAsignacionAndPeriodoAndAccesoNotOrderByFechaAscIdEvaluacionAsc(10,(byte)1,eliminado))
             .thenReturn(List.of(nativa,reconocida));
         when(notaRepository.findByEvaluacionIdEvaluacionInAndAccesoNot(any(),eq(eliminado))).thenReturn(List.of(diez));
-        assertEquals(10, service.registro(10,1,7,roles).alumnos().get(0).competencias().get(0).promedio());
+        assertEquals(10, service.registro(10,1,7,idRolActivo).alumnos().get(0).competencias().get(0).promedio());
         when(notaRepository.findByEvaluacionIdEvaluacionInAndAccesoNot(any(),eq(eliminado))).thenReturn(List.of(diez,veinte));
-        var registro = service.registro(10,1,7,roles);
+        var registro = service.registro(10,1,7,idRolActivo);
         assertEquals(15,registro.alumnos().get(0).competencias().get(0).promedio());
         assertEquals(2,registro.alumnos().get(0).competencias().get(0).notas().size());
         assertNull(registro.alumnos().get(1).competencias().get(0).promedio());
@@ -584,7 +584,7 @@ class EvaluacionServiceTest {
         notaFinalDe(1, c3);
 
         var ex = assertThrows(IllegalArgumentException.class, () -> service.registrarNotas(50,
-                new NotasEvaluacionRequest(List.of(new NotasEvaluacionRequest.Item(1, "A"))), 7, roles));
+                new NotasEvaluacionRequest(List.of(new NotasEvaluacionRequest.Item(1, "A"))), 7, idRolActivo));
 
         assertTrue(ex.getMessage().contains("ya está registrada"), ex.getMessage());
         verify(notaRepository, never()).save(any());
@@ -596,10 +596,10 @@ class EvaluacionServiceTest {
         e.setCompetencias(Set.of(c1));
         notaFinalDe(1, c1);
 
-        service.registrarNotas(50, new NotasEvaluacionRequest(List.of(new NotasEvaluacionRequest.Item(2, "B"))), 7, roles);
+        service.registrarNotas(50, new NotasEvaluacionRequest(List.of(new NotasEvaluacionRequest.Item(2, "B"))), 7, idRolActivo);
 
         verify(notaRepository).save(any());
-        var detalle = service.detalle(50, 7, roles);
+        var detalle = service.detalle(50, 7, idRolActivo);
         assertTrue(detalle.alumnos().stream().filter(a -> a.idMatricula() == 1).findFirst().orElseThrow().notaFinalRegistrada());
         assertEquals(1, detalle.evaluacion().alumnosConNotaFinal());
     }
@@ -610,7 +610,7 @@ class EvaluacionServiceTest {
         e.setCompetencias(Set.of(c1));
         notaFinalDe(1, c3);
 
-        service.registrarNotas(50, new NotasEvaluacionRequest(List.of(new NotasEvaluacionRequest.Item(1, "A"))), 7, roles);
+        service.registrarNotas(50, new NotasEvaluacionRequest(List.of(new NotasEvaluacionRequest.Item(1, "A"))), 7, idRolActivo);
 
         verify(notaRepository).save(any());
     }
@@ -633,7 +633,7 @@ class EvaluacionServiceTest {
     void noSeMarcaUnaCompetenciaConTodasSusNotasFinales() {
         finalesDeTodos(c1);
 
-        var ex = assertThrows(IllegalArgumentException.class, () -> service.crear(request(1), 7, roles));
+        var ex = assertThrows(IllegalArgumentException.class, () -> service.crear(request(1), 7, idRolActivo));
 
         assertTrue(ex.getMessage().contains("competencia 01"), ex.getMessage());
         verify(evaluacionRepository, never()).save(any());
@@ -645,7 +645,7 @@ class EvaluacionServiceTest {
                 .thenReturn(List.of(matricula(1), matricula(2)));
         notaFinalDe(1, c1);
 
-        service.crear(request(1), 7, roles);
+        service.crear(request(1), 7, idRolActivo);
 
         verify(evaluacionRepository).saveAndFlush(any());
     }
@@ -654,7 +654,7 @@ class EvaluacionServiceTest {
     void elAvanceDiceQueCompetenciasEstanCompletas() {
         finalesDeTodos(c1);
 
-        var avance = service.avance(10, 1, 7, roles);
+        var avance = service.avance(10, 1, 7, idRolActivo);
 
         assertTrue(avance.stream().filter(a -> a.idCompetencia() == 1).findFirst().orElseThrow().completa());
         assertFalse(avance.stream().filter(a -> a.idCompetencia() == 3).findFirst().orElseThrow().completa());
@@ -666,7 +666,7 @@ class EvaluacionServiceTest {
         e.setCompetencias(new java.util.HashSet<>(Set.of(c1)));
         finalesDeTodos(c1);
 
-        service.editar(50, new EvaluacionRequest(null, null, "Examen final", hoy, Set.of(1)), 7, roles);
+        service.editar(50, new EvaluacionRequest(null, null, "Examen final", hoy, Set.of(1)), 7, idRolActivo);
 
         assertEquals("Examen final", e.getNombre());
     }

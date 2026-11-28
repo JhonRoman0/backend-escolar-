@@ -43,7 +43,7 @@ class SiagieExportServiceTest {
 
     private final Acceso activo = new Acceso(AccesoConstants.ACTIVO, "Activo");
     private final Acceso eliminado = new Acceso(AccesoConstants.ELIMINADO, "Eliminado");
-    private final List<String> roles = List.of("ADMIN");
+    private final Integer idRolActivo = 1;
     private ConfiguracionAcademicaResponse config;
     private Competencia c1;
     private Competencia c2;
@@ -159,7 +159,7 @@ class SiagieExportServiceTest {
     }
 
     private Workbook libro() throws Exception {
-        return WorkbookFactory.create(new ByteArrayInputStream(service.exportar(26, 1, 7, roles).contenido()));
+        return WorkbookFactory.create(new ByteArrayInputStream(service.exportar(26, 1, 7, idRolActivo).contenido()));
     }
 
     private static String texto(Sheet hoja, int fila, int col) {
@@ -231,7 +231,7 @@ class SiagieExportServiceTest {
 
     @Test
     void cuentaLasNotasQueFaltan() {
-        SiagieExportService.Pendientes p = service.pendientes(26, 1, 7, roles);
+        SiagieExportService.Pendientes p = service.pendientes(26, 1, 7, idRolActivo);
 
         // 2 alumnos × (2 de Matemática + 1 transversal) = 6; hay 2.
         assertEquals(6, p.esperadas());
@@ -243,7 +243,7 @@ class SiagieExportServiceTest {
     void unaSeccionAjenaNoSeExporta() {
         when(notaFinalService.puedeExportarSeccionCompleta(any(), any())).thenReturn(false);
 
-        assertThrows(ResourceNotFoundException.class, () -> service.exportar(26, 1, 7, roles));
+        assertThrows(ResourceNotFoundException.class, () -> service.exportar(26, 1, 7, idRolActivo));
     }
 
     @Test

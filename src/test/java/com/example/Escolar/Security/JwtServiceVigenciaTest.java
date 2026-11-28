@@ -41,6 +41,17 @@ class JwtServiceVigenciaTest {
     }
 
     @Test
+    void tokenIncluyeIdRolActivoYRolesConUnSoloElemento() {
+        String token = jwtService.generarToken(1, "ADM20240001", 7, List.of("Docente"), false, null, 0, 40);
+
+        Claims claims = jwtService.parse(token);
+
+        assertEquals(7, jwtService.getIdRolActivo(claims));
+        assertEquals(List.of("Docente"), claims.get("roles", List.class));
+        assertEquals(40, jwtService.getDispositivo(claims));
+    }
+
+    @Test
     void tokenSinClaimDeVersionDevuelveCero() {
         Instant ahora = Instant.now();
         String token = Jwts.builder()

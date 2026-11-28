@@ -35,7 +35,7 @@ class FichaMatriculaTest {
 
     private final Acceso activo = new Acceso(AccesoConstants.ACTIVO, "Activo");
     private final Acceso eliminado = new Acceso(AccesoConstants.ELIMINADO, "Eliminado");
-    private final List<String> roles = List.of("Secretaria");
+    private final Integer idRolActivo = 1;
     private Alumno alumno;
     private AlumnoApoderado vinculo;
 
@@ -96,13 +96,13 @@ class FichaMatriculaTest {
     private FichaMatriculaResponse fichaDe2027() {
         Matricula de2026 = matricula(1, "2026", "1ro");
         Matricula de2027 = matricula(2, "2027", "2do");
-        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.TODO);
+        when(accesoContextoService.alcance("MATRICULAS", 7, idRolActivo)).thenReturn(Alcance.TODO);
         when(matriculaRepository.findByIdMatriculaAndAccesoNot(2, eliminado)).thenReturn(Optional.of(de2027));
         // El repositorio ya excluye las eliminadas y las devuelve sin orden.
         when(matriculaRepository.findByAlumnoApoderadoAlumnoIdAlumnoAndAccesoNot(1, eliminado))
                 .thenReturn(List.of(de2027, de2026));
         when(alumnoApoderadoRepository.findByAlumno(alumno)).thenReturn(List.of(vinculo));
-        return service.ficha(2, 7, roles);
+        return service.ficha(2, 7, idRolActivo);
     }
 
     @Test
@@ -134,12 +134,12 @@ class FichaMatriculaTest {
         segundo.setApoderado(apoderado("LUIS"));
         segundo.setApoPrincipal((byte) 0);
         Matricula m = matricula(2, "2027", "2do");
-        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.TODO);
+        when(accesoContextoService.alcance("MATRICULAS", 7, idRolActivo)).thenReturn(Alcance.TODO);
         when(matriculaRepository.findByIdMatriculaAndAccesoNot(2, eliminado)).thenReturn(Optional.of(m));
         when(matriculaRepository.findByAlumnoApoderadoAlumnoIdAlumnoAndAccesoNot(1, eliminado)).thenReturn(List.of(m));
         when(alumnoApoderadoRepository.findByAlumno(alumno)).thenReturn(List.of(segundo, vinculo));
 
-        var apoderados = service.ficha(2, 7, roles).apoderados();
+        var apoderados = service.ficha(2, 7, idRolActivo).apoderados();
 
         assertEquals("ROSA DIAZ LOPEZ", apoderados.get(0).nombre());
         assertTrue(apoderados.get(0).principal());
@@ -150,11 +150,11 @@ class FichaMatriculaTest {
     void unApoderadoNoVeLaFichaDeOtroAlumno() {
         Matricula ajena = matricula(9, "2027", "2do");
         Apoderado propio = new Apoderado();
-        when(accesoContextoService.alcance("MATRICULAS", 7, roles)).thenReturn(Alcance.APODERADO);
+        when(accesoContextoService.alcance("MATRICULAS", 7, idRolActivo)).thenReturn(Alcance.APODERADO);
         when(accesoContextoService.apoderadoDeUsuario(7)).thenReturn(Optional.of(propio));
         when(alumnoApoderadoRepository.findByApoderado(propio)).thenReturn(List.of());
         when(matriculaRepository.findByIdMatriculaAndAccesoNot(9, eliminado)).thenReturn(Optional.of(ajena));
 
-        assertThrows(ResourceNotFoundException.class, () -> service.ficha(9, 7, roles));
+        assertThrows(ResourceNotFoundException.class, () -> service.ficha(9, 7, idRolActivo));
     }
 }

@@ -36,7 +36,6 @@ public class RolPermisoService {
     private final PermisoRepository permisoRepository;
     private final AccionRepository accionRepository;
     private final PermisoAccionRepository permisoAccionRepository;
-    private final UsuarioRolRepository usuarioRolRepository;
     private final ConcesionesService concesionesService;
     private final ActorSeguridad actorSeguridad;
 
@@ -118,7 +117,7 @@ public class RolPermisoService {
     /**
      * Reglas para no darse más poder (el ADMIN no las tiene):
      * - el rol ADMIN no se configura: ya tiene todo;
-     * - nadie cambia los permisos de sus propios roles;
+     * - nadie cambia los permisos de cualquiera de sus roles asignados;
      * - solo se dan o quitan acciones que uno mismo tiene en ese permiso.
      */
     private void validarCambio(Rol rol, Permiso permiso, List<String> antes, List<String> despues) {
@@ -132,7 +131,8 @@ public class RolPermisoService {
             throw new AccesoDenegadoException("No puedes modificar los permisos de tu propio rol");
         }
         Integer idActor = actorSeguridad.idActual().orElseThrow();
-        Set<String> propias = concesionesService.accionesPorPermiso(idActor).get(permiso.getCodigo());
+        Integer idRolActor = actorSeguridad.idRolActual().orElseThrow();
+        Set<String> propias = concesionesService.accionesPorPermiso(idActor, idRolActor).get(permiso.getCodigo());
         if (propias == null) {
             throw new AccesoDenegadoException("No puedes asignar ni quitar el permiso " + permiso.getNombre()
                     + " porque tú no lo tienes");
@@ -195,11 +195,20 @@ public class RolPermisoService {
         return response;
     }
 
-    public PermisosRolResponse obtenerPermisosDelUsuario(Integer idUsuario) {
+    public PermisosRolResponse obtenerPermisosDelUsuario(Integer idUsuario, Integer idRolActivo) {
         PermisosRolResponse response = new PermisosRolResponse();
         response.setModulos(new ArrayList<>());
 
-        List<RolPermiso> rolPermisos = rolPermisosDelUsuario(idUsuario);
+        if (!concesionesService.rolActivoValido(idUsuario, idRolActivo)) {
+            return response;
+        }
+        response.setIdRol(idRolActivo);
+        response.setNombreRol(concesionesService.nombreRolActivo(idUsuario, idRolActivo));
+        List<RolPermiso> rolPermisos = rolPermisoRepository.findByRolIdRol(idRolActivo).stream()
+                .filter(rp -> rp.getAcceso().getIdAcceso().equals(AccesoConstants.ACTIVO))
+                .filter(rp -> !rp.getPermiso().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
+                .filter(rp -> !rp.getPermiso().getModulo().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
+                .toList();
         if (rolPermisos.isEmpty()) {
             return response;
         }
@@ -251,17 +260,6 @@ public class RolPermisoService {
                 .sorted(Comparator.comparing(ModuloPermisosResponse::getIdModulo))
                 .toList());
         return response;
-    }
-
-    private List<RolPermiso> rolPermisosDelUsuario(Integer idUsuario) {
-        return usuarioRolRepository.findByUsuarioIdUsuario(idUsuario).stream()
-                .map(UsuarioRol::getRol)
-                .filter(rol -> !rol.getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
-                .flatMap(rol -> rolPermisoRepository.findByRolIdRol(rol.getIdRol()).stream())
-                .filter(rp -> rp.getAcceso().getIdAcceso().equals(AccesoConstants.ACTIVO))
-                .filter(rp -> !rp.getPermiso().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
-                .filter(rp -> !rp.getPermiso().getModulo().getAcceso().getIdAcceso().equals(AccesoConstants.ELIMINADO))
-                .toList();
     }
 
     private void asignarAccionesConcedidas(RolPermiso rolPermiso, List<String> codigosAcciones) {

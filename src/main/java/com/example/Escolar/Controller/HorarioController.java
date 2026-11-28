@@ -41,13 +41,13 @@ public class HorarioController {
         Integer docenteEfectivo = docente != null ? docente : idDocente;
         return horarioService.listar(grado, seccion, docenteEfectivo, anioEfectivo,
                 idNivel, idGrado, idSeccion, idTurno, idGradoSeccion,
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados(), pageable);
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado(), pageable);
     }
 
     /** El horario del docente con sesión iniciada. */
     @GetMapping("/mio")
     public MiHorarioResponse mio(@RequestParam(required = false) Integer idAnio) {
-        return horarioService.mio(idAnio, accesoContextoService.idUsuarioAutenticado());
+        return horarioService.mio(idAnio, accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 
     /** Recreos del grado y turno de la sección, para pintarlos en su horario. */
@@ -61,7 +61,7 @@ public class HorarioController {
             @PathVariable Integer idDocente,
             @RequestParam(required = false) Integer anioEscolar) {
         return horarioService.porDocente(idDocente, anioEscolar,
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 
     @GetMapping("/alumno/{idAlumno}")
@@ -69,6 +69,6 @@ public class HorarioController {
             @PathVariable Integer idAlumno,
             @RequestParam(required = false) Integer anioEscolar) {
         return horarioService.porAlumno(idAlumno, anioEscolar,
-                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.rolesAutenticados());
+                accesoContextoService.idUsuarioAutenticado(), accesoContextoService.idRolActivoAutenticado());
     }
 }
